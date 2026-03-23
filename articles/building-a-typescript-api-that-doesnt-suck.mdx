@@ -1,0 +1,1430 @@
+---
+title: Building A TypeScript API That Doesn't Suck
+description: "Learn how to build a TypeScript SDK the right way: ditching axios for ofetch, using factory patterns, and creating production-ready code."
+category: SDKs
+pubDate: 2025-12-03
+image: "/images/articles/astro.png"
+minRead: 40
+sponsor:
+  name: Sevalla
+  url: https://juststeveking.link/host
+  logo: https://github.com/sevalla-hosting.png
+author:
+  name: Steve McDougall
+  avatar:
+    src: https://avatars.githubusercontent.com/u/6368379?v=4
+    alt: Steve McDougall
+crossPost:
+  originalUrl: "https://sevalla.com/blog/build-modern-typescript-sdk/"
+  originalSite: "Sevalla Blog"
+  publishedDate: 2025-12-03
+  permission: true
+tags: ["typescript", "sdk", "api", "development"]
+---
+
+I've built the same SDK three times now. Once in Go, once in PHP, and now in TypeScript. Each time, I thought I knew what I was doing. Each time, I learned I was wrong about something fundamental.
+
+This isn't one of those "here's the perfect code" articles. This is me sitting down and telling you what I learned the hard way, what worked, what didn't, and why I'd do things differently next time.
+
+## What Most SDK Articles Get Wrong
+
+You know what grinds my gears? SDK tutorials that show you a perfect class structure and call it a day. They never tell you _why_ they made those choices. They don't show you the dead ends. They definitely don't show you the version that shipped with `axios` before you realized your bundle size was ridiculous.
+
+Here's the truth: I built a perfectly functional TypeScript SDK for the Sevalla API with `axios`. It worked. But when I ran Vite's build analyzer and actually looked at the bundle size, I felt like an idiot. 30KB for `axios` when `ofetch` could do the same job in 5KB? That's not "battle-tested," that's just lazy thinking and I can do better.
+
+So I rewrote it. Then I rewrote it again when I realized my pure class-based approach was making common workflows painful. And somewhere in that process, I figured out what a modern TypeScript SDK should actually look like.
+
+## What Building SDKs in Three Languages Taught Me
+
+Before we write any code, let me tell you what building this same SDK in Go, PHP, and TypeScript taught me - because these lessons shaped every decision in this article.
+
+**Go taught me that explicit is better than clever.** In Go, you can't hide complexity. Error handling is in your face. Dependencies are explicit. This forces you to think about architecture upfront. When I came to TypeScript after building the Go version, I knew exactly where I needed custom error classes and why factory patterns mattered.
+
+**PHP taught me that standards enable ecosystems.** Working with PSR-18 and HTTPlug in PHP showed me the power of standardized HTTP clients. When everyone agrees on interfaces, you can swap implementations without rewriting code. This is why `ofetch` alignment with the Fetch standard matters - it's not reinventing HTTP, it's embracing the platform.
+
+**TypeScript taught me that types are documentation.** After working in Go's static typing and PHP's gradual typing, TypeScript's type system feels like the sweet spot. The compiler catches your mistakes, but you're not drowning in boilerplate. Good types tell you what a function does without reading the implementation.
+
+Put these together, and you get a clear picture: **explicit error handling + standard interfaces + strong typing = SDK that's actually pleasant to use.**
+
+## What We're Actually Building
+
+The Sevalla API manages applications, databases, deployments - the usual infrastructure stuff. But here's what makes this interesting: I'm not just going to show you how to wrap HTTP endpoints in TypeScript classes. That's boring.
+
+I'm going to show you:
+
+- Why factories beat classes for configuration
+- How helper functions can encode best practices
+- When to use classes vs. functions (and why both have a place)
+- Why bundle size matters more than you think
+- How to make errors actually useful instead of just throwing generic HTTP responses
+- Why Vite is the only sensible choice for building modern SDKs
+
+We're building something real. The kind of SDK I'd want to use in production. The kind where you can start simple and go deep when you need to.
+
+## The First Big Decision: Ditching axios for ofetch
+
+Let me tell you about the dumbest thing I did: I built the first version of this SDK with `axios` because "everyone uses it."
+
+You know what? Everyone also uses jQuery, but that doesn't mean you should reach for it in 2025. I tested version 1.0 with axios, felt good about it, and then one day I actually ran Vite's build output through the bundle analyzer.
+
+**30KB.** For an HTTP client. In a world where your edge functions have size limits and every kilobyte affects cold start times.
+
+I sat there staring at the Vite build visualization and thought, "There has to be a better way."
+
+Enter ofetch. 5KB. Built on the standard Fetch API. Works everywhere - Node, Deno, Cloudflare Workers, browser, you name it. And honestly? The API is cleaner than axios.
+
+Here's what sold me:
+
+**It throws on errors by default.** With axios, you write:
+
+```typescript
+try {
+  const response = await axios.get('/api/users');
+  const data = response.data;
+} catch (error) {
+  // Hope you checked error.response vs error.request vs error
+}
+```
+
+With ofetch:
+
+```typescript
+try {
+  const data = await ofetch('/api/users');
+  // Already parsed JSON, no .data property needed
+} catch (error) {
+  // It threw because the status wasn't 2xx, clean and simple
+}
+```
+
+**It parses JSON automatically.** No more `.then(res => res.json())` or `.data` everywhere. It sees `Content-Type: application/json` and does the right thing.
+
+**It has built-in retry logic.** Three retries with exponential backoff, out of the box. axios? You're installing axios-retry or writing it yourself.
+
+**It's tree-shakeable and ESM-first.** This is huge. When Vite builds your library, it can actually eliminate unused code from ofetch. axios is a giant CommonJS blob that all comes along for the ride, no matter what you use.
+
+Look, I get it. axios is comfortable. It's familiar. But "comfortable" isn't the same as "good." When you're building an SDK that other developers will depend on, your choices affect their bundle sizes, their cold start times, their edge deployments. That responsibility matters.
+
+So I rewrote it with ofetch. And the SDK got better in every measurable way.
+
+## Building with Vite: The Only Sensible Choice
+
+Before we get into the SDK architecture, let's talk about the build tool. Because if you're building a TypeScript library in 2025 and you're not using Vite, you're making your life harder than it needs to be.
+
+I've built libraries with webpack, Rollup, and esbuild. Vite beats them all for library development because it's **designed for the modern JavaScript ecosystem**.
+
+Here's what makes Vite perfect for SDK development:
+
+**It understands ESM natively.** No configuration hell, no babel transforms to worry about. You write modern JavaScript, Vite outputs modern JavaScript.
+
+**The build is stupid fast.** Development rebuilds are instant thanks to esbuild. Production builds are optimized with Rollup. You get the best of both worlds.
+
+**Tree-shaking actually works.** When your users import your SDK, they only bundle what they use. Unused exports get eliminated. This is critical for library code.
+
+**Library mode is built-in.** No wrestling with webpack's `output.library` configuration or Rollup plugins. Vite has a `build.lib` option that just works.
+
+Here's my `vite.config.ts`:
+
+```typescript
+import { defineConfig } from 'vite';
+import { resolve } from 'path';
+import dts from 'vite-plugin-dts';
+
+export default defineConfig({
+  build: {
+    lib: {
+      entry: resolve(__dirname, 'src/index.ts'),
+      name: 'Sevalla',
+      formats: ['es', 'cjs'],
+      fileName: (format) => `sevalla.${format}.js`,
+    },
+    rollupOptions: {
+      external: ['ofetch'],
+      output: {
+        globals: {
+          ofetch: 'ofetch',
+        },
+      },
+    },
+    sourcemap: true,
+    minify: 'esbuild',
+  },
+  plugins: [dts({ rollupTypes: true })],
+});
+```
+
+Let me break this down:
+
+**`build.lib`** tells Vite we're building a library, not an application. It sets up the right output format and exports.
+
+**`formats: ['es', 'cjs']`** generates both ESM and CommonJS builds. Modern tools use ESM, older Node versions need CJS. Vite handles both.
+
+**`external: ['ofetch']`** marks ofetch as a peer dependency. We don't bundle it - users install it separately. This prevents duplicate code in their bundles.
+
+**`vite-plugin-dts`** generates TypeScript declaration files. The `rollupTypes: true` option merges all declarations into a single file, which is cleaner for consumption.
+
+**`sourcemap: true`** generates source maps for debugging. Your users will thank you when they need to step through your code.
+
+The result? Run `npm run build` and Vite spits out:
+
+```
+dist/
+  sevalla.es.js       (5.2 KB)
+  sevalla.es.js.map
+  sevalla.cjs.js      (5.4 KB)
+  sevalla.cjs.js.map
+  sevalla.d.ts
+```
+
+5KB of actual SDK code. Clean, fast, works everywhere.
+
+Compare this to webpack where you'd need separate configs for dev and prod, plugins for CommonJS and ESM, loaders for TypeScript, and a small novel's worth of configuration just to get declaration files working.
+
+Vite just works. And when something just works, you can focus on building your SDK instead of fighting your build tool.
+
+## Starting with Types, Not Code
+
+Here's something I learned from Go: if you start writing implementation code before you know your data structures, you're going to have a bad time.
+
+In Go, you define your structs first. You think about what data flows through your system. You make your types explicit. Then you write the code that operates on those types.
+
+TypeScript lets you do the same thing, but most people skip this step. They start writing classes and methods and then retrofit types later. Don't do that.
+
+I start every SDK with a `types.ts` file:
+
+```typescript
+export interface Application {
+  id: string;
+  name: string;
+  repository_url: string;
+  branch: string;
+  status: 'pending' | 'building' | 'running' | 'stopped' | 'failed';
+  url: string;
+  created_at: string;
+  updated_at: string;
+  replicas: number;
+  plan: 'hobby' | 'starter' | 'pro' | 'business' | 'enterprise';
+  region: 'us-central' | 'us-east' | 'europe-west' | 'asia-south';
+  port?: number;
+  ssl_enabled: boolean;
+  cdn_enabled: boolean;
+}
+```
+
+Notice the literal types: `status: 'pending' | 'building' | 'running' | 'stopped' | 'failed'`. Not `status: string`.
+
+Why? Because when you type `app.status === '`, your editor shows you exactly five valid options. You can't typo it. You can't forget what the valid states are. The type system guides you.
+
+This is better than enums. Enums in TypeScript are... weird. They compile to objects. They have this whole numeric/string duality thing. Literal unions are just strings (or numbers) at runtime, but they give you the same type safety. Simpler is better.
+
+**Separate request and response types:**
+
+```typescript
+export interface CreateApplicationRequest {
+  name: string;
+  repository_url: string;
+  branch: string;
+  plan?: Application['plan'];  // Optional, has a default
+  region?: Application['region'];
+  replicas?: number;
+  port?: number;
+  build_command?: string;
+  start_command?: string;
+  ssl_enabled?: boolean;
+  cdn_enabled?: boolean;
+}
+```
+
+The request type has optional fields with defaults. The response type has IDs and timestamps. They're related but different. Don't try to use one type for both - you'll end up with partial types and conditionals that make TypeScript sad.
+
+**Use type references to stay DRY:**
+
+```typescript
+plan?: Application['plan']
+```
+
+This says "use the same type as Application.plan." If you later change Application to have more plan options, CreateApplicationRequest automatically stays in sync. No copy-paste, no drift between types.
+
+I learned this the hard way in the PHP SDK. I had separate schemas for requests and responses, but I didn't link them. When the API added a new plan tier, I updated Application but forgot CreateApplicationRequest. The SDK compiled, but it didn't actually support the new tier. Type references prevent this.
+
+**Define pagination types once:**
+
+```typescript
+export interface PaginationParams {
+  page?: number;
+  per_page?: number;
+  sort?: string;
+  order?: 'asc' | 'desc';
+}
+
+export interface PaginatedResponse<T> {
+  data: T[];
+  meta: {
+    current_page: number;
+    per_page: number;
+    total: number;
+    total_pages: number;
+  };
+  links: {
+    first: string;
+    last: string;
+    next?: string;
+    prev?: string;
+  };
+}
+```
+
+Every list endpoint returns a `PaginatedResponse<Something>`. One type, used everywhere, always consistent.
+
+Starting with types forces you to think about your API's shape before you write the code. It makes the implementation clearer because you know exactly what you're working with.
+
+## The Factory Pattern: Because Configuration Is Hard
+
+Alright, controversial opinion time: most SDK constructors are terrible.
+
+```typescript
+// Don't do this
+const client = new ApiClient({
+  apiKey: 'key',
+  baseUrl: 'url',
+  timeout: 30000,
+  retries: 3,
+  retryDelay: 1000,
+  maxRetryDelay: 30000,
+  retryStatusCodes: [429, 500, 502, 503, 504],
+  headers: { /* ... */ },
+  // 15 more options
+});
+```
+
+This sucks for several reasons:
+
+1. Configuration is mixed with instantiation
+2. Testing requires mocking the entire class
+3. You can't easily create different clients with different configs
+4. The constructor gets complicated fast
+
+Instead, use a factory function:
+
+```typescript
+export interface SevallaConfig {
+  apiKey: string;
+  baseUrl?: string;
+  timeout?: number;
+  retry?: number;
+  debug?: boolean;
+}
+
+export function createHttpClient(config: SevallaConfig) {
+  const {
+    apiKey,
+    baseUrl = 'https://api.sevalla.com/v1',
+    timeout = 30000,
+    retry = 3,
+    debug = false,
+  } = config;
+
+  return ofetch.create({
+    baseURL: baseUrl,
+    timeout,
+    retry,
+    
+    onRequest({ options }) {
+      options.headers = {
+        ...options.headers,
+        'Authorization': `Bearer ${apiKey}`,
+        'Content-Type': 'application/json',
+        'Accept': 'application/json',
+      };
+      
+      if (debug) {
+        console.log('[Sevalla SDK]', options.method, options.baseURL + (options.url || ''));
+      }
+    },
+    
+    onResponse({ response, options }) {
+      if (debug) {
+        console.log('[Sevalla SDK]', response.status, options.method, options.url);
+      }
+    },
+    
+    onResponseError({ response }) {
+      const data = response._data as SevallaError;
+      
+      throw new SevallaApiError(
+        data.message || 'An error occurred',
+        response.status,
+        data.code || 'UNKNOWN_ERROR',
+        data.details
+      );
+    },
+  });
+}
+```
+
+This is better because:
+
+- **It's just a function.** No `new` keyword, no `this`, no prototype chain complexity.
+- **Defaults are clear.** You see exactly what gets used if you don't provide a value.
+- **It's composable.** You can wrap it, extend it, mock it - it's just a function.
+- **Testing is trivial.** Pass in a mock config, get a mock client. Done.
+
+The factory creates a configured ofetch instance. That instance has authentication baked in, error handling set up, retry logic configured. Every request automatically gets the Bearer token. Every error response gets transformed into a useful error object.
+
+You configure it once, and it works everywhere in your SDK.
+
+## Interceptors: The Secret Sauce
+
+The real power of the factory is in those interceptors. Let me show you why they matter.
+
+**Request interceptor** adds authentication to every request:
+
+```typescript
+onRequest({ options }) {
+  options.headers = {
+    ...options.headers,
+    'Authorization': `Bearer ${apiKey}`,
+    'Content-Type': 'application/json',
+    'Accept': 'application/json',
+  };
+}
+```
+
+Without this, you'd be writing:
+
+```typescript
+await ofetch('/applications', {
+  headers: { 'Authorization': `Bearer ${apiKey}` }
+});
+```
+
+...in every single method. Thirty times. And when you need to change how auth works, you get to update thirty methods. Fun!
+
+The interceptor does it once, in one place. Every request gets authenticated. You never forget it. You never typo it.
+
+**Debug logging** when you need it:
+
+```typescript
+if (debug) {
+  console.log('[Sevalla SDK]', options.method, options.url);
+}
+```
+
+I added this after spending two hours debugging why my requests weren't working in production. Turns out the base URL was wrong. A simple debug flag would have caught it immediately.
+
+Now users can enable debug mode:
+
+```typescript
+const sevalla = new Sevalla({ 
+  apiKey: 'key',
+  debug: true  // See every request and response
+});
+```
+
+And they get visibility into what the SDK is doing. This saves so much debugging time.
+
+**Error interceptor** transforms garbage into gold:
+
+```typescript
+onResponseError({ response }) {
+  const data = response._data as SevallaError;
+  
+  throw new SevallaApiError(
+    data.message || 'An error occurred',
+    response.status,
+    data.code || 'UNKNOWN_ERROR',
+    data.details
+  );
+}
+```
+
+Without this, your users catch raw HTTP errors and have to dig through `.response.data.message` or whatever structure your API uses. With this, they catch `SevallaApiError` instances that have a predictable structure.
+
+It's the difference between:
+
+```typescript
+// Bad
+try {
+  await fetch('/api/applications');
+} catch (error) {
+  // What do I even check here? error.response? error.message?
+}
+```
+
+And:
+
+```typescript
+// Good
+try {
+  await sevalla.applications.create(config);
+} catch (error) {
+  if (error instanceof SevallaApiError) {
+    console.log(error.code, error.status, error.details);
+  }
+}
+```
+
+The error interceptor is you, the SDK author, taking responsibility for your API's error format so your users don't have to.
+
+## Custom Error Classes: Make Errors Actually Useful
+
+Speaking of errors, let's build that `SevallaApiError` class properly:
+
+```typescript
+export interface SevallaError {
+  message: string;
+  code: string;
+  details?: Record<string, unknown>;
+}
+
+export class SevallaApiError extends Error {
+  constructor(
+    message: string,
+    public readonly status: number,
+    public readonly code: string,
+    public readonly details?: Record<string, unknown>
+  ) {
+    super(message);
+    this.name = 'SevallaApiError';
+    
+    // Maintains proper stack trace in V8
+    if (Error.captureStackTrace) {
+      Error.captureStackTrace(this, SevallaApiError);
+    }
+  }
+
+  /**
+   * Check if error is a validation error
+   */
+  isValidationError(): boolean {
+    return this.status === 422 || this.code === 'VALIDATION_ERROR';
+  }
+
+  /**
+   * Check if error is a rate limit error
+   */
+  isRateLimitError(): boolean {
+    return this.status === 429 || this.code === 'RATE_LIMIT_EXCEEDED';
+  }
+
+  /**
+   * Check if error is an authentication error
+   */
+  isAuthError(): boolean {
+    return this.status === 401 || this.code === 'UNAUTHORIZED';
+  }
+
+  /**
+   * Get field-specific validation errors
+   */
+  getValidationErrors(): Record<string, string[]> | undefined {
+    if (!this.isValidationError() || !this.details) {
+      return undefined;
+    }
+    return this.details as Record<string, string[]>;
+  }
+}
+```
+
+Now your users can write clean error handling:
+
+```typescript
+try {
+  await sevalla.applications.create(config);
+} catch (error) {
+  if (!(error instanceof SevallaApiError)) {
+    throw error; // Network error, timeout, etc.
+  }
+  
+  if (error.isValidationError()) {
+    const fieldErrors = error.getValidationErrors();
+    console.error('Validation failed:', fieldErrors);
+    // Show field-specific errors to user
+  } else if (error.isRateLimitError()) {
+    console.error('Rate limited, backing off...');
+    // Implement exponential backoff
+  } else if (error.isAuthError()) {
+    console.error('Authentication failed');
+    // Redirect to login or refresh token
+  } else {
+    console.error('API error:', error.message);
+  }
+}
+```
+
+The helper methods make error handling readable. You're not checking magic status codes or error strings - you're asking semantic questions: "Is this a validation error?" "Is this rate limiting?"
+
+This is how error handling should work. Clear categories, useful information, actionable responses.
+
+## Resource Classes: Namespacing with Structure
+
+Alright, so we have a configured HTTP client. Now what? We could just export it and call it a day:
+
+```typescript
+export const sevalla = createHttpClient({ apiKey: 'key' });
+
+// Usage
+await sevalla('/applications', { method: 'POST', body: config });
+```
+
+This works, but it sucks. There's no structure. No discoverability. No type safety on the request body. Your users have to memorize URLs and HTTP methods.
+
+Instead, we build resource classes:
+
+```typescript
+export type HttpClient = ReturnType<typeof createHttpClient>;
+
+export class ApplicationsResource {
+  constructor(private client: HttpClient) {}
+
+  async list(params?: PaginationParams): Promise<PaginatedResponse<Application>> {
+    return this.client('/applications', {
+      method: 'GET',
+      query: params,
+    });
+  }
+
+  async get(id: string): Promise<Application> {
+    return this.client(`/applications/${id}`, {
+      method: 'GET',
+    });
+  }
+
+  async create(data: CreateApplicationRequest): Promise<Application> {
+    return this.client('/applications', {
+      method: 'POST',
+      body: data,
+    });
+  }
+
+  async update(id: string, data: Partial<CreateApplicationRequest>): Promise<Application> {
+    return this.client(`/applications/${id}`, {
+      method: 'PATCH',
+      body: data,
+    });
+  }
+
+  async delete(id: string): Promise<void> {
+    return this.client(`/applications/${id}`, {
+      method: 'DELETE',
+    });
+  }
+
+  async deploy(id: string): Promise<Deployment> {
+    return this.client(`/applications/${id}/deploy`, {
+      method: 'POST',
+    });
+  }
+
+  async scale(id: string, replicas: number): Promise<Application> {
+    return this.client(`/applications/${id}/scale`, {
+      method: 'POST',
+      body: { replicas },
+    });
+  }
+
+  async logs(id: string, lines?: number): Promise<{ logs: string }> {
+    return this.client(`/applications/${id}/logs`, {
+      method: 'GET',
+      query: lines ? { lines } : undefined,
+    });
+  }
+
+  async restart(id: string): Promise<Application> {
+    return this.client(`/applications/${id}/restart`, {
+      method: 'POST',
+    });
+  }
+
+  async rollback(id: string, deploymentId: string): Promise<Deployment> {
+    return this.client(`/applications/${id}/rollback`, {
+      method: 'POST',
+      body: { deployment_id: deploymentId },
+    });
+  }
+
+  async deployments(id: string, params?: PaginationParams): Promise<PaginatedResponse<Deployment>> {
+    return this.client(`/applications/${id}/deployments`, {
+      method: 'GET',
+      query: params,
+    });
+  }
+
+  async setEnvironmentVariables(
+    id: string, 
+    variables: Record<string, string>
+  ): Promise<Application> {
+    return this.client(`/applications/${id}/environment`, {
+      method: 'PUT',
+      body: { variables },
+    });
+  }
+
+  async getEnvironmentVariables(id: string): Promise<Record<string, string>> {
+    return this.client(`/applications/${id}/environment`, {
+      method: 'GET',
+    });
+  }
+}
+```
+
+Each method is thin. It knows the URL, the HTTP method, and the types. That's it. No business logic. No clever abstractions. Just API calls.
+
+**Why classes instead of just functions?**
+
+I wrestled with this. Functions are simpler, right? Just export `createApplication()`, `deployApplication()`, etc.
+
+But classes give you something valuable: **namespacing and discoverability.**
+
+With classes:
+
+```typescript
+sevalla.applications.   // IDE shows: create, deploy, scale, list, get...
+```
+
+Without classes:
+
+```typescript
+// How do I know what's available? Read the docs?
+createApplication();
+deployApplication();
+scaleApplication();
+// Plus all the database functions, deployment functions...
+```
+
+The class groups related methods together. When you type `sevalla.applications.`, your IDE shows you everything you can do with applications. It's self-documenting.
+
+**But keep them thin.** The temptation is to add helper methods and business logic to these classes. Don't. Each method should map directly to an API endpoint. The class is a namespace, not a service layer.
+
+We'll add the smart stuff elsewhere.
+
+## The Main SDK Class: Assembly Required
+
+Now we tie it together:
+
+```typescript
+export class Sevalla {
+  private client: HttpClient;
+  
+  public readonly applications: ApplicationsResource;
+  public readonly databases: DatabasesResource;
+  public readonly deployments: DeploymentsResource;
+
+  constructor(config: SevallaConfig) {
+    this.client = createHttpClient(config);
+    this.applications = new ApplicationsResource(this.client);
+    this.databases = new DatabasesResource(this.client);
+    this.deployments = new DeploymentsResource(this.client);
+  }
+}
+
+// Clean export for users
+export function createClient(config: SevallaConfig): Sevalla {
+  return new Sevalla(config);
+}
+```
+
+Simple. Clean. One client, multiple resources.
+
+The `readonly` keyword is important. It prevents:
+
+```typescript
+sevalla.applications = somethingElse;  // TypeScript error
+```
+
+You'd be surprised how often people try to do weird things if you don't stop them.
+
+I also added a `createClient()` factory function. Some developers prefer `new Sevalla()`, others prefer `createClient()`. Support both. It costs nothing.
+
+Now your users write:
+
+```typescript
+const sevalla = createClient({ apiKey: 'key' });
+await sevalla.applications.create(config);
+await sevalla.databases.create({ name: 'db', type: 'postgresql' });
+```
+
+Or:
+
+```typescript
+const sevalla = new Sevalla({ apiKey: 'key' });
+await sevalla.applications.deploy('app-id');
+```
+
+Structured. Predictable. Type-safe. Everything you want in an SDK.
+
+## Helper Functions: Where the Magic Happens
+
+Here's where my thinking evolved after building the PHP and Go versions.
+
+Resource classes give you low-level control. But most people don't need low-level control most of the time. They're doing common things: creating an app and deploying it. Setting up a database and connecting an app to it. Deploying with rollback capability.
+
+In my Laravel work, I'm used to facades and service containers that make common operations effortless. I wanted that same ergonomics in the SDK.
+
+So I added helper functions in a `helpers.ts` file:
+
+```typescript
+export async function createAndDeploy(
+  sevalla: Sevalla,
+  config: CreateApplicationRequest
+): Promise<{ application: Application; deployment: Deployment }> {
+  const application = await sevalla.applications.create(config);
+  const deployment = await sevalla.applications.deploy(application.id);
+  return { application, deployment };
+}
+```
+
+Now instead of:
+
+```typescript
+const app = await sevalla.applications.create(config);
+const deployment = await sevalla.applications.deploy(app.id);
+```
+
+You write:
+
+```typescript
+const { application, deployment } = await createAndDeploy(sevalla, config);
+```
+
+**"That's barely any savings!"** you might say. And you'd be right, for this simple example.
+
+But look at `provisionFullStack()`:
+
+```typescript
+export async function provisionFullStack(
+  sevalla: Sevalla,
+  appConfig: CreateApplicationRequest,
+  dbConfig: CreateDatabaseRequest
+): Promise<{ 
+  application: Application; 
+  database: Database; 
+  deployment: Deployment;
+  credentials: DatabaseCredentials;
+}> {
+  // Create database first
+  const database = await sevalla.databases.create(dbConfig);
+  
+  // Wait for database to be ready
+  let dbStatus = database;
+  while (dbStatus.status === 'provisioning') {
+    await new Promise(resolve => setTimeout(resolve, 5000));
+    dbStatus = await sevalla.databases.get(database.id);
+  }
+  
+  if (dbStatus.status === 'failed') {
+    throw new Error('Database provisioning failed');
+  }
+  
+  // Get credentials
+  const credentials = await sevalla.databases.getCredentials(database.id);
+  
+  // Create application with database connection
+  const application = await sevalla.applications.create({
+    ...appConfig,
+  });
+  
+  // Set environment variables
+  await sevalla.applications.setEnvironmentVariables(application.id, {
+    DATABASE_URL: credentials.connection_string,
+    DATABASE_HOST: credentials.host,
+    DATABASE_PORT: credentials.port.toString(),
+    DATABASE_NAME: credentials.database,
+    DATABASE_USER: credentials.username,
+    DATABASE_PASSWORD: credentials.password,
+  });
+  
+  // Deploy
+  const deployment = await sevalla.applications.deploy(application.id);
+  
+  return { application, database, deployment, credentials };
+}
+```
+
+This helper encodes a best practice: create the database first, wait for it to be ready, get the credentials, inject them into the app's environment, then deploy.
+
+Without it, every user has to figure out this workflow. Many will get it wrong (deploy first, then try to add env vars). Some will forget to wait for the database to be ready. Others won't structure the environment variables correctly.
+
+The helper does it right, once, for everyone.
+
+Or look at `deployWithRollback()`:
+
+```typescript
+export interface DeploymentOptions {
+  pollInterval?: number;
+  timeout?: number;
+  onStatusChange?: (status: string) => void;
+}
+
+export async function deployWithRollback(
+  sevalla: Sevalla,
+  applicationId: string,
+  options: DeploymentOptions = {}
+): Promise<Deployment> {
+  const {
+    pollInterval = 5000,
+    timeout = 600000,
+    onStatusChange,
+  } = options;
+  
+  // Get last successful deployment
+  const history = await sevalla.applications.deployments(applicationId, { 
+    per_page: 20 
+  });
+  const lastSuccessful = history.data.find(d => d.status === 'success');
+  
+  // Start deployment
+  const deployment = await sevalla.applications.deploy(applicationId);
+  
+  // Poll until complete
+  let current = deployment;
+  const startTime = Date.now();
+  
+  while (current.status === 'pending' || current.status === 'building') {
+    if (Date.now() - startTime > timeout) {
+      throw new Error(`Deployment timeout after ${timeout}ms`);
+    }
+    
+    await new Promise(resolve => setTimeout(resolve, pollInterval));
+    
+    const latest = await sevalla.deployments.get(current.id);
+    
+    if (latest.status !== current.status && onStatusChange) {
+      onStatusChange(latest.status);
+    }
+    
+    current = latest;
+  }
+  
+  // Handle failure
+  if (current.status === 'failed') {
+    if (lastSuccessful) {
+      await sevalla.applications.rollback(applicationId, lastSuccessful.id);
+      throw new Error(
+        `Deployment ${current.id} failed. Rolled back to ${lastSuccessful.id}`
+      );
+    }
+    throw new Error(`Deployment ${current.id} failed. No previous deployment to rollback to.`);
+  }
+  
+  return current;
+}
+```
+
+This is production-ready deployment with automatic rollback. Most developers won't implement this correctly on their own. They'll deploy, check once, and move on. They won't handle timeouts. They won't automatically rollback on failure. They won't provide status callbacks.
+
+**This is the point of helper functions: they encode best practices.**
+
+You're not just wrapping API calls - you're saying "here's the right way to do this thing."
+
+And because they're separate from the resource classes, users can choose:
+
+```typescript
+// Low-level control
+await sevalla.applications.deploy('app-id');
+
+// High-level safety
+await deployWithRollback(sevalla, 'app-id', {
+  onStatusChange: (status) => console.log('Status:', status)
+});
+```
+
+Both are valid. Both have their place. The SDK supports both.
+
+## Real Usage: What This Actually Looks Like
+
+Let me show you what this looks like in practice.
+
+**Simple case** - just deploy an app:
+
+```typescript
+import { createClient } from '@sevalla/sdk';
+
+const sevalla = createClient({ 
+  apiKey: process.env.SEVALLA_API_KEY! 
+});
+
+const app = await sevalla.applications.create({
+  name: 'my-api',
+  repository_url: 'https://github.com/user/my-api',
+  branch: 'main',
+  port: 3000,
+  plan: 'starter',
+});
+
+await sevalla.applications.deploy(app.id);
+```
+
+**Medium complexity** - use a helper:
+
+```typescript
+import { createClient, createAndDeploy } from '@sevalla/sdk';
+
+const sevalla = createClient({ apiKey: process.env.SEVALLA_API_KEY! });
+
+const { application, deployment } = await createAndDeploy(sevalla, {
+  name: 'my-api',
+  repository_url: 'https://github.com/user/my-api',
+  branch: 'main',
+  port: 3000,
+});
+
+console.log(`Deployed: ${application.url}`);
+```
+
+**Production deployment** - safe with rollback:
+
+```typescript
+import { createClient, deployWithRollback } from '@sevalla/sdk';
+
+const sevalla = createClient({ apiKey: process.env.SEVALLA_API_KEY! });
+
+try {
+  const deployment = await deployWithRollback(sevalla, 'app-id', {
+    pollInterval: 10000,
+    timeout: 600000,
+    onStatusChange: (status) => {
+      console.log(`Deployment status: ${status}`);
+    },
+  });
+  
+  console.log('✓ Deployed successfully:', deployment.id);
+} catch (error) {
+  if (error instanceof SevallaApiError) {
+    console.error('✗ Deployment failed:', error.message);
+  } else {
+    console.error('✗ Deployment failed and was rolled back');
+  }
+}
+```
+
+**Full stack** - app + database:
+
+```typescript
+import { createClient, provisionFullStack } from '@sevalla/sdk';
+
+const sevalla = createClient({ apiKey: process.env.SEVALLA_API_KEY! });
+
+const { application, database, deployment } = await provisionFullStack(
+  sevalla,
+  {
+    name: 'my-app',
+    repository_url: 'https://github.com/user/app',
+    branch: 'main',
+    port: 3000,
+  },
+  {
+    name: 'my-db',
+    type: 'postgresql',
+    version: '15',
+    size: 'small',
+  }
+);
+
+console.log('App:', application.url);
+console.log('Database:', database.id);
+console.log('Deployment:', deployment.status);
+```
+
+The SDK scales with your needs. Start simple, go complex when you need to.
+
+## Package Structure and Exports
+
+Let's talk about how you structure your package for optimal tree-shaking and developer experience.
+
+Here's my `src/` structure:
+
+```
+src/
+  index.ts          # Main exports
+  client.ts         # createHttpClient factory
+  sevalla.ts        # Sevalla class
+  types.ts          # All TypeScript interfaces
+  errors.ts         # SevallaApiError class
+  resources/
+    applications.ts
+    databases.ts
+    deployments.ts
+  helpers/
+    deployment.ts   # deployWithRollback, etc.
+    provisioning.ts # provisionFullStack, etc.
+```
+
+And my `index.ts`:
+
+```typescript
+// Core exports
+export { Sevalla, createClient } from './sevalla';
+export { createHttpClient } from './client';
+export { SevallaApiError } from './errors';
+
+// Types
+export type {
+  SevallaConfig,
+  Application,
+  Database,
+  Deployment,
+  CreateApplicationRequest,
+  CreateDatabaseRequest,
+  PaginationParams,
+  PaginatedResponse,
+} from './types';
+
+// Resources (for advanced use cases)
+export { ApplicationsResource } from './resources/applications';
+export { DatabasesResource } from './resources/databases';
+export { DeploymentsResource } from './resources/deployments';
+
+// Helpers
+export {
+  createAndDeploy,
+  deployWithRollback,
+  provisionFullStack,
+} from './helpers';
+```
+
+This structure gives users:
+
+1. **The main entry point**: `createClient()` or `new Sevalla()`
+2. **All the types** they need for TypeScript
+3. **Helper functions** for common workflows
+4. **Advanced exports** (like individual resources) if they need them
+
+Because everything is ESM and properly exported, Vite's tree-shaking eliminates unused code. If a user only imports `createClient` and `createAndDeploy`, they don't get the entire `DatabasesResource` class in their bundle.
+
+Your `package.json` should look like this:
+
+```json
+{
+  "name": "@sevalla/sdk",
+  "version": "1.0.0",
+  "type": "module",
+  "main": "./dist/sevalla.cjs.js",
+  "module": "./dist/sevalla.es.js",
+  "types": "./dist/sevalla.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/sevalla.d.ts",
+      "import": "./dist/sevalla.es.js",
+      "require": "./dist/sevalla.cjs.js"
+    }
+  },
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "build": "vite build",
+    "dev": "vite build --watch",
+    "test": "vitest",
+    "typecheck": "tsc --noEmit"
+  },
+  "peerDependencies": {
+    "ofetch": "^1.3.0"
+  },
+  "devDependencies": {
+    "@types/node": "^20.10.0",
+    "typescript": "^5.3.0",
+    "vite": "^5.0.0",
+    "vite-plugin-dts": "^3.7.0",
+    "vitest": "^1.0.0"
+  }
+}
+```
+
+Key points:
+
+- **`"type": "module"`** makes Node treat `.js` files as ESM
+- **`exports` field** provides proper conditional exports
+- **`types` field** points to the declaration file
+- **`peerDependencies`** for ofetch - users install it themselves
+- **`files`** array ensures only `dist/` is published
+
+This gives users the modern ESM experience while maintaining CommonJS compatibility for older Node versions.
+
+## Testing Your SDK
+
+I'm not going to lie - I usually write tests after building the first version. But once I do, they save my ass repeatedly.
+
+Here's how I test SDKs:
+
+```typescript
+import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { createHttpClient } from '../src/client';
+import { SevallaApiError } from '../src/errors';
+
+describe('HTTP Client', () => {
+  it('adds authentication header', async () => {
+    const client = createHttpClient({
+      apiKey: 'test-key',
+      baseUrl: 'https://api.test.com',
+    });
+
+    // Mock the fetch
+    global.fetch = vi.fn().mockResolvedValue({
+      ok: true,
+      status: 200,
+      json: async () => ({ id: '123' }),
+    });
+
+    await client('/test');
+
+    expect(global.fetch).toHaveBeenCalledWith(
+      expect.any(String),
+      expect.objectContaining({
+        headers: expect.objectContaining({
+          'Authorization': 'Bearer test-key',
+        }),
+      })
+    );
+  });
+
+  it('transforms API errors', async () => {
+    const client = createHttpClient({
+      apiKey: 'test-key',
+    });
+
+    global.fetch = vi.fn().mockResolvedValue({
+      ok: false,
+      status: 422,
+      _data: {
+        message: 'Validation failed',
+        code: 'VALIDATION_ERROR',
+        details: { name: ['Name is required'] },
+      },
+    });
+
+    await expect(client('/test')).rejects.toThrow(SevallaApiError);
+  });
+});
+```
+
+The key is mocking at the HTTP level, not the SDK level. You want to test that your interceptors work, that errors transform correctly, that auth headers get added.
+
+For helper functions:
+
+```typescript
+describe('deployWithRollback', () => {
+  it('rolls back on deployment failure', async () => {
+    const mockSevalla = {
+      applications: {
+        deploy: vi.fn().mockResolvedValue({ id: 'dep-1', status: 'pending' }),
+        deployments: vi.fn().mockResolvedValue({
+          data: [{ id: 'dep-old', status: 'success' }],
+        }),
+        rollback: vi.fn().mockResolvedValue({ id: 'dep-old' }),
+      },
+      deployments: {
+        get: vi.fn().mockResolvedValue({ id: 'dep-1', status: 'failed' }),
+      },
+    } as any;
+
+    await expect(
+      deployWithRollback(mockSevalla, 'app-1')
+    ).rejects.toThrow(/rolled back/i);
+
+    expect(mockSevalla.applications.rollback).toHaveBeenCalledWith(
+      'app-1',
+      'dep-old'
+    );
+  });
+});
+```
+
+Mock the entire SDK, test the helper logic. You're not testing the HTTP layer here - you're testing the business logic.
+
+## What I'd Do Differently Next Time
+
+Building this SDK three times taught me a lot, but I still made mistakes. Here's what I'd change:
+
+**1. I'd add better rate limit handling from the start**
+
+ofetch has built-in retry, which is great. But it doesn't respect `Retry-After` headers. I should have added this to the error interceptor:
+
+```typescript
+onResponseError({ response }) {
+  if (response.status === 429) {
+    const retryAfter = response.headers.get('Retry-After');
+    if (retryAfter) {
+      const delay = parseInt(retryAfter) * 1000;
+      // Store this delay and use it in retry logic
+    }
+  }
+}
+```
+
+**2. I'd build debug mode earlier**
+
+The `debug: true` option saved my ass so many times during development. I should have added it from day one instead of using `console.log` everywhere.
+
+**3. I'd add pagination helpers**
+
+Most list endpoints return paginated results. I should have added helpers for iterating through pages:
+
+```typescript
+export async function* paginateAll<T>(
+  fetcher: (params: PaginationParams) => Promise<PaginatedResponse<T>>
+) {
+  let page = 1;
+  let hasMore = true;
+
+  while (hasMore) {
+    const response = await fetcher({ page, per_page: 100 });
+    
+    for (const item of response.data) {
+      yield item;
+    }
+    
+    hasMore = response.meta.current_page < response.meta.total_pages;
+    page++;
+  }
+}
+
+// Usage
+for await (const app of paginateAll(sevalla.applications.list)) {
+  console.log(app.name);
+}
+```
+
+**4. I'd version the types separately**
+
+Right now, types and implementation live together. If the API changes, I have to bump the entire SDK version. Better: version the types separately so users can upgrade types without upgrading the SDK.
+
+**5. I'd add request/response hooks**
+
+Let users inject their own logic:
+
+```typescript
+const sevalla = createClient({
+  apiKey: 'key',
+  hooks: {
+    beforeRequest: (options) => {
+      // Custom logic before each request
+    },
+    afterResponse: (response) => {
+      // Custom logic after each response
+    },
+  },
+});
+```
+
+But you know what? That's fine. Perfect is the enemy of shipped. The SDK works well, solves real problems, and I can improve it later.
+
+## The Cross-Language Perspective Changed Everything
+
+Here's the thing: I wouldn't have built this TypeScript SDK this way if I hadn't built the Go and PHP versions first.
+
+**Go showed me factories work better than classes** for configuration. In Go, you don't have constructors - you have factory functions. This forced me to think about configuration differently, and when I came back to TypeScript, I brought that pattern with me.
+
+**PHP showed me the value of standard interfaces.** PSR-18's `ClientInterface` means any HTTP client can be swapped in. ofetch's alignment with the Fetch standard achieves the same thing - it's not inventing new concepts, it's embracing existing ones.
+
+**TypeScript showed me that types can replace documentation.** In Go, you read godoc. In PHP, you read docblocks. In TypeScript, you hover over a function and see its signature. Good types are self-documenting.
+
+If I'd only built this in TypeScript, I'd probably have made a pure class-based SDK with axios, thrown in some promises, and called it done. It would work, but it wouldn't be as good.
+
+Building the same thing three times forces you to separate essential complexity from accidental complexity. The essential part - wrapping an HTTP API - stays the same. The accidental part - language-specific patterns, library choices, bundling concerns - changes every time.
+
+When you rebuild, you keep the essential and improve the accidental.
+
+## Why Vite Makes All of This Possible
+
+I want to come back to the build tool for a second, because it's easy to underestimate how much your build tool affects your SDK's quality.
+
+With webpack, I'd be fighting configuration. Different configs for development and production. Plugins for TypeScript, plugins for declaration files, plugins for tree-shaking. And at the end of it all, I'd probably still have a bigger bundle than I wanted.
+
+With Rollup directly, I'd have more control but more complexity. I'd need to configure every plugin myself, manage the build pipeline, handle type generation separately.
+
+Vite just works. It's opinionated in the right ways:
+
+- **ESM by default** - the web platform's standard
+- **esbuild for speed** - development builds are instant
+- **Rollup for production** - optimized, tree-shakeable output
+- **TypeScript support** - just works, no configuration
+- **Plugin ecosystem** - easy to extend when needed
+
+When your build tool gets out of your way, you can focus on building a good SDK instead of fighting your tooling.
+
+And when you run `vite build`, you get exactly what you want: a small, optimized, tree-shakeable library that works everywhere.
+
+## Bundle Size: The Number That Matters
+
+Let me hammer this point home one more time: bundle size matters.
+
+"But Steve," you might say, "30KB isn't that much."
+
+Here's why you're wrong:
+
+**Edge functions have size limits.** Cloudflare Workers caps at 1MB for the free tier. Vercel Edge Functions have similar limits. Every kilobyte in your dependencies is a kilobyte you can't use for your code.
+
+**Cold starts are real.** Larger bundles take longer to load and parse. In serverless environments, this directly affects your P99 latencies. Users notice 100ms differences.
+
+**Mobile users exist.** That SDK you bundle in your web app? Mobile users download it over cellular. Every kilobyte costs them real money.
+
+**Bundle budget is limited.** Most teams have bundle size budgets. If your SDK is 30KB and theirs is 500KB, you just ate 6% of their budget. Make it count.
+
+**Composition compounds.** One 30KB dependency doesn't seem bad. Ten of them and you're at 300KB. Choose lightweight dependencies, and your users can compose more freely.
+
+Let me show you the Vite build output for this SDK:
+
+```bash
+$ npm run build
+
+vite v5.0.0 building for production...
+✓ 23 modules transformed.
+dist/sevalla.es.js    5.23 kB │ gzip: 2.01 kB
+dist/sevalla.cjs.js   5.41 kB │ gzip: 2.08 kB
+dist/sevalla.d.ts     2.15 kB
+✓ built in 234ms
+```
+
+5KB. That's the entire SDK. Not 30KB for a single dependency - 5KB for the complete SDK including all resources, all helpers, all error handling.
+
+And when you import just what you need:
+
+```typescript
+import { createClient, createAndDeploy } from '@sevalla/sdk';
+```
+
+Tree-shaking reduces it even further. You might end up with 2-3KB in your bundle.
+
+This is only possible because:
+
+1. **ofetch is tiny** (5KB vs axios's 30KB)
+2. **We're ESM-first** (tree-shaking works)
+3. **Vite optimizes automatically** (no manual intervention)
+4. **We don't bundle dependencies** (ofetch is a peer dependency)
+
+Choose your dependencies carefully. Choose your build tool carefully. Your users will thank you.
+
+## Wrapping Up: Build SDKs That Don't Suck
+
+Let me leave you with the principles that made this SDK work:
+
+**1. Start with types.** Good types tell you what a function does without reading the implementation. Define your data structures first, then write the code that operates on them.
+
+**2. Factories beat constructors** for configuration. They're more testable, more composable, and clearer about defaults.
+
+**3. Interceptors are your friends.** Put authentication, error handling, and retry logic in one place. Every request benefits.
+
+**4. Custom errors are worth it.** `SevallaApiError` with helper methods beats raw HTTP errors every time.
+
+**5. Classes for namespacing, functions for helpers.** Give users both low-level control and high-level convenience. They'll use both.
+
+**6. Use Vite.** Modern build tool for modern libraries. Fast, simple, works everywhere.
+
+**7. Choose lightweight dependencies.** ofetch over axios. Standards over custom solutions. Your users' bundle sizes depend on your choices.
+
+**8. Helper functions encode best practices.** Don't just wrap API calls - show users the right way to do things.
+
+**9. Debug mode from day one.** You'll need it. Your users will need it. Add `debug: true` early.
+
+**10. Build it, ship it, improve it.** You won't get it right the first time. That's fine. Ship something useful, learn from usage, iterate.
+
+This SDK started with axios and pure classes. It evolved to ofetch, Vite, and hybrid patterns. It got better by being rebuilt.
+
+If you're building an SDK, don't aim for perfection. Aim for useful. Ship it. Learn from it. Improve it.
+
+And for the love of all that is holy, check your bundle size.
+	
+The complete SDK is [available on GitHub](https://github.com/juststeveking/sevalla-ts), and if you want to see how this plays out in other languages, I've got Go and PHP versions too. Each one taught me something that made the others better.
+
+Now go build something that doesn't suck.

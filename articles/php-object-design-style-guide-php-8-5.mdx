@@ -1,0 +1,672 @@
+---
+title: "The Object Design Style Guide for PHP 8.5 - Discipline without friction"
+description: "How PHP 8.5 absorbs Noback's Object Design Style Guide patterns directly into syntax, eliminating ceremony."
+category: PHP
+pubDate: 2026-02-16
+sponsor:
+  name: Sevalla
+  url: https://juststeveking.link/host
+  logo: https://github.com/sevalla-hosting.png
+author:
+  name: Steve McDougall
+  avatar:
+    src: https://avatars.githubusercontent.com/u/6368379?v=4
+    alt: Steve McDougall
+tags: ["php", "object-design", "clean-code", "oop"]
+crossPost:
+  originalUrl: https://sevalla.com/blog/php-object-design-style-guide/
+  originalSite: Sevalla
+  publishedDate: 2026-02-16
+  permission: true
+---
+
+Matthias Noback's *Object Design Style Guide* arrived in 2019 as something different. It wasn't another framework tutorial or architectural pattern cookbook. It was a book about how to think about objects themselves. Their responsibilities, boundaries, and contracts.
+
+The principles Noback outlined were sound. They still are. But here's the reality: every pattern he advocated required significant ceremony in PHP 7.3. The gap between "what you should do" and "what the language lets you express cleanly" was wide.
+
+That gap has closed. PHP 8.5 has absorbed these patterns directly into its syntax. What required twenty lines now takes one. What demanded careful discipline now happens by default. The philosophy remains identical, but the implementation has fundamentally changed.
+
+Let me walk you through what Noback taught us and how modern PHP finally supports it.
+
+## Encapsulation: The first principle
+
+Noback's opening chapters hammer home a single point: **protect your object's internal state**. Don't expose properties directly. Control how the outside world interacts with your data.
+
+In PHP 7.3, this meant the getter pattern:
+
+```php
+final class EmailAddress
+{
+    private string $address;
+
+    public function __construct(string $address)
+    {
+        if (!filter_var($address, FILTER_VALIDATE_EMAIL)) {
+            throw new InvalidArgumentException('Invalid email address');
+        }
+        $this->address = $address;
+    }
+
+    public function getAddress(): string
+    {
+        return $this->address;
+    }
+
+    public function __toString(): string
+    {
+        return $this->address;
+    }
+}
+```
+
+Sixteen lines to wrap a string with validation. The encapsulation is correct. The validation is appropriate. But look at the ratio of ceremony to actual logic. Most of this code exists to satisfy the principle, not to express the domain concept.
+
+### Asymmetric visibility
+
+PHP 8.4 introduced asymmetric visibility, and it changes the encapsulation game completely. The syntax `public private(set)` declares that a property is publicly readable but only privately writable:
+
+```php
+final class EmailAddress
+{
+    public function __construct(
+        public private(set) string $address,
+    ) {
+        if (!filter_var($address, FILTER_VALIDATE_EMAIL)) {
+            throw new InvalidArgumentException('Invalid email address');
+        }
+    }
+
+    public function __toString(): string
+    {
+        return $this->address;
+    }
+}
+```
+
+The code is half the size, but that's not the point. The point is clarity. The visibility rules are declared once, at the property level. There's no private property shadowed by a public accessor. No getter method to maintain. The encapsulation Noback advocated is expressed directly in the type system.
+
+### The three patterns
+
+Asymmetric visibility gives us three practical approaches:
+
+**Public read, private write for identity:**
+
+```php
+final class Order
+{
+    public function __construct(
+        public private(set) OrderId $id,
+        public private(set) DateTime $createdAt,
+    ) {
+    }
+}
+```
+
+External code can read these values, but they can't be modified after construction. This is the default pattern for identifiers and immutable metadata.
+
+**Public read, protected write for inheritance:**
+
+```php
+class BlogPost
+{
+    public function __construct(
+        public protected(set) PostStatus $status = PostStatus::Draft,
+    ) {
+    }
+}
+
+final class ScheduledPost extends BlogPost
+{
+    public function publish(): void
+    {
+        $this->status = PostStatus::Published;
+    }
+}
+```
+
+Subclasses can modify state, but external code cannot. This replaces the "protected setter method" pattern without exposing a method signature.
+
+**Fully public with validation hooks:**
+
+```php
+final class Product
+{
+    public int $price {
+        set {
+            if ($value < 0) {
+                throw new InvalidArgumentException('Price cannot be negative');
+            }
+            $field = $value;
+        }
+    }
+}
+```
+
+When external code legitimately needs to modify a property, the hook enforces constraints. The property can never enter an invalid state.
+
+## Invariants: Always valid objects
+
+Noback dedicates significant space to invariants. The rule: **an object must be valid when created, and must remain valid throughout its lifetime**. No temporary invalid states. No "finish initialisation by calling these three setters" patterns.
+
+The traditional implementation meant duplicating validation:
+
+```php
+final class Money
+{
+    private int $amount;
+    private string $currency;
+
+    public function __construct(int $amount, string $currency)
+    {
+        if ($amount < 0) {
+            throw new InvalidArgumentException('Amount cannot be negative');
+        }
+        if (strlen($currency) !== 3) {
+            throw new InvalidArgumentException('Currency must be ISO 4217 format');
+        }
+        $this->amount = $amount;
+        $this->currency = $currency;
+    }
+
+    public function add(int $value): void
+    {
+        $newAmount = $this->amount + $value;
+        if ($newAmount < 0) {
+            throw new InvalidArgumentException('Amount cannot be negative');
+        }
+        $this->amount = $newAmount;
+    }
+}
+```
+
+The "amount cannot be negative" check exists in two places. Every method that modifies `$amount` needs to duplicate this validation. This is validation leakage.
+
+### Property hooks: Centralized validation
+
+Property hooks solve this by moving validation to the property itself:
+
+```php
+final class Money
+{
+    public int $amount {
+        set {
+            if ($value < 0) {
+                throw new InvalidArgumentException('Amount cannot be negative');
+            }
+            $field = $value;
+        }
+    }
+
+    public string $currency {
+        set {
+            if (strlen($value) !== 3) {
+                throw new InvalidArgumentException('Currency must be ISO 4217 format');
+            }
+            $field = $value;
+        }
+    }
+
+    public function add(int $value): void
+    {
+        $this->amount += $value; // Hook validates automatically
+    }
+}
+```
+
+No matter how the property gets set (constructor, method, internal logic), the hook runs. The validation lives in exactly one place. This is what Noback described, implemented at the language level.
+
+### Virtual properties for derived values
+
+Property hooks also enable "virtual" properties without backing storage:
+
+```php
+final class Rectangle
+{
+    public function __construct(
+        public int $width,
+        public int $height,
+    ) {
+    }
+
+    public int $area {
+        get => $this->width * $this->height;
+    }
+}
+
+$rect = new Rectangle(5, 10);
+echo $rect->area; // 50
+```
+
+This is Noback's "derived values" pattern without the getter method. The property syntax makes it clear that `$area` is calculated, not stored.
+
+### Lazy initialization
+
+Property hooks handle lazy loading cleanly:
+
+```php
+final class Report
+{
+    private ?array $data = null;
+
+    public array $results {
+        get {
+            if ($this->data === null) {
+                $this->data = $this->fetchExpensiveData();
+            }
+            return $this->data;
+        }
+    }
+
+    private function fetchExpensiveData(): array
+    {
+        // Expensive operation here
+        return [];
+    }
+}
+```
+
+First access triggers the fetch. Subsequent accesses return the cached value. The object is always in a valid state, but expensive operations are deferred until needed.
+
+## Immutability: Value objects that don't change
+
+Noback is emphatic about immutability for value objects. If you want a different value, create a new object. This prevents side effects and makes code easier to reason about.
+
+The traditional implementation was the "wither" pattern:
+
+```php
+final class DateRange
+{
+    private DateTime $start;
+    private DateTime $end;
+
+    public function __construct(DateTime $start, DateTime $end)
+    {
+        $this->start = $start;
+        $this->end = $end;
+    }
+
+    public function withStart(DateTime $start): self
+    {
+        $clone = clone $this;
+        $clone->start = $start;
+        return $clone;
+    }
+
+    public function withEnd(DateTime $end): self
+    {
+        $clone = clone $this;
+        $clone->end = $end;
+        return $clone;
+    }
+}
+```
+
+For every property, a wither method. Ten properties meant ten withers. And you had to remember to clone before modifying, or you'd accidentally mutate the original.
+
+### Readonly classes
+
+PHP 8.2 introduced readonly classes:
+
+```php
+readonly final class DateRange
+{
+    public function __construct(
+        public DateTime $start,
+        public DateTime $end,
+    ) {
+    }
+}
+```
+
+The engine enforces immutability. You cannot write `$range->start = $newDate` because the compiler prevents it. This is immutability without ceremony.
+
+### Clone with: Immutable modifications
+
+PHP 8.5's `clone with` handles modifications:
+
+```php
+readonly final class Money
+{
+    public function __construct(
+        public int $amount,
+        public string $currency,
+    ) {
+    }
+}
+
+$usd = new Money(100, 'USD');
+$doubled = clone $usd with {
+    amount: 200,
+};
+```
+
+This creates a new instance with specified properties changed. It's the wither pattern built into the language. No boilerplate. No manual cloning. No risk of forgetting to return the clone.
+
+### Complex transformations
+
+For transformations involving business logic, methods return new instances:
+
+```php
+readonly final class Money
+{
+    public function __construct(
+        public int $amount,
+        public string $currency,
+    ) {
+    }
+
+    public function add(Money $other): self
+    {
+        if ($this->currency !== $other->currency) {
+            throw new InvalidArgumentException('Currency mismatch');
+        }
+        return clone $this with {
+            amount: $this->amount + $other->amount,
+        };
+    }
+}
+```
+
+The method expresses the business rule (currencies must match), then returns a new instance. This satisfies Noback's immutability requirement while keeping business logic in the object.
+
+### The NoDiscard attribute
+
+A common bug with immutable objects is forgetting to capture the result:
+
+```php
+$money->add(new Money(50, 'USD')); // Result discarded
+```
+
+PHP 8.5's `#[NoDiscard]` attribute catches this:
+
+```php
+readonly final class Money
+{
+    #[NoDiscard]
+    public function add(Money $other): self
+    {
+        return clone $this with {
+            amount: $this->amount + $other->amount,
+        };
+    }
+}
+```
+
+If you call `add` without capturing the result, the engine emits a warning. The "forgot to assign" bug is caught at the language level.
+
+## Type safety as design documentation
+
+Noback emphasizes that types aren't just compiler hints. They're documentation of what an object is and how it should be used.
+
+### DNF types for complex contracts
+
+Disjunctive Normal Form types express complex relationships:
+
+```php
+final class Logger
+{
+    public function __construct(
+        private (Psr\Log\LoggerInterface&Stringable)|null $logger = null,
+    ) {
+    }
+}
+```
+
+This declares: "The logger must implement LoggerInterface AND be convertible to a string, OR it can be null." This precision wasn't possible in earlier PHP versions.
+
+### Enums as fixed sets
+
+Noback discusses value objects for fixed sets. PHP 7.x required class constants:
+
+```php
+final class OrderStatus
+{
+    public const PENDING = 'pending';
+    public const PAID = 'paid';
+    public const SHIPPED = 'shipped';
+
+    private string $value;
+
+    public function __construct(string $value)
+    {
+        if (!in_array($value, [self::PENDING, self::PAID, self::SHIPPED], true)) {
+            throw new InvalidArgumentException('Invalid status');
+        }
+        $this->value = $value;
+    }
+}
+```
+
+Verbose and error-prone. PHP 8.1's enums solve this:
+
+```php
+enum OrderStatus: string
+{
+    case Pending = 'pending';
+    case Paid = 'paid';
+    case Shipped = 'shipped';
+}
+```
+
+The engine guarantees an `OrderStatus` can only hold these values. No validation needed. The type system enforces the constraint.
+
+### Enums with behavior
+
+Noback advocates putting behavior on value objects. Enums support this:
+
+```php
+enum OrderStatus: string
+{
+    case Pending = 'pending';
+    case Paid = 'paid';
+    case Shipped = 'shipped';
+
+    public function canTransitionTo(self $newStatus): bool
+    {
+        return match ($this) {
+            self::Pending => $newStatus === self::Paid,
+            self::Paid => $newStatus === self::Shipped,
+            self::Shipped => false,
+        };
+    }
+}
+```
+
+State transition logic lives directly on the enum. The match expression provides exhaustiveness checking. Add a new case and forget to handle it? The engine warns you.
+
+## Services: Orchestration without nesting
+
+Noback's chapter on services distinguishes "what you do" from "what you are." Entities represent concepts. Services orchestrate behavior. Services should be injected, not instantiated.
+
+The traditional approach required mental unwinding:
+
+```php
+final class InvoiceService
+{
+    public function __construct(
+        private TaxCalculator $taxCalculator,
+        private DiscountService $discountService,
+        private PdfGenerator $pdfGenerator,
+    ) {
+    }
+
+    public function process(Invoice $invoice): ProcessedInvoice
+    {
+        $withTax = $this->taxCalculator->calculate($invoice);
+        $withDiscount = $this->discountService->apply($withTax);
+        return $this->pdfGenerator->render($withDiscount);
+    }
+}
+```
+
+You trace nested method calls to understand data flow. It works, but it reads backwards.
+
+### The pipe operator
+
+PHP 8.5's pipe operator expresses sequential transformations:
+
+```php
+readonly final class InvoiceService
+{
+    public function __construct(
+        private TaxCalculator $taxCalculator,
+        private DiscountService $discountService,
+        private PdfGenerator $pdfGenerator,
+    ) {
+    }
+
+    public function process(Invoice $invoice): ProcessedInvoice
+    {
+        return $invoice
+            |> $this->taxCalculator->calculate(...)
+            |> $this->discountService->apply(...)
+            |> $this->pdfGenerator->render(...);
+    }
+}
+```
+
+The flow reads top to bottom, left to right. Each service receives the result of the previous operation via the placeholder `...`. This is Noback's Command/Query Separation made visually explicit.
+
+### Side effects in the pipeline
+
+The pipe operator works with closures for logging or other side effects:
+
+```php
+public function processWithAudit(Invoice $invoice): ProcessedInvoice
+{
+    return $invoice
+        |> $this->taxCalculator->calculate(...)
+        |> fn ($i) => $this->logger->info('Tax calculated', ['amount' => $i->tax])
+        |> $this->discountService->apply(...)
+        |> fn ($i) => $this->logger->info('Discount applied', ['amount' => $i->discount])
+        |> $this->pdfGenerator->render(...);
+}
+```
+
+Inline closures inject side effects without breaking the transformation chain. Side effects remain explicit and contained.
+
+## A complete example
+
+Here's a complete implementation using every modern PHP 8.5 feature to satisfy Noback's principles:
+
+```php
+readonly final class Order
+{
+    public function __construct(
+        public private(set) OrderId $id,
+        public private(set) CustomerId $customerId,
+        public private(set) DateTime $createdAt,
+        public OrderStatus $status = OrderStatus::Pending,
+        public private(set) array $items = [],
+    ) {
+    }
+
+    public Money $total {
+        get => array_reduce(
+            $this->items,
+            fn (Money $sum, OrderItem $item) => $sum->add($item->price),
+            new Money(0, 'USD'),
+        );
+    }
+
+    #[NoDiscard]
+    public function addItem(OrderItem $item): self
+    {
+        return clone $this with {
+            items: [...$this->items, $item],
+        };
+    }
+
+    #[NoDiscard]
+    public function markAsPaid(): self
+    {
+        if (!$this->status->canTransitionTo(OrderStatus::Paid)) {
+            throw new DomainException('Cannot mark order as paid from current status');
+        }
+        return clone $this with {
+            status: OrderStatus::Paid,
+        };
+    }
+}
+
+readonly final class OrderItem
+{
+    public function __construct(
+        public ProductId $productId,
+        public int $quantity {
+            set {
+                if ($value < 1) {
+                    throw new InvalidArgumentException('Quantity must be positive');
+                }
+                $field = $value;
+            }
+        },
+        public Money $price,
+    ) {
+    }
+
+    public Money $subtotal {
+        get => new Money(
+            $this->price->amount * $this->quantity,
+            $this->price->currency,
+        );
+    }
+}
+
+enum OrderStatus: string
+{
+    case Pending = 'pending';
+    case Paid = 'paid';
+    case Shipped = 'shipped';
+    case Cancelled = 'cancelled';
+
+    public function canTransitionTo(self $newStatus): bool
+    {
+        return match ($this) {
+            self::Pending => in_array($newStatus, [self::Paid, self::Cancelled], true),
+            self::Paid => $newStatus === self::Shipped,
+            self::Shipped => false,
+            self::Cancelled => false,
+        };
+    }
+}
+
+readonly final class OrderService
+{
+    public function __construct(
+        private OrderRepository $repository,
+        private PaymentGateway $gateway,
+        private EmailService $emailService,
+    ) {
+    }
+
+    public function placeOrder(Order $order): Order
+    {
+        return $order
+            |> $this->validateOrder(...)
+            |> $this->gateway->charge(...)
+            |> fn ($o) => $o->markAsPaid()
+            |> $this->repository->save(...)
+            |> $this->emailService->sendConfirmation(...);
+    }
+
+    private function validateOrder(Order $order): Order
+    {
+        if (count($order->items) === 0) {
+            throw new DomainException('Order must have at least one item');
+        }
+        return $order;
+    }
+}
+```
+## The fundamental shift
+
+The *Object Design Style Guide* taught a generation of PHP developers how to think about objects. The principles were always sound. What's changed is the cost of implementing them.
+
+In PHP 7.3, good design meant writing substantial code. Getters for encapsulation. Validation duplicated across methods. Manual cloning for immutability. Withers for every property. The patterns were correct, but the ceremony was significant.
+
+PHP 8.5 removes this friction. Asymmetric visibility eliminates getters. Property hooks centralize validation. Readonly classes and `clone with` make immutability default. The pipe operator makes transformation pipelines readable. Enums replace entire categories of value objects.
+
+The discipline remains unchanged. You still need to think about invariants, encapsulation, and immutability. But now the language supports these patterns directly. The "right way" has become the "easy way."
+
+The architecture Noback envisioned is now the path of least resistance. That's not just syntactic sugar. It's a fundamental shift in how we express design in code.

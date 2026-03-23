@@ -1,0 +1,64 @@
+---
+title: "Cursor-based pagination for stable lists"
+slug: "cursor-based-pagination-for-stable-lists"
+description: "Use opaque cursors instead of numeric offsets for more stable pagination over changing data like feeds, logs, or events."
+category: "reading-data"
+complexity: "intro"
+apiStyles: ["rest"]
+useWhen: "You need robust pagination over changing data like feeds, logs, or events."
+avoidWhen: "Datasets are tiny or mostly static and offset/limit is sufficient."
+tags: ["pagination", "cursors", "performance"]
+related: ["bulk-updates-via-async-jobs"]
+---
+
+Cursor-based pagination uses an opaque cursor (often a token derived from the last item) rather than numeric offsets. This makes pagination more stable under concurrent writes and more efficient for large tables.
+
+Example: fetching the first page.
+
+```http
+GET /events?limit=20
+Accept: application/json
+HTTP/1.1 200 OK
+Content-Type: application/json
+
+{
+  "data": [
+    { "id": "evt_101", "created_at": "2026-01-13T15:00:00Z" },
+    { "id": "evt_100", "created_at": "2026-01-13T14:59:59Z" }
+  ],
+  "paging": {
+    "next_cursor": "eyJpZCI6ICJldnRfMTAwIiwgImNyZWF0ZWRfYXQiOiAiMjAyNi0wMS0xM1QxNDo1OTo1OVoiIH0=",
+    "has_more": true
+  }
+}
+```
+
+Next page:
+
+```
+GET /events?limit=20&cursor=eyJpZCI6ICJldnRfMTAwIiwgImNyZWF0ZWRfYXQiOiAiMjAyNi0wMS0xM1QxNDo1OTo1OVoiIH0=
+Accept: application/json
+
+```
+
+Trade-offs and notes ￼
+
+Pros
+
+- Stable ordering; avoids missing or duplicating items when new rows are inserted.
+
+- Efficient for large datasets when implemented with “seek” queries (‎`WHERE created_at < ?`).
+
+Cons
+
+- Slightly more complex for clients than ‎`page=3`.
+
+- Harder to jump to arbitrary pages; it’s more “scroll” than “go to page 7”.
+
+DX tips
+
+- Keep the cursor opaque; don’t require clients to parse it.
+
+- Always include a ‎`has_more` flag so clients know when to stop.
+
+- Stick to a deterministic sort order (for example ‎`created_at DESC, id DESC`).

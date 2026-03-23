@@ -1,0 +1,66 @@
+---
+title: Building polished CLI tools with MiniCLI v5
+description: Transform PHP scripts into professional CLI products with MiniCLI v5's zero-dependency architecture and instant boot times.
+category: PHP
+tags:
+  - PHP
+  - CLI
+  - MiniCLI
+  - Tools
+  - Development
+pubDate: 2026-02-25
+draft: false
+crossPost:
+  originalUrl: https://sevalla.com/blog/cli-tools-minicli-v5/
+  originalSite: Sevalla
+  publishedDate: 2026-02-25
+  permission: true
+---
+
+## The Problem
+
+PHP developers typically write utilitarian scripts lacking professional polish and documentation. These are often one-off utilities thrown together without proper structure, making them difficult to maintain and share with team members.
+
+## Directory-Based Architecture
+
+MiniCLI v5 introduces an elegant solution through directory-based command mapping. The framework automatically maps folder structure to command paths:
+
+- A file at `app/Command/User/CreateController.php` becomes the command `./tool user create`
+- This creates an intuitive hierarchy that developers can navigate without memorizing command structures
+- The architecture scales naturally as your CLI application grows
+
+## Zero-Dependency Philosophy
+
+Unlike Symfony Console or Laravel Zero, MiniCLI v5 uses native PHP, resulting in significant performance advantages:
+
+- **Boot Times:** 10ms vs 200ms with heavier frameworks
+- **Minimal Footprint:** No dependency bloat to manage
+- **Simpler Debugging:** Less code to trace through when things go wrong
+- **Easier Distribution:** Single files are easier to ship than entire dependency trees
+
+## Practical Implementation
+
+The article provides a complete example of a system monitoring tool (`devtool`) that demonstrates:
+
+- Service registration patterns
+- Controller organization
+- Styled output formatting
+- Error handling strategies
+
+These examples show how to treat CLI tools as first-class products rather than throwaway scripts.
+
+## Distribution Benefits
+
+Applications can be compiled into single `.phar` files for easy distribution. Users can download and run your tool without:
+
+- Installing Composer locally
+- Managing PHP version compatibility across machines
+- Dealing with complex dependency resolution
+
+This makes your tools accessible to a much broader audience.
+
+## The Core Message
+
+Treating CLI tools as products rather than scripts—through deliberate structure, clear feedback loops, and visual polish—creates genuinely usable software that your team will actually want to use.
+
+With MiniCLI v5, you have the framework to do this efficiently, without the overhead of heavier alternatives.

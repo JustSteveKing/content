@@ -1,0 +1,897 @@
+---
+title: "JSON Resume - The future of career data is here"
+description: "A hands-on guide to implementing JSON Resume with PHP, from basic concepts to advanced usage with type-safe Laravel integration."
+category: Laravel
+pubDate: 2025-10-08
+tags: ["PHP", "Laravel", "JSON Resume", "Type Safety", "Career", "Resume", "Sevalla", "Data", "API"]
+draft: false
+sponsor:
+  name: Sevalla
+  url: https://juststeveking.link/host
+  logo: https://github.com/sevalla-hosting.png
+featured: true
+readingTime: 18
+canonical: "https://sevalla.com/blog/json-resume/"
+crossPost:
+  originalUrl: "https://sevalla.com/blog/json-resume/"
+  originalSite: "Sevalla Blog"
+  publishedDate: 2025-09-23
+  permission: true
+---
+
+## JSON Resume - The future of career data is here
+
+Resumes have long been stuck in outdated formats. Most professionals maintain them in Word or PDF, which works fine for sharing, but quickly run into limitations like design breaking or data getting misread when uploaded to online job portals or parsed by automated systems.
+
+[JSON Resume](https://jsonresume.org/) offers a solution. It's an open standard for storing career information as structured data, making resumes easier to maintain, share, and adapt to different platforms.
+
+Instead of juggling Word files, PDFs, and plain-text copies, candidates and companies alike can work from a single, consistent source of truth.
+
+In this article, we'll examine the problems JSON Resume solves, why structured resume data matters, and how developers (particularly those in the Laravel ecosystem) can implement it using [`juststeveking/resume-php`](https://github.com/JustSteveKing/resume-php), a type-safe PHP library I built.
+
+## What is JSON Resume + type-safe PHP?
+
+JSON Resume is a standardised JSON schema for representing your professional experience. However, working with raw JSON arrays in PHP can be error-prone and lack the type safety we've come to love in modern PHP development.
+
+That's where `juststeveking/resume-php` comes in. It's a library that gives you a type-safe, fluent interface for building resumes that follow the JSON Resume standard. Instead of juggling arrays, you work with well-defined data objects, built-in validation, and a clean builder pattern.
+
+Here's how we can build a resume using the library:
+
+```php
+<?php
+
+use JustSteveKing\Resume\Builders\ResumeBuilder;
+use JustSteveKing\Resume\DataObjects\Basics;
+use JustSteveKing\Resume\DataObjects\Location;
+use JustSteveKing\Resume\DataObjects\Profile;
+use JustSteveKing\Resume\DataObjects\Work;
+use JustSteveKing\Resume\DataObjects\Education;
+use JustSteveKing\Resume\DataObjects\Skill;
+use JustSteveKing\Resume\Enums\Network;
+use JustSteveKing\Resume\Enums\SkillLevel;
+
+$resume = (new ResumeBuilder())
+    ->basics(new Basics(
+        name: 'Sarah Chen',
+        label: 'Full Stack Laravel Developer',
+        email: 'sarah@example.com',
+        phone: '(555) 123-4567',
+        url: 'https://sarahchen.dev',
+        summary: 'Passionate Laravel developer with 5 years of experience building scalable web applications.',
+        location: new Location(
+            address: '123 Tech Street',
+            postalCode: '94105',
+            city: 'San Francisco',
+            countryCode: 'US',
+            region: 'CA'
+        ),
+        profiles: [
+            new Profile(Network::GitHub, 'sarahchen', 'https://github.com/sarahchen'),
+            new Profile(Network::LinkedIn, 'sarahchen', 'https://linkedin.com/in/sarahchen')
+        ]
+    ))
+    ->addWork(new Work(
+        name: 'TechCorp Inc.',
+        position: 'Senior Laravel Developer',
+        url: 'https://techcorp.com',
+        startDate: '2022-03-01',
+        summary: 'Led development of customer-facing web applications serving 100k+ users daily using Laravel and Vue.js.',
+        highlights: [
+            'Architected and implemented microservices architecture with Laravel reducing API response time by 40%',
+            'Mentored 3 junior developers and established Laravel coding standards and review practices',
+            'Built real-time notification system using Laravel WebSockets and Redis, increasing user engagement by 25%'
+        ]
+    ))
+    ->addWork(new Work(
+        name: 'StartupXYZ',
+        position: 'Full Stack Laravel Developer',
+        url: 'https://startupxyz.com',
+        startDate: '2020-06-01',
+        endDate: '2022-02-28',
+        summary: 'Full-stack development for early-stage fintech startup using Laravel and modern PHP practices.',
+        highlights: [
+            'Developed MVP from scratch using Laravel 8, Inertia.js, and MySQL',
+            'Implemented secure payment processing with Laravel Cashier and Stripe',
+            'Achieved 99.9% uptime through Laravel Horizon monitoring and comprehensive testing'
+        ]
+    ))
+    ->addEducation(new Education(
+        institution: 'University of California, Berkeley',
+        area: 'Computer Science',
+        studyType: 'Bachelor',
+        startDate: '2016-08-01',
+        endDate: '2020-05-01'
+    ))
+    ->addSkill(new Skill(
+        name: 'Backend',
+        level: SkillLevel::Expert,
+        keywords: ['PHP', 'Laravel', 'Symfony', 'MySQL', 'PostgreSQL']
+    ))
+    ->addSkill(new Skill(
+        name: 'Frontend',
+        level: SkillLevel::Advanced,
+        keywords: ['Vue.js', 'Inertia.js', 'Alpine.js', 'Tailwind CSS', 'Blade']
+    ))
+    ->addSkill(new Skill(
+        name: 'DevOps',
+        level: SkillLevel::Intermediate,
+        keywords: ['Docker', 'Laravel Forge', 'AWS', 'GitHub Actions', 'Laravel Vapor']
+    ))
+    ->build();
+
+// Export to JSON Resume format
+$jsonResume = $resume->toArray();
+
+// Export to JSON-LD for SEO
+$jsonLd = $resume->toJsonLd();
+
+// Export to Markdown
+$markdown = $resume->toMarkdown();
+```
+
+The beauty here is that you no longer need to worry about array structure, typos in field names, or missing required properties. The library handles validation, ensures schema compliance, and provides a delightful developer experience.
+
+## Real-world Laravel integration
+
+Let me walk you through building a comprehensive resume management system using this library.
+
+### Enhanced resume model
+
+First, let's create a Laravel model that leverages the type-safe resume builder:
+
+```php
+<?php
+
+namespace App\Models;
+
+use Illuminate\Database\Eloquent\Model;
+use JustSteveKing\Resume\Builders\ResumeBuilder;
+use JustSteveKing\Resume\DataObjects\Resume as ResumeDataObject;
+use Barryvdh\DomPDF\Facade\Pdf;
+
+class Resume extends Model
+{
+    protected $fillable = ['title', 'resume_data', 'theme'];
+
+    protected $casts = [
+        'resume_data' => 'array'
+    ];
+
+    public function getResumeBuilderAttribute(): ResumeDataObject
+    {
+        // Convert stored array back to type-safe Resume object
+        return ResumeBuilder::fromArray($this->resume_data);
+    }
+
+    public function generatePdf(string $theme = 'elegant'): string
+    {
+        $resume = $this->resume_builder;
+
+        $pdf = Pdf::loadView("resume.themes.{$theme}", [
+            'resume' => $resume->toArray(),
+            'jsonLd' => $resume->toJsonLd(),
+        ]);
+
+        return $pdf->output();
+    }
+
+    public function generateHtml(string $theme = 'elegant'): string
+    {
+        $resume = $this->resume_builder;
+
+        return view("resume.themes.{$theme}", [
+            'resume' => $resume->toArray(),
+            'jsonLd' => $resume->toJsonLd(),
+        ])->render();
+    }
+
+    public function generateMarkdown(): string
+    {
+        return $this->resume_builder->toMarkdown();
+    }
+
+    public function exportForJobBoard(): array
+    {
+        $resume = $this->resume_builder;
+        $resumeArray = $resume->toArray();
+
+        return [
+            'name' => $resumeArray['basics']['name'],
+            'email' => $resumeArray['basics']['email'],
+            'skills' => collect($resumeArray['skills'] ?? [])
+                ->flatMap(fn($skill) => $skill['keywords'])
+                ->toArray(),
+            'experience' => collect($resumeArray['work'] ?? [])
+                ->map(fn($job) => [
+                    'company' => $job['name'],
+                    'title' => $job['position'],
+                    'start_date' => $job['startDate'],
+                    'end_date' => $job['endDate'] ?? null,
+                    'description' => $job['summary']
+                ])->toArray()
+        ];
+    }
+
+    public function addWork(Work $work): self
+    {
+        $currentResume = $this->resume_builder;
+        $updatedResume = $currentResume->addWork($work);
+
+        $this->resume_data = $updatedResume->toArray();
+        $this->save();
+
+        return $this;
+    }
+
+    public function addSkill(Skill $skill): self
+    {
+        $currentResume = $this->resume_builder;
+        $updatedResume = $currentResume->addSkill($skill);
+
+        $this->resume_data = $updatedResume->toArray();
+        $this->save();
+
+        return $this;
+    }
+}
+```
+
+### Service classes with type safety
+
+Here's how our services become much cleaner with the type-safe approach:
+
+```php
+<?php
+
+namespace App\Services;
+
+use App\Models\Resume;
+use JustSteveKing\Resume\Builders\ResumeBuilder;
+use JustSteveKing\Resume\DataObjects\Work;
+use JustSteveKing\Resume\DataObjects\Skill;
+use JustSteveKing\Resume\Enums\SkillLevel;
+use OpenAI\Laravel\Facades\OpenAI;
+
+class ResumeBuilderService
+{
+    public function createFromScratch(array $basicInfo): Resume
+    {
+        $resumeBuilder = new ResumeBuilder();
+
+        // Use the type-safe builder to construct the resume
+        $resume = $resumeBuilder
+            ->basics($this->buildBasicsFromArray($basicInfo))
+            ->build();
+
+        return Resume::create([
+            'title' => $basicInfo['title'] ?? 'My Resume',
+            'resume_data' => $resume->toArray(),
+            'theme' => 'elegant'
+        ]);
+    }
+
+    public function addWorkExperience(Resume $resume, array $workData): Resume
+    {
+        $work = new Work(
+            name: $workData['company'],
+            position: $workData['position'],
+            url: $workData['website'] ?? null,
+            startDate: $workData['start_date'],
+            endDate: $workData['end_date'] ?? null,
+            summary: $workData['summary'],
+            highlights: $workData['highlights'] ?? []
+        );
+
+        return $resume->addWork($work);
+    }
+
+    public function addSkillSet(Resume $resume, array $skillData): Resume
+    {
+        $skill = new Skill(
+            name: $skillData['name'],
+            level: SkillLevel::from($skillData['level']),
+            keywords: $skillData['keywords']
+        );
+
+        return $resume->addSkill($skill);
+    }
+
+    public function optimizeForJobDescription(Resume $resume, string $jobDescription): Resume
+    {
+        $currentResume = $resume->resume_builder;
+
+        $prompt = "
+            Given this job description: {$jobDescription}
+
+            And this resume data: " . json_encode($currentResume->toArray(), JSON_PRETTY_PRINT) . "
+
+            Suggest optimizations to better match the job requirements.
+            Return a JSON object with suggested changes to work highlights and skills.
+            Format: {\"work_optimizations\": [...], \"skill_suggestions\": [...]}
+        ";
+
+        $response = OpenAI::chat()->create([
+            'model' => 'gpt-4',
+            'messages' => [
+                ['role' => 'user', 'content' => $prompt]
+            ],
+            'max_tokens' => 2000
+        ]);
+
+        $suggestions = json_decode($response->choices[0]->message->content, true);
+
+        // Create optimized version
+        $optimizedResume = $resume->replicate();
+        $optimizedResume->title = $resume->title . ' (Optimized)';
+
+        // Apply AI suggestions using type-safe methods
+        if (isset($suggestions['skill_suggestions'])) {
+            foreach ($suggestions['skill_suggestions'] as $skillSuggestion) {
+                $optimizedResume->addSkill(new Skill(
+                    name: $skillSuggestion['name'],
+                    level: SkillLevel::from($skillSuggestion['level']),
+                    keywords: $skillSuggestion['keywords']
+                ));
+            }
+        }
+
+        $optimizedResume->save();
+
+        return $optimizedResume;
+    }
+
+    private function buildBasicsFromArray(array $data): Basics
+    {
+        // Implementation for building Basics object from array
+        // This would include validation and type conversion
+    }
+}
+```
+
+### Controller with enhanced validation
+
+The controller becomes much more robust with type safety:
+
+```php
+<?php
+
+namespace App\Http\Controllers;
+
+use App\Models\Resume;
+use App\Services\ResumeBuilderService;
+use App\Http\Requests\CreateResumeRequest;
+use App\Http\Requests\AddWorkExperienceRequest;
+use Illuminate\Http\JsonResponse;
+use Illuminate\Http\Response;
+
+class ResumeController extends Controller
+{
+    public function __construct(
+        private ResumeBuilderService $resumeService
+    ) {}
+
+    public function store(CreateResumeRequest $request): JsonResponse
+    {
+        $resume = $this->resumeService->createFromScratch(
+            $request->validated()
+        );
+
+        return response()->json([
+            'message' => 'Resume created successfully',
+            'resume' => $resume,
+            'schema_valid' => true // Always true with type-safe building!
+        ], 201);
+    }
+
+    public function addWork(Resume $resume, AddWorkExperienceRequest $request): JsonResponse
+    {
+        try {
+            $updatedResume = $this->resumeService->addWorkExperience(
+                $resume,
+                $request->validated()
+            );
+
+            return response()->json([
+                'message' => 'Work experience added successfully',
+                'resume' => $updatedResume
+            ]);
+        } catch (\TypeError $e) {
+            return response()->json([
+                'error' => 'Invalid data type provided',
+                'details' => $e->getMessage()
+            ], 422);
+        }
+    }
+
+    public function exportPdf(Resume $resume, string $theme = 'elegant'): Response
+    {
+        $pdf = $resume->generatePdf($theme);
+
+        return response($pdf, 200, [
+            'Content-Type' => 'application/pdf',
+            'Content-Disposition' => 'attachment; filename="resume.pdf"'
+        ]);
+    }
+
+    public function exportMarkdown(Resume $resume): Response
+    {
+        $markdown = $resume->generateMarkdown();
+
+        return response($markdown, 200, [
+            'Content-Type' => 'text/markdown',
+            'Content-Disposition' => 'attachment; filename="resume.md"'
+        ]);
+    }
+
+    public function exportJsonLd(Resume $resume): JsonResponse
+    {
+        $jsonLd = $resume->resume_builder->toJsonLd();
+
+        return response()->json($jsonLd);
+    }
+
+    public function validateSchema(Resume $resume): JsonResponse
+    {
+        // With the type-safe library, this is always valid!
+        return response()->json([
+            'valid' => true,
+            'schema_version' => '1.0.0',
+            'message' => 'Resume is fully compliant with JSON Resume schema'
+        ]);
+    }
+}
+```
+
+### Advanced job description matching
+
+The library also includes a `JobDescriptionBuilder` that we can use for intelligent matching:
+
+```php
+<?php
+
+namespace App\Services;
+
+use JustSteveKing\Resume\Builders\JobDescriptionBuilder;
+use JustSteveKing\Resume\DataObjects\Resume as ResumeDataObject;
+
+class JobMatchingService
+{
+    public function calculateMatchScore(ResumeDataObject $resume, array $jobData): array
+    {
+        $jobDescription = (new JobDescriptionBuilder())
+            ->title($jobData['title'])
+            ->company($jobData['company'])
+            ->location($jobData['location'])
+            ->salary($jobData['salary'] ?? null)
+            ->description($jobData['description']);
+
+        // Add requirements
+        foreach ($jobData['requirements'] as $requirement) {
+            $jobDescription->addRequirement($requirement);
+        }
+
+        // Add benefits
+        foreach ($jobData['benefits'] as $benefit) {
+            $jobDescription->addBenefit($benefit);
+        }
+
+        $job = $jobDescription->build();
+
+        // Calculate match score based on skills overlap
+        $resumeArray = $resume->toArray();
+        $jobArray = $job->toArray();
+
+        $resumeSkills = collect($resumeArray['skills'] ?? [])
+            ->flatMap(fn($skill) => $skill['keywords'])
+            ->map('strtolower');
+
+        $jobRequiredSkills = collect($jobArray['requirements'] ?? [])
+            ->flatMap(fn($req) => $this->extractSkillsFromText($req))
+            ->map('strtolower');
+
+        $matchingSkills = $resumeSkills->intersect($jobRequiredSkills);
+        $matchScore = $jobRequiredSkills->count() > 0
+            ? ($matchingSkills->count() / $jobRequiredSkills->count()) * 100
+            : 0;
+
+        return [
+            'match_score' => round($matchScore, 2),
+            'matching_skills' => $matchingSkills->values()->toArray(),
+            'missing_skills' => $jobRequiredSkills->diff($resumeSkills)->values()->toArray(),
+            'job_requirements' => $jobArray['requirements'],
+            'recommendations' => $this->generateRecommendations($matchingSkills, $jobRequiredSkills->diff($resumeSkills))
+        ];
+    }
+
+    private function extractSkillsFromText(string $text): array
+    {
+        // Simple skill extraction - in reality, you'd use NLP or a more sophisticated approach
+        $commonSkills = ['php', 'laravel', 'mysql', 'javascript', 'vue.js', 'react', 'docker', 'aws'];
+
+        return collect($commonSkills)
+            ->filter(fn($skill) => stripos($text, $skill) !== false)
+            ->toArray();
+    }
+
+    private function generateRecommendations($matching, $missing): array
+    {
+        $recommendations = [];
+
+        if ($missing->count() > 0) {
+            $recommendations[] = "Consider adding experience with: " . $missing->take(3)->implode(', ');
+        }
+
+        if ($matching->count() > 0) {
+            $recommendations[] = "Highlight your experience with: " . $matching->take(3)->implode(', ');
+        }
+
+        return $recommendations;
+    }
+}
+```
+
+### Blade component with type safety
+
+Here's how our Blade component becomes more robust:
+
+```blade
+{{-- resources/views/components/resume-display.blade.php --}}
+@props(['resume'])
+
+@php
+    // $resume is now a type-safe Resume object
+    $resumeArray = $resume->toArray();
+    $jsonLd = $resume->toJsonLd();
+@endphp
+
+<div class="resume max-w-4xl mx-auto p-8 bg-white shadow-lg">
+    {{-- Add JSON-LD for SEO --}}
+    <script type="application/ld+json">
+        {!! json_encode($jsonLd, JSON_UNESCAPED_SLASHES | JSON_PRETTY_PRINT) !!}
+    </script>
+
+    <header class="text-center mb-8">
+        <h1 class="text-4xl font-bold text-gray-900">{{ $resumeArray['basics']['name'] }}</h1>
+        <p class="text-xl text-gray-600 mt-2">{{ $resumeArray['basics']['label'] }}</p>
+
+        <div class="flex justify-center space-x-4 mt-4 text-gray-600">
+            <span>{{ $resumeArray['basics']['email'] }}</span>
+            @if(isset($resumeArray['basics']['phone']))
+                <span>{{ $resumeArray['basics']['phone'] }}</span>
+            @endif
+            @if(isset($resumeArray['basics']['url']))
+                <a href="{{ $resumeArray['basics']['url'] }}" class="text-blue-600 hover:underline">
+                    {{ $resumeArray['basics']['url'] }}
+                </a>
+            @endif
+        </div>
+
+        @if(isset($resumeArray['basics']['profiles']))
+            <div class="flex justify-center space-x-4 mt-2">
+                @foreach($resumeArray['basics']['profiles'] as $profile)
+                    <a href="{{ $profile['url'] }}" class="text-blue-600 hover:underline">
+                        {{ ucfirst($profile['network']) }}
+                    </a>
+                @endforeach
+            </div>
+        @endif
+    </header>
+
+    @if(isset($resumeArray['basics']['summary']))
+        <section class="mb-8">
+            <p class="text-gray-700 leading-relaxed">{{ $resumeArray['basics']['summary'] }}</p>
+        </section>
+    @endif
+
+    @if(isset($resumeArray['work']) && count($resumeArray['work']) > 0)
+        <section class="mb-8">
+            <h2 class="text-2xl font-bold text-gray-900 mb-4 border-b-2 border-blue-500 pb-2">
+                Experience
+            </h2>
+            @foreach($resumeArray['work'] as $job)
+                <div class="mb-6">
+                    <div class="flex justify-between items-start mb-2">
+                        <div>
+                            <h3 class="text-xl font-semibold text-gray-900">
+                                {{ $job['position'] }}
+                            </h3>
+                            <p class="text-lg text-blue-600">{{ $job['name'] }}</p>
+                        </div>
+                        <div class="text-right text-gray-600">
+                            <p>{{ \Carbon\Carbon::parse($job['startDate'])->format('M Y') }} -
+                               {{ isset($job['endDate']) ? \Carbon\Carbon::parse($job['endDate'])->format('M Y') : 'Present' }}
+                            </p>
+                        </div>
+                    </div>
+
+                    @if(isset($job['summary']))
+                        <p class="text-gray-700 mb-3">{{ $job['summary'] }}</p>
+                    @endif
+
+                    @if(isset($job['highlights']) && count($job['highlights']) > 0)
+                        <ul class="list-disc list-inside text-gray-700 space-y-1">
+                            @foreach($job['highlights'] as $highlight)
+                                <li>{{ $highlight }}</li>
+                            @endforeach
+                        </ul>
+                    @endif
+                </div>
+            @endforeach
+        </section>
+    @endif
+
+    @if(isset($resumeArray['skills']) && count($resumeArray['skills']) > 0)
+        <section class="mb-8">
+            <h2 class="text-2xl font-bold text-gray-900 mb-4 border-b-2 border-blue-500 pb-2">
+                Skills
+            </h2>
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                @foreach($resumeArray['skills'] as $skillGroup)
+                    <div>
+                        <h3 class="font-semibold text-gray-900 mb-2">
+                            {{ $skillGroup['name'] }}
+                            @if(isset($skillGroup['level']))
+                                <span class="text-sm text-gray-500">({{ ucfirst($skillGroup['level']) }})</span>
+                            @endif
+                        </h3>
+                        <div class="flex flex-wrap gap-2">
+                            @foreach($skillGroup['keywords'] as $skill)
+                                <span class="px-3 py-1 bg-blue-100 text-blue-800 rounded-full text-sm">
+                                    {{ $skill }}
+                                </span>
+                            @endforeach
+                        </div>
+                    </div>
+                @endforeach
+            </div>
+        </section>
+    @endif
+</div>
+```
+
+## Getting started: Your first type-safe JSON Resume
+
+Ready to jump in? Here's my step-by-step guide for Laravel developers:
+
+1. **Install the packages:**
+
+```bash
+composer require juststeveking/resume-php
+composer require barryvdh/laravel-dompdf
+composer require openai-php/laravel
+```
+
+2. **Create your Laravel structure:**
+
+```bash
+php artisan make:model Resume -mcr
+php artisan make:service ResumeBuilderService
+php artisan make:request CreateResumeRequest
+php artisan make:request AddWorkExperienceRequest
+```
+
+3. **Set up your migration:**
+
+```php
+// database/migrations/create_resumes_table.php
+public function up()
+{
+    Schema::create('resumes', function (Blueprint $table) {
+        $table->id();
+        $table->string('title');
+        $table->json('resume_data');
+        $table->string('theme')->default('elegant');
+        $table->timestamps();
+    });
+}
+```
+
+4. **Create a seeder with type-safe data:**
+
+```php
+// database/seeders/ResumeSeeder.php
+use JustSteveKing\Resume\Builders\ResumeBuilder;
+use JustSteveKing\Resume\DataObjects\Basics;
+use JustSteveKing\Resume\DataObjects\Location;
+
+public function run()
+{
+    $resume = (new ResumeBuilder())
+        ->basics(new Basics(
+            name: 'Sarah Chen',
+            label: 'Laravel Developer',
+            email: 'sarah@example.com',
+            // ... other fields
+        ))
+        ->build();
+
+    Resume::create([
+        'title' => 'My Professional Resume',
+        'resume_data' => $resume->toArray(),
+        'theme' => 'elegant'
+    ]);
+}
+```
+
+5. **Run your migrations and seed:**
+
+```bash
+php artisan migrate --seed
+```
+
+## Advanced features with type safety
+
+### Custom Artisan commands
+
+Create an Artisan command that leverages the type-safe builder:
+
+```php
+<?php
+
+namespace App\Console\Commands;
+
+use App\Models\Resume;
+use Illuminate\Console\Command;
+use JustSteveKing\Resume\DataObjects\Work;
+
+class AddWorkExperience extends Command
+{
+    protected $signature = 'resume:add-work
+                          {resume : Resume ID}
+                          {--company= : Company name}
+                          {--position= : Job position}
+                          {--start= : Start date}
+                          {--end= : End date}';
+
+    protected $description = 'Add work experience to a resume';
+
+    public function handle()
+    {
+        $resume = Resume::findOrFail($this->argument('resume'));
+
+        $work = new Work(
+            name: $this->option('company'),
+            position: $this->option('position'),
+            startDate: $this->option('start'),
+            endDate: $this->option('end'),
+            summary: $this->ask('Job summary:'),
+            highlights: $this->askForHighlights()
+        );
+
+        $resume->addWork($work);
+
+        $this->info('Work experience added successfully!');
+    }
+
+    private function askForHighlights(): array
+    {
+        $highlights = [];
+
+        while (true) {
+            $highlight = $this->ask('Add a highlight (or press enter to finish):');
+            if (empty($highlight)) break;
+            $highlights[] = $highlight;
+        }
+
+        return $highlights;
+    }
+}
+```
+
+### API resources with type safety
+
+Create API resources that leverage the type-safe structure:
+
+```php
+<?php
+
+namespace App\Http\Resources;
+
+use Illuminate\Http\Resources\Json\JsonResource;
+
+class ResumeResource extends JsonResource
+{
+    public function toArray($request)
+    {
+        $resume = $this->resume_builder;
+
+        return [
+            'id' => $this->id,
+            'title' => $this->title,
+            'theme' => $this->theme,
+            'resume' => $resume->toArray(),
+            'json_ld' => $resume->toJsonLd(),
+            'markdown' => $resume->toMarkdown(),
+            'created_at' => $this->created_at,
+            'updated_at' => $this->updated_at,
+            'exports' => [
+                'pdf' => route('resumes.export', ['resume' => $this->id, 'format' => 'pdf']),
+                'html' => route('resumes.export', ['resume' => $this->id, 'format' => 'html']),
+                'markdown' => route('resumes.export', ['resume' => $this->id, 'format' => 'markdown']),
+                'json_ld' => route('resumes.export', ['resume' => $this->id, 'format' => 'json-ld'])
+            ]
+        ];
+    }
+}
+```
+
+## Why this type-safe approach changes everything
+
+The difference between manual JSON handling and using `juststeveking/resume-php` is like the difference between writing raw SQL and using Eloquent. You get:
+
+• **Type Safety**: No more `undefined index` errors or wondering if a field exists. Your IDE knows exactly what properties are available.
+• **Validation Built-In**: Email validation, URL validation, and schema compliance are handled automatically.
+• **Autocompletion**: Your IDE can autocomplete all available methods and properties.
+• **Refactoring Safety**: When you rename a property, your IDE can safely refactor across your entire codebase.
+• **Documentation**: The data objects serve as living documentation of the JSON Resume schema.
+• **Testing**: You can mock and test with actual objects instead of arrays.
+
+Here's a comparison of the old vs. the new approach:
+
+```php
+// Old way - error-prone and hard to maintain
+$resume = [
+    'basics' => [
+        'name' => 'Sarah Chen',
+        'email' => 'sarah@example.com', // What if there's a typo in 'email'?
+        'skills' => [ // Wrong nesting!
+            'PHP', 'Laravel'
+        ]
+    ],
+    'work' => [
+        [
+            'companyName' => 'TechCorp', // Inconsistent field naming
+            'jobTitle' => 'Developer', // Should be 'position'
+            'startDate' => '2020-01-01'
+        ]
+    ]
+];
+
+// New way - type-safe and self-documenting
+$resume = (new ResumeBuilder())
+    ->basics(new Basics(
+        name: 'Sarah Chen',
+        email: 'sarah@example.com', // Validated automatically
+        // skills are separate, preventing confusion
+    ))
+    ->addSkill(new Skill(
+        name: 'Backend',
+        keywords: ['PHP', 'Laravel']
+    ))
+    ->addWork(new Work(
+        name: 'TechCorp', // Correct field name enforced
+        position: 'Developer', // Correct field name enforced
+        startDate: '2020-01-01'
+    ))
+    ->build();
+```
+
+The type-safe approach not only prevents errors but also makes your code self-documenting and much more maintainable.
+
+## The future is structure-ready (and type-safe)
+
+We're moving toward a world where career data flows seamlessly between platforms. LinkedIn is experimenting with structured exports, GitHub is enhancing developer profiles, and AI-powered hiring tools are becoming more sophisticated.
+
+By adopting `juststeveking/resume-php` in your Laravel applications now, you're not just getting JSON Resume compatibility - you're getting a robust, type-safe foundation that will adapt as the ecosystem evolves.
+
+I've been using this approach in my Laravel projects for the past year, and the difference is remarkable. No more debugging mysterious array structure issues. No more worrying about schema compliance. No more manual validation of resume data.
+
+The library handles all the complexity while giving you a delightful, type-safe API that makes building resume-powered applications a joy rather than a chore.
+
+## Ready to get started?
+
+Start by installing `juststeveking/resume-php` in your Laravel project:
+
+```bash
+composer require juststeveking/resume-php
+```
+
+Then explore the [documentation](https://packagist.org/packages/juststeveking/resume-php) and start building type-safe resume management into your applications.
+
+The revolution in resume technology is happening now, and with this excellent library, Laravel developers have a significant advantage.
+
+Your future self (and your users) will thank you for making the switch to type-safe JSON Resume management today.
+
+---
+
+*This article was originally published on [Sevalla Blog](https://sevalla.com/blog/json-resume/). Follow me on [Twitter](https://twitter.com/juststeveking) for more Laravel and PHP development insights.*

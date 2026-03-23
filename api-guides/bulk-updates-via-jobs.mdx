@@ -1,0 +1,93 @@
+---
+title: "Bulk updates via async jobs"
+slug: "bulk-updates-via-async-jobs"
+description: "Move heavy bulk operations out of the request/response cycle with job resources. Enqueue work, return quickly, let clients poll for status."
+category: "async-operations"
+complexity: "intermediate"
+apiStyles: ["rest"]
+useWhen: "You need to perform large batches of writes without blocking clients or hammering your database."
+avoidWhen: "You only ever update a handful of resources at once, or latency must be sub-second and bounded."
+tags: ["bulk", "jobs", "idempotency", "long-running"]
+related: ["idempotency-keys-for-safe-retries", "cursor-based-pagination-for-stable-lists"]
+---
+
+This pattern moves heavy bulk operations out of the request/response cycle by introducing a **job resource**. Instead of sending a giant payload to a synchronous endpoint and waiting, the client creates a job, then polls (or subscribes) for its status.
+
+At a high level:
+
+1. Client submits a bulk operation request.  
+2. API validates it quickly, enqueues work, returns `202 Accepted` and a `Location` header to a job resource.  
+3. Client polls the job URL or receives a webhook when it completes.  
+4. Job resource tracks progress, failures, and allows inspecting results.
+
+Example: create a bulk job.
+
+```http
+POST /bulk-jobs
+Content-Type: application/json
+
+{
+  "operation": "update_orders_status",
+  "items": [
+    { "id": "ord_123", "status": "cancelled" },
+    { "id": "ord_124", "status": "shipped" }
+  ]
+}
+```
+
+```
+HTTP/1.1 202 Accepted
+Location: /bulk-jobs/job_9f83ab
+Content-Type: application/json
+
+{
+  "id": "job_9f83ab",
+  "operation": "update_orders_status",
+  "status": "pending",
+  "created_at": "2026-01-13T15:15:00Z"
+}
+```
+
+Check job status:
+
+```
+GET /bulk-jobs/job_9f83ab
+Accept: application/json
+
+HTTP/1.1 200 OK
+Content-Type: application/json
+
+{
+  "id": "job_9f83ab",
+  "operation": "update_orders_status",
+  "status": "completed",
+  "total_items": 2,
+  "succeeded": 2,
+  "failed": 0,
+  "completed_at": "2026-01-13T15:15:30Z"
+}
+```
+
+Trade-offs and notes ￼
+
+Pros
+
+- Keeps your API responsive under heavy load.
+
+- Easier to scale using queues and workers.
+
+- Gives a natural place to expose progress and per-item failures.
+
+Cons
+
+- More client complexity: they must handle polling/webhooks, not just a single call.
+
+- Harder to reason about “all-or-nothing” semantics; usually you get partial successes.
+
+DX tips
+
+- Make the job resource self‑describing: link related resources, document any error codes.
+
+- Include a `result_url` when appropriate for downloading artifacts (e.g. CSVs, reports).
+
+- Consider a timeout/TTL after which jobs are auto‑deleted.

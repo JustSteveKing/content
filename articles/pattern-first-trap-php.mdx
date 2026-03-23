@@ -1,0 +1,86 @@
+---
+title: "The Pattern-First Trap in PHP"
+description: "Why starting with design patterns too early can overcomplicate PHP apps, and a practical way to design from constraints instead."
+category: PHP
+pubDate: 2026-02-15
+tags: ["php", "architecture", "design-patterns", "software-design", "pragmatism"]
+draft: false
+sponsor:
+  name: Sevalla
+  url: https://juststeveking.link/host
+  logo: https://github.com/sevalla-hosting.png
+canonical: "https://sevalla.com/blog/pattern-first-trap-php/"
+crossPost:
+  originalUrl: "https://sevalla.com/blog/pattern-first-trap-php/"
+  originalSite: "Sevalla"
+  publishedDate: 2026-02-15
+  permission: true
+author:
+  name: "Steve McDougall"
+---
+
+Patterns are useful. They give us a shared language, help teams communicate intent, and can prevent common mistakes.
+
+The problem starts when patterns become the starting point instead of the result of understanding the problem.
+
+I have seen this repeatedly in PHP projects: a simple feature request arrives, and before anyone defines the real constraints, the codebase gets a Repository layer, a Service layer, factories, strategy objects, and event buses. None of those are bad on their own. They are just expensive when they are added too early.
+
+## What pattern-first usually looks like
+
+The pattern-first trap often follows the same sequence:
+
+1. Pick an architecture style from a blog post or conference talk.
+2. Apply it everywhere for consistency.
+3. Build abstractions for problems you do not have yet.
+4. Spend more time maintaining glue code than shipping features.
+
+At that point, the code may look impressive, but delivery slows down and maintenance becomes harder for everyone who did not help create the abstraction.
+
+## Why this happens
+
+There are three common drivers behind it:
+
+1. **Fear of rework.** Teams try to "future-proof" from day one.
+2. **Cargo culting.** A pattern worked elsewhere, so it gets copied without context.
+3. **Status architecture.** Complexity is mistaken for maturity.
+
+In reality, most systems get safer and clearer by being explicit, boring, and direct at the start.
+
+## Design from constraints, not from patterns
+
+A more reliable flow is:
+
+1. Define the domain behavior and invariants first.
+2. List concrete constraints: scale, latency, team size, deployment model, compliance.
+3. Build the simplest implementation that satisfies those constraints.
+4. Introduce a pattern only where pain is repeated and measurable.
+
+This keeps the architecture honest. A pattern should remove real friction, not satisfy a theoretical one.
+
+## A practical rule of thumb
+
+When deciding whether to introduce a pattern, ask:
+
+1. What concrete problem does this solve right now?
+2. What complexity cost does it introduce?
+3. How will we know it helped?
+
+If you cannot answer all three in plain language, do not add it yet.
+
+## Where patterns still shine
+
+This is not anti-pattern rhetoric. Patterns are extremely valuable when the problem shape is stable and the trade-offs are understood. For example:
+
+1. Strategy for genuinely variable runtime behavior.
+2. Adapter for unavoidable third-party integration mismatches.
+3. Domain events when multiple independent workflows react to the same business fact.
+
+The key is timing. Use patterns when the system asks for them.
+
+## Build simple, then earn complexity
+
+Good PHP architecture is not about how many patterns you can name. It is about how clearly the code expresses domain intent, and how safely a team can evolve it under pressure.
+
+Start with constraints, optimize for readability, and introduce abstraction only when the pain is real. That approach scales better than pattern-first systems in the long run.
+
+*This article was originally published on [Sevalla](https://sevalla.com/blog/pattern-first-trap-php/).*

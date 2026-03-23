@@ -1,0 +1,167 @@
+---
+title: Why your Laravel controllers should be almost empty
+description: Learn architectural patterns to keep Laravel controllers thin, improve testability, and build maintainable applications.
+category: Laravel
+tags:
+  - Laravel
+  - Architecture
+  - Controllers
+  - Best Practices
+  - Testing
+pubDate: 2026-02-27
+draft: false
+crossPost:
+  originalUrl: https://sevalla.com/blog/laravel-controllers-should-be-empty/
+  originalSite: Sevalla
+  publishedDate: 2026-02-27
+  permission: true
+---
+
+## The Problem with Fat Controllers
+
+Bloated controllers create cascading problems throughout your application:
+
+- **Testing Nightmares:** Complex controllers are difficult to unit test without mocking half the application
+- **Reduced Reusability:** Business logic trapped in controllers can't be used from other contexts (jobs, commands, events)
+- **Poor Readability:** New team members can't quickly understand what a request handler actually does
+- **Slow Onboarding:** Complex controllers require extensive code walkthroughs to understand the flow
+
+## The Thin Controller Pattern
+
+The solution is to delegate responsibilities to specialized classes. Each layer has one job and does it well.
+
+### Form Requests for Validation
+
+Move validation logic out of controllers into dedicated Form Request classes:
+
+```php
+class CreateUserRequest extends FormRequest
+{
+    public function rules(): array
+    {
+        return [
+            'name' => 'required|string|max:255',
+            'email' => 'required|email|unique:users',
+            'password' => 'required|string|min:8|confirmed',
+        ];
+    }
+}
+```
+
+Your controller then receives pre-validated data—no need to clutter the action with validation rules.
+
+### Service Classes for Business Logic
+
+Extract business logic into service layers:
+
+```php
+class CreateUserService
+{
+    public function __construct(private UserRepository $repository) {}
+
+    public function execute(array $data): User
+    {
+        $user = $this->repository->create([
+            'name' => $data['name'],
+            'email' => $data['email'],
+            'password' => Hash::make($data['password']),
+        ]);
+
+        event(new UserCreated($user));
+
+        return $user;
+    }
+}
+```
+
+Now your business logic is:
+- Testable in isolation
+- Reusable from commands, jobs, and scheduled tasks
+- Clear about dependencies and side effects
+
+### Repositories for Data Access
+
+Isolate database queries behind a consistent interface:
+
+```php
+interface UserRepository
+{
+    public function create(array $data): User;
+    public function find(int $id): ?User;
+    public function update(User $user, array $data): User;
+    public function delete(User $user): bool;
+}
+```
+
+This makes switching databases or testing strategies straightforward.
+
+### Resources for Response Formatting
+
+Use API Resources to handle response formatting:
+
+```php
+class UserResource extends JsonResource
+{
+    public function toArray($request): array
+    {
+        return [
+            'id' => $this->id,
+            'name' => $this->name,
+            'email' => $this->email,
+            'created_at' => $this->created_at,
+        ];
+    }
+}
+```
+
+Responses are consistent, testable, and don't bleed business logic.
+
+### Action Classes to Avoid Fat Services
+
+Even services can grow too large. Use single-purpose Action classes to keep logic focused:
+
+```php
+class SendUserWelcomeEmail
+{
+    public function __invoke(User $user): void
+    {
+        Mail::to($user->email)->send(new WelcomeEmail($user));
+    }
+}
+```
+
+Each action has one responsibility. This prevents the "God Service" anti-pattern where a single service class handles too many concerns.
+
+## The Clean Controller
+
+With these patterns in place, your controller becomes beautifully simple:
+
+```php
+class UserController extends Controller
+{
+    public function store(
+        CreateUserRequest $request,
+        CreateUserService $service,
+    ) {
+        $user = $service->execute($request->validated());
+
+        return UserResource::make($user);
+    }
+}
+```
+
+The entire flow is visible at a glance. There are no hidden dependencies or side effects. Testing is straightforward.
+
+## Benefits This Delivers
+
+- **Easier Testing:** Test business logic without mocking the HTTP layer
+- **Fewer Merge Conflicts:** When multiple developers work on the same feature, logic is distributed across files
+- **Better Readability:** New team members understand the request flow immediately
+- **Improved Reusability:** Business logic can be invoked from anywhere—commands, jobs, webhooks, queues
+- **Long-Term Maintainability:** Thin controllers are easy to modify years later
+
+## Conclusion
+
+Your controller's job is to orchestrate—to connect the HTTP request to your application's business logic and format the response. Everything else should live in dedicated, testable classes.
+
+Keep controllers thin, and your codebase will thank you.

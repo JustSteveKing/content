@@ -1,0 +1,454 @@
+---
+title: "Building modular systems in Laravel - A practical guide"
+description: "Learn how modular architecture transforms Laravel apps into scalable, maintainable systems."
+category: Laravel
+pubDate: 2025-10-08
+tags: ["Laravel", "PHP", "Architecture", "Modular", "Microservices", "Design Patterns", "Sevalla", "Testing", "Scalability"]
+draft: false
+sponsor:
+  name: Sevalla
+  url: https://juststeveking.link/host
+  logo: https://github.com/sevalla-hosting.png
+featured: true
+readingTime: 17
+canonical: "https://sevalla.com/blog/building-modular-systems-laravel/"
+crossPost:
+  originalUrl: "https://sevalla.com/blog/building-modular-systems-laravel/"
+  originalSite: "Sevalla Blog"
+  publishedDate: 2025-08-18
+  permission: true
+---
+
+## Building modular systems in Laravel - A practical guide
+
+Have you ever found yourself staring at a Laravel application that's grown into a massive, tangled web of dependencies? I have. And let me tell you, it's not a pleasant experience.
+
+Three years ago, I was working on an e-commerce platform that started as a simple online store but had evolved into a beast with inventory management, customer service tools, analytics dashboards, and payment processing all crammed into a single Laravel app. Every small change felt like defusing a bomb - one wrong move and everything could explode.
+
+That's when I discovered the power of modular architecture, and it completely changed how I approach Laravel development. Today, I want to share what I've learned about building modular systems that actually work in the real world.
+
+## Why I became a modular architecture convert
+
+Picture this: you're tasked with updating the order processing logic, but you discover that the `OrderController` is calling methods from the `InventoryService`, which depends on the `PaymentGateway`, which somehow also handles user notifications. Sound familiar?
+
+This is what we call the "[big ball of mud](https://blog.codinghorror.com/the-big-ball-of-mud-and-other-architectural-disasters/)" anti-pattern, and I've been there more times than I care to admit.
+
+Modular architecture solved this nightmare for me by providing four key benefits:
+
+1. **Separation of Concerns**: Each module handles one specific domain. Your inventory management doesn't need to know about payment processing, and your user authentication doesn't need to understand order fulfillment.
+
+2. **Team Independence**: I've worked on teams where developers were constantly stepping on each other's toes. With modules, different teams can work on different parts of the system without merge conflicts every five minutes.
+
+3. **Scalability**: Want to add a new feature? Create a new module. Need to completely rewrite the payment system? Do it in isolation without touching the rest of your app.
+
+4. **Testing Sanity**: Instead of writing integration tests that require your entire application, you can test modules in isolation. Trust me, your future self will thank you.
+
+## Setting up your modular foundation
+
+Let's dive into the practical stuff. I've tried several approaches over the years, and here's the structure that has served me best:
+
+```
+src/
+├── Modules/
+│   ├── Orders/
+│   │   ├── Controllers/
+│   │   ├── Models/
+│   │   ├── Services/
+│   │   ├── Events/
+│   │   ├── Providers/
+│   │   ├── Routes/
+│   │   │   ├── web.php
+│   │   │   └── api.php
+│   │   ├── Resources/
+│   │   │   └── Views/
+│   │   ├── Database/
+│   │   │   └── Migrations/
+│   │   └── Tests/
+│   ├── Inventory/
+│   │   ├── Controllers/
+│   │   ├── Models/
+│   │   └── ...
+│   └── Billing/
+│       ├── Controllers/
+│       ├── Models/
+│       └── ...
+```
+
+The first thing you'll need to do is update your `composer.json` to autoload these modules:
+
+```json
+{
+  "autoload": {
+    "psr-4": {
+      "App\\": "app/",
+      "Modules\\": "src/Modules/"
+    }
+  }
+}
+```
+
+After updating this, don't forget to run `composer dump-autoload`. I can't tell you how many times I've forgotten this step and spent 20 minutes debugging why my classes weren't being found!
+
+## Building your first module: A step-by-step journey
+
+Let me walk you through creating an `Orders` module from scratch. I'll use this as our example because order management is complex enough to demonstrate real-world challenges but simple enough to follow along.
+
+### Step 1 - Create the module structure
+
+First, let's create our directory Structure:
+
+```bash
+mkdir -p src/Modules/Orders/{Controllers,Models,Services,Events,Providers,routes,resources/views,database/migrations,Tests}
+```
+
+### Step 2 - Build the service provider
+
+Every module needs a service provider. This is the heart of your module - it registers routes, views, and any custom services:
+
+```php
+namespace Modules\Orders\Providers;
+
+use Illuminate\Support\ServiceProvider;
+use Illuminate\Support\Facades\Route;
+
+final class OrdersServiceProvider extends ServiceProvider
+{
+  public function boot(): void
+  {
+    $this->loadMigrationsFrom(__DIR__ . '/../Database/Migrations');
+    $this->loadViewsFrom(__DIR__ . '/../Resources/Views', 'orders');
+    $this->loadRoutesFrom(__DIR__ . '/../Routes/web.php');
+    $this->loadRoutesFrom(__DIR__ . '/../Routes/api.php');
+  }
+
+  public function register(): void
+  {
+    $this->app->singleton(OrderService::class, fn() => new OrderService());
+  }
+}
+```
+
+There are a couple of ways to register this provider. Before Laravel 12, you added it to `config/app.php` under the providers array. Starting with Laravel 12, you can instead register it in `bootstrap/providers.php`. Another option is to create a dedicated `ModuleServiceProvider` that lives in your app and either auto-loads or manually registers all modules.
+
+### Step 3 - Create your models
+
+Here's where I learned an important lesson: keep your models focused on their domain. Don't let them become God objects:
+
+```php
+namespace Modules\Orders\Models;
+
+final class Order extends Model
+{
+  protected $fillable = [];
+
+  protected $casts = [];
+
+  protected $dispatchesEvents = [
+    'created' => OrderCreated::class,
+  ];
+
+  public function items(): HasMany
+  {
+    return $this->hasMany(OrderItem::class);
+  }
+
+  public function markAsCompleted(): void
+  {
+    $this->update(['status' => Status::Completed]);
+  }
+}
+```
+
+### Step 4 - Build controllers that actually make sense
+
+Here's a controller that follows the single responsibility principle:
+
+```php
+namespace Modules\Orders\Controllers;
+
+final readonly OrderController
+{
+  public function __construct(
+    #[CurrentUser]
+    private User $user,
+    private Factory $factory,
+    private OrderService $orderService,
+  ) {}
+
+  public function index(): View
+  {
+    return $this->factory->make('orders::index', [
+      'orders' => $this->orderService->getOrdersForUser($this->user),
+    ]);
+  }
+
+  public function store(CreateOrderRequest $request): RedirectResponse
+  {
+    $order = $this->orderService->createOrder(
+      customer: $this->user->id,
+      items: $request->validated('items'),
+      shippingAddress: $request->string('shipping_address')->toString(),
+    );
+
+    return new RedirectResponse(
+      url: route('orders.show', $order),
+    );
+  }
+}
+```
+
+### Step 5 - Service classes for business logic
+
+This is where the magic happens. Keep your business logic out of controllers and put it in dedicated service classes:
+
+```php
+namespace Modules\Orders\Services;
+
+use Modules\Orders\Models\Order;
+use Modules\Orders\Models\OrderItem;
+use Illuminate\Support\Collection;
+
+class OrderService
+{
+  public function createOrder(int $customerId, array $items, array $shippingAddress): Order
+  {
+    $order = Order::create([
+      'customer_id' => $customerId,
+      'status' => 'pending',
+      'total_amount' => $this->calculateTotal($items),
+      'currency' => 'USD',
+    ]);
+
+    foreach ($items as $item) {
+      $order->items()->create([
+        'product_id' => $item['product_id'],
+        'quantity' => $item['quantity'],
+        'price' => $item['price'],
+      ]);
+    }
+
+    return $order;
+  }
+
+  public function getOrdersForUser(int $userId): Collection
+  {
+    return Order::where('customer_id', $userId)
+      ->with('items')
+      ->orderBy('created_at', 'desc')
+      ->get();
+  }
+
+  private function calculateTotal(array $items): float
+  {
+    return collect($items)->sum(fn($item) => $item['price'] * $item['quantity']);
+  }
+}
+```
+
+## The art of module communication
+
+Now here's where things get interesting. How do you make modules talk to each other without creating a tangled mess? I've tried different approaches, and each has its place.
+
+### Option 1 - Event-driven communication (my personal favorite)
+
+Events are fantastic for loose coupling. When an order is created, you don't want to hardcode calls to inventory management, billing, and email services. Instead, fire an event:
+
+```php
+namespace Modules\Orders\Events;
+
+use Modules\Orders\Models\Order;
+use Illuminate\Foundation\Events\Dispatchable;
+use Illuminate\Queue\SerializesModels;
+
+class OrderCreated
+{
+  use Dispatchable, SerializesModels;
+
+  public function __construct(
+    public Order $order
+  ) {}
+}
+```
+
+Then, in other modules, you can listen for this event:
+
+```php
+namespace Modules\Billing\Listeners;
+
+use Modules\Orders\Events\OrderCreated;
+use Modules\Billing\Services\InvoiceService;
+
+class CreateInvoiceForOrder
+{
+  public function __construct(
+    private InvoiceService $invoiceService
+  ) {}
+
+  public function handle(OrderCreated $event): void
+  {
+    $this->invoiceService->createInvoiceForOrder($event->order);
+  }
+}
+```
+
+### Option 2 - Service contracts for direct communication
+
+Sometimes you need direct communication between modules. Use contracts to keep things flexible:
+
+```php
+namespace Modules\Inventory\Contracts;
+
+interface InventoryServiceInterface
+{
+  public function reserveItems(array $items): bool;
+  public function releaseItems(array $items): void;
+  public function checkAvailability(int $productId, int $quantity): bool;
+}
+```
+
+Implement it in your service:
+
+```php
+<?php
+
+namespace Modules\Inventory\Services;
+
+use Modules\Inventory\Contracts\InventoryServiceInterface;
+
+class InventoryService implements InventoryServiceInterface
+{
+  public function reserveItems(array $items): bool
+  {
+    // Implementation here
+  }
+
+  // ... other methods
+}
+```
+
+Then bind it in your service provider:
+
+```php
+public function register(): void
+{
+  $this->app->bind(
+    InventoryServiceInterface::class,
+    InventoryService::class
+  );
+}
+```
+
+Now other modules can depend on the contract instead of the concrete implementation:
+
+```php
+public function __construct(
+  private InventoryServiceInterface $inventoryService
+) {}
+```
+
+## Testing your modular architecture
+
+Testing modules is where the rubber meets the road. Here's how I approach it:
+
+### Unit testing individual modules
+
+```php
+namespace Modules\Orders\Tests\Unit;
+
+class OrderServiceTest extends TestCase
+{
+  #[Test]
+  public function it_can_create_an_order_with_items(): void
+  {
+    $service = new OrderService();
+
+    $items = [
+      ['product_id' => 1, 'quantity' => 2, 'price' => 10.00],
+      ['product_id' => 2, 'quantity' => 1, 'price' => 15.00],
+    ];
+
+    $order = $service->createOrder(
+      customerId: 1,
+      items: $items,
+      shippingAddress: ['street' => '123 Main St']
+    );
+
+    $this->assertInstanceOf(Order::class, $order);
+    $this->assertEquals(35.00, $order->total_amount);
+    $this->assertCount(2, $order->items);
+  }
+}
+```
+
+### Integration testing between modules
+
+```php
+namespace Tests\Integration;
+
+class OrderBillingIntegrationTest extends TestCase
+{
+  #[Test]
+  public function it_can_create_an_invoice_when_an_order_is_created(): void
+  {
+    Event::fake();
+
+    $order = Order::factory()->create();
+
+    event(new OrderCreated($order));
+
+    Event::assertDispatched(OrderCreated::class);
+
+    // If using synchronous listeners
+    $this->assertDatabaseHas('invoices', [
+      'order_id' => $order->id,
+    ]);
+  }
+}
+```
+
+## Lessons learned and common pitfalls
+
+After implementing modular architecture in several projects, here are the mistakes I wish I could have avoided:
+
+1. **Don't Over-Modularize Early**: I once created a module for every single Eloquent model. Big mistake. Start with logical business domains, not database tables.
+
+2. **Avoid Circular Dependencies**: If Module A depends on Module B, and Module B depends on Module A, you've got a problem. Use events or a shared service to break the cycle.
+
+3. **Keep Module Boundaries Clean**: Resist the temptation to access another module's models directly. Use services or contracts.
+
+4. **Don't Forget About Configuration**: Each module should manage its own configuration. Create dedicated config files for complex modules.
+
+## Real-world example - Putting it all together
+
+I've found a relatively good sample repository that demonstrates these principles in action. You can find it at [avosalmon/modular-monolith-laravel](https://github.com/avosalmon/modular-monolith-laravel). It includes:
+
+• Docker setup with Laravel Sail.
+• PestPHP for testing.
+• Deptrac for enforcing architectural boundaries.
+• Multiple modules with real-world interactions.
+
+The repository shows how to handle common scenarios like user authentication across modules, shared utilities, and complex business workflows.
+
+## My recommendations for success
+
+Based on my experience, here's what works:
+
+1. **Start Modular from Day One**: It's much easier to extract modules from a well-structured monolith than from a chaotic codebase.
+
+2. **Align Modules with Team Structure**: If you have separate teams for orders, inventory, and billing, create modules that match this organization.
+
+3. **Use Static Analysis**: Tools like Deptrac can catch architectural violations before they become problems. Set up rules and enforce them in your CI pipeline.
+
+4. **Document Module Interfaces**: Create clear documentation about what each module does and how other modules should interact with it.
+
+5. **Invest in Good Testing**: Module boundaries are only as strong as the tests that verify them. Write integration tests that ensure modules work together correctly.
+
+## Wrapping up
+
+Building modular Laravel applications isn't just about organizing code - it's about creating systems that can evolve with your business needs. The initial setup takes more time, but the payoff in maintainability, team productivity, and deployment confidence is enormous.
+
+I've seen teams reduce their deployment anxiety from "fingers crossed" to "confident release" just by adopting modular principles. The ability to change one part of your system without worrying about breaking something completely unrelated is liberating.
+
+---
+
+*This article was originally published on [Sevalla Blog](https://sevalla.com/blog/building-modular-systems-laravel/). Follow me on [Twitter](https://twitter.com/juststeveking) for more Laravel and architecture insights.*

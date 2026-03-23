@@ -1,0 +1,344 @@
+---
+title: "Streaming responses in Laravel without WebSockets"
+description: "Learn how to implement server-sent events (SSE) in Laravel for streaming AI responses, avoiding the complexity of WebSockets."
+pubDate: "2026-01-21"
+canonical: "https://sevalla.com/blog/streaming-responses-laravel/"
+crossPost:
+    originalUrl: "https://sevalla.com/blog/streaming-responses-laravel/"
+    originalSite: "Sevalla"
+    publishedDate: "2026-01-21"
+    permission: true
+author:
+    name: "Steve McDougall"
+---
+I've been building a lot of AI-powered features lately, and one pattern keeps coming up: streaming responses. You know the experience when you ask ChatGPT a question and the answer appears word by word, giving you that satisfying sense of progress, rather than staring at a loading spinner for 30 seconds.
+When I first approached this problem, my instinct was to reach for WebSockets. Laravel offers excellent WebSocket support through packages like Laravel Reverb, making it a solid choice for implementing many real-time features. But here's the thing: WebSockets are overkill when you only need one-way communication from server to client.
+That's where Server-Sent Events (SSE) come in. They're simpler to implement, work over standard HTTP, and are perfect for streaming AI responses, progress updates, or any scenario where the server needs to push data to the client without requiring bidirectional communication.
+
+## What are server-sent events?
+Server-sent events are a web standard that allows servers to push data to clients over a single HTTP connection. Unlike WebSockets, which create a full-duplex communication channel, SSE is unidirectional; the server sends data, and the client receives it.
+The beauty of SSE is in its simplicity. It's just HTTP with a specific content type and format. Your server keeps the connection open and sends data whenever it's ready, formatted as text with some simple conventions. The client uses the browser's built-in `EventSource` API to handle the connection, automatic reconnection, and message parsing.
+
+## Why choose SSE over WebSockets?
+Before we dive into implementation, let's talk about when SSE makes sense. I've found that many developers default to WebSockets because they're familiar or seem more "real-time," but SSE has distinct advantages for certain use cases:
+*   **SSE is simpler.** You don't need a separate WebSocket server, no special infrastructure, and no complex connection management. It's just HTTP with streaming enabled.
+*   **SSE works with standard infrastructure.** Your existing load balancers, proxies, and CDNs already understand HTTP. No special configuration needed (well, mostly - we'll talk about timeouts later).
+*   **SSE has automatic reconnection.** If the connection drops, the browser automatically tries to reconnect. With WebSockets, you need to implement this yourself.
+*   **SSE is perfect for one-way data flow.** When you're streaming AI responses, processing files, or showing progress updates, you don't need the client to send data back through the same connection. A simple fetch request handles user input just fine.
+
+## When NOT to use SSE
+Let's be honest about SSE's limitations. I'm a big believer in using the right tool for the job, and SSE isn't always the right one.
+1.  **Don't use SSE for bidirectional communication.** If you need true two-way real-time communication - like a chat application where messages flow both ways constantly, or a collaborative editing tool - WebSockets are the better choice.
+2.  **Don't use SSE for binary data.** SSE is text-based. While you can base64 encode binary data, that's inefficient. If you're streaming video, audio, or large binary files, look elsewhere.
+3.  **Don't use SSE for massive scale broadcasting.** While SSE works great for individual user streams, if you need to broadcast the same data to thousands of connected clients simultaneously, purpose-built pub/sub systems like Redis or specialized tools like Mercure (which we'll discuss later) are more efficient.
+4.  **Don't use SSE if you need Internet Explorer support.** SSE is well-supported in modern browsers, but IE never implemented it. If you're stuck supporting legacy browsers, you'll need polyfills or alternative approaches.
+
+## The basics: Laravel's StreamedResponse
+Laravel makes SSE implementation straightforward through the `StreamedResponse` class. Here's the fundamental pattern:
+```php
+use Illuminate\Http\Request;
+use Symfony\Component\HttpFoundation\StreamedResponse;
+
+class StreamController
+{
+    public function stream(Request $request): StreamedResponse
+    {
+        return response()->stream(
+            callback: function () {
+                $data = ['message' => 'Hello from the server'];
+                echo "data: " . json_encode($data) . "\n\n";
+                flush();
+            },
+            status: 200,
+            headers:
+                [
+                    'Content-Type' => 'text/event-stream',
+                    'Cache-Control' => 'no-cache',
+                    'Connection' => 'keep-alive',
+                    'X-Accel-Buffering' => 'no',
+                ]
+        );
+    }
+}
+```
+Let's break down what's happening here. The `response()->stream()` method takes a callback that will be executed to generate the response. Inside that callback, we echo our data using the SSE format: the line starts with `data:`, followed by our content, and ends with two newlines (`
+
+`).
+The headers are crucial. `Content-Type: text/event-stream` tells the browser this is an SSE stream. `Cache-Control: no-cache` and `Connection: keep-alive` ensure the connection stays open and isn't cached. The `X-Accel-Buffering: no` header is specifically for Nginx; it prevents output buffering that would defeat the whole purpose of streaming.
+The `flush()` call is equally important. It forces PHP to send the output immediately rather than buffering it. Without this, your carefully streamed data might sit in a buffer until the script completes.
+
+## Streaming AI responses: A real example
+Let's build streaming responses from an AI API. I'll use OpenAI's API as an example since it's widely used, but this pattern works with any streaming API like Anthropic's Claude or local models.
+First, we need to handle the incoming request and set up our stream:
+```php
+use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Http;
+use Symfony\Component\HttpFoundation\StreamedResponse;
+
+class AiStreamController
+{
+    public function chat(Request $request): StreamedResponse
+    {
+        $validated = $request->validate([
+            'message' => ['required', 'string', 'max:5000'],
+            'conversation_id' => ['nullable', 'uuid', 'exists:conversations,id'],
+        ]);
+
+        return response()->stream(
+            callback: fn () => $this->streamResponse(
+                message: $validated['message'],
+                conversationId: $validated['conversation_id'] ?? null
+            ),
+            status: 200,
+            headers:
+                [
+                    'Content-Type' => 'text/event-stream',
+                    'Cache-Control' => 'no-cache',
+                    'Connection' => 'keep-alive',
+                    'X-Accel-Buffering' => 'no',
+                ]
+        );
+    }
+
+    private function streamResponse(string $message, ?string $conversationId): void
+    {
+        $apiKey = config('services.openai.key');
+
+        $messages = $this->buildMessageHistory($message, $conversationId);
+
+        $stream = Http::withHeaders([
+            'Authorization' => "Bearer {$apiKey}",
+            'Content-Type' => 'application/json',
+        ])->timeout(120)->stream(
+            method: 'POST',
+            url: 'https://api.openai.com/v1/chat/completions',
+            data:
+                [
+                    'model' => 'gpt-4',
+                    'messages' => $messages,
+                    'stream' => true,
+                ]
+        );
+
+        $fullResponse = '';
+
+        foreach ($stream as $chunk) {
+            $lines = explode("\n", $chunk);
+
+            foreach ($lines as $line) {
+                if (empty($line) || $line === 'data: [DONE]') {
+                    continue;
+                }
+
+                if (str_starts_with($line, 'data: ')) {
+                    $json = substr($line, 6);
+                    $data = json_decode($json, true);
+
+                    if (isset($data['choices'][0]['delta']['content'])) {
+                        $content = $data['choices'][0]['delta']['content'];
+                        $fullResponse .= $content;
+
+                        echo "data: " . json_encode([
+                            'type' => 'content',
+                            'content' => $content,
+                        ]) . "\n\n";
+
+                        flush();
+                    }
+                }
+            }
+        }
+
+        // Send completion event
+        echo "data: " . json_encode([
+            'type' => 'done',
+            'full_response' => $fullResponse,
+        ]) . "\n\n";
+
+        flush();
+
+        // Store the conversation if needed
+        if ($conversationId) {
+            $this->storeMessage($conversationId, $message, $fullResponse);
+        }
+    }
+
+    private function buildMessageHistory(string $message, ?string $conversationId): array
+    {
+        $messages = [];
+
+        if ($conversationId) {
+            $messages = Message::where('conversation_id', $conversationId)
+                ->orderBy('created_at')
+                ->get()
+                ->map(fn ($msg) => [
+                    'role' => $msg->role,
+                    'content' => $msg->content,
+                ])
+                ->toArray();
+        }
+
+        $messages[] = [
+            'role' => 'user',
+            'content' => $message,
+        ];
+
+        return $messages;
+    }
+
+    private function storeMessage(string $conversationId, string $userMessage, string $assistantMessage): void
+    {
+        Message::insert([
+            [
+                'conversation_id' => $conversationId,
+                'role' => 'user',
+                'content' => $userMessage,
+                'created_at' => now(),
+                'updated_at' => now(),
+            ],
+            [
+                'conversation_id' => $conversationId,
+                'role' => 'assistant',
+                'content' => $assistantMessage,
+                'created_at' => now(),
+                'updated_at' => now(),
+            ],
+        ]);
+    }
+}
+```
+This is where things get interesting. We're taking the streaming response from OpenAI and re-streaming it to our client. The key is the `Http::stream()` method, which returns a generator that yields chunks as they arrive from the API.
+We parse each chunk looking for the SSE format OpenAI uses, extract the content deltas, and immediately forward them to our client. This creates a seamless streaming experience where the AI response flows through your Laravel application to the user in real-time.
+Notice how we're tracking the full response as we stream. This lets us store the complete conversation once streaming finishes, which is essential for building a chat history feature.
+
+## Handling errors gracefully
+One thing I learned the hard way: errors in streaming responses need special handling. If something goes wrong mid-stream, you can't just return a 500 error; the headers are already sent. Instead, send an error event:
+```php
+try {
+    foreach ($stream as $chunk) {
+        // ... processing logic
+    }
+} catch (\Exception $e) {
+    echo "data: " . json_encode([
+        'type' => 'error',
+        'message' => 'An error occurred while processing your request.',
+        'code' => 'STREAM_ERROR',
+    ]) . "\n\n";
+
+    flush();
+
+    \Log::error('AI streaming error', [
+        'exception' => $e->getMessage(),
+        'trace' => $e->getTraceAsString(),
+    ]);
+}
+```
+Your client can listen for error events and handle them appropriately, showing a message to the user or triggering a retry.
+
+## The session lock problem
+Here's a gotcha that initially tripped me up: PHP sessions lock by default. When a request starts using a session, PHP locks that session file to prevent concurrent writes. This means if your SSE endpoint uses sessions, any other request from the same user will block until the streaming completes.
+This creates a terrible user experience. Your user sends a message, and the AI starts streaming back. Meanwhile, their browser is completely frozen because every other request is waiting for the session lock.
+The fix is to close the session as soon as you don't need it anymore:
+```php
+public function chat(Request $request): StreamedResponse
+{
+    $validated = $request->validate([
+        'message' => ['required', 'string', 'max:5000'],
+    ]);
+
+    // Grab what you need from the session
+    $userId = $request->user()->id;
+
+    // Close the session immediately
+    session()->save();
+
+    return response()->stream(
+        callback: fn () => $this->streamResponse($validated['message'], $userId),
+        // ... headers
+    );
+}
+```
+By calling `session()->save()` early, we release the lock and let other requests proceed normally.
+
+## Production considerations
+Getting SSE working in development is straightforward. Production is where things get tricky. Here are the issues I've encountered and how to handle them.
+**Nginx timeouts** are the biggest culprit. By default, Nginx has relatively short timeouts for proxied connections. If your AI takes 60 seconds to generate a response, Nginx might cut the connection at 30 seconds. Add these to your Nginx config:
+```nginx
+location /api/stream {
+    proxy_pass http://your-app;
+    proxy_http_version 1.1;
+    proxy_set_header Connection "";
+    proxy_buffering off;
+    proxy_cache off;
+    proxy_read_timeout 300s;
+    proxy_connect_timeout 75s;
+}
+```
+**Memory usage** can creep up if you're not careful. Each open SSE connection holds memory. If you're accumulating data (like our full response string), that memory stays allocated until the connection closes. For long-running streams, monitor your memory usage and consider strategies like chunking data to storage rather than keeping everything in memory.
+**Output buffering** needs to be disabled. PHP's output buffering can interfere with streaming. The `flush()` calls help, but make sure `output_buffering` is off in your php.ini for SSE endpoints, or call `ob_end_flush()` at the start of your stream callback if you can't modify php.ini.
+
+## TypeScript client side
+On the client side, consuming SSE is straightforward with the `EventSource` API. Here's a TypeScript snippet for reference:
+```ts
+const eventSource = new EventSource("/api/stream/chat", {
+  withCredentials: true,
+})
+
+eventSource.onmessage = (event) => {
+  const data = JSON.parse(event.data)
+
+  if (data.type === "content") {
+    appendToChat(data.content)
+  } else if (data.type === "done") {
+    eventSource.close()
+    markComplete()
+  } else if (data.type === "error") {
+    handleError(data.message)
+    eventSource.close()
+  }
+}
+
+eventSource.onerror = () => {
+  console.error("SSE connection error")
+  eventSource.close()
+}
+```
+The browser handles all the connection management, automatic reconnection, and parsing for you. You just listen for messages and handle them appropriately.
+
+## Modern alternatives: Mercure and FrankenPHP
+While raw SSE implementation works great, it's worth knowing about modern tools that make this even better.
+**Mercure** (mercure.rocks) is a protocol built on top of SSE that adds publish/subscribe capabilities. Instead of each user having a direct connection to your Laravel app, they connect to a Mercure hub. Your Laravel app publishes updates to the hub, which efficiently broadcasts them to subscribed clients. This solves the scaling problem with SSE - one Laravel process can publish to thousands of connected clients through the hub.
+Mercure integrates beautifully with Laravel. You publish events to topics, and clients subscribe to those topics. It handles authorization through JWTs, so you can control who can subscribe to what.
+**FrankenPHP** (frankenphp.dev) is my current preferred way to deploy Laravel applications. It's a modern PHP application server written in Go that embeds PHP directly, giving you phenomenal performance. One of its standout features is native support for worker mode and early hints, but it also handles streaming responses exceptionally well.
+FrankenPHP's architecture is particularly well-suited to SSE because it doesn't rely on traditional PHP-FPM process management. The worker mode keeps your Laravel application booted in memory, reducing latency for streaming responses. Combined with its efficient connection handling, you can maintain many more concurrent SSE connections than with traditional PHP-FPM setups.
+The combination of Mercure and FrankenPHP is powerful. FrankenPHP can run the Mercure hub alongside your Laravel application, giving you a single binary that handles both your application logic and efficient SSE broadcasting. For AI streaming specifically, you'd publish chunks to Mercure as they arrive, and Mercure handles delivering them to all connected clients.
+Here's how publishing to Mercure looks in Laravel:
+```php
+use Symfony\Component\Mercure\HubInterface;
+use Symfony\Component\Mercure\Update;
+
+class MercureStreamController
+{
+    public function __construct(
+        private HubInterface $hub
+    ) {}
+
+    public function streamToTopic(string $topic, string $message): void
+    {
+        $update = new Update(
+            topics: [$topic],
+            data: json_encode(['content' => $message]),
+        );
+
+        $this->hub->publish($update);
+    }
+}
+```
+Clients subscribe to the topic, and they receive updates as they're published. This decoupling means your Laravel app doesn't need to maintain long-lived connections directly to users.
+
+## Wrapping up
+Server-Sent Events occupy a sweet spot in the real-time communication landscape. They're simpler than WebSockets, work with standard HTTP infrastructure, and are perfect for scenarios where you need to push data from server to client without bidirectional communication.
+For AI response streaming specifically, SSE is the ideal solution. The interaction pattern is fundamentally one-way: the user sends a request through a normal HTTP POST, and the AI responds with a stream back through SSE. No need for the complexity of WebSockets.
+The code we've walked through gives you a production-ready foundation for streaming AI responses in Laravel. We've covered error handling, session management, and the key headers that make streaming work reliably. Whether you're building a chatbot, a code generation tool, or any feature that benefits from progressive response rendering, this pattern has you covered.
+And when you're ready to scale beyond direct connections, Mercure and FrankenPHP provide a clear upgrade path without requiring a fundamental rewrite of your approach. You can start simple with raw SSE and grow into more sophisticated infrastructure as your needs evolve.
+That's the beauty of building on standards. SSE isn't some framework-specific magic; it's a web standard that has been around since 2006 and isn't going anywhere. Your investment in learning and implementing it properly pays dividends long-term.

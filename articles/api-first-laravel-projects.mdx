@@ -1,0 +1,1864 @@
+---
+title: "API-First Laravel Projects"
+description: "Beginner-friendly, API-first Laravel path: 10 progressive projects covering resources, auth, search, multi-tenancy, webhooks, rate limits, and GraphQL."
+category: Laravel
+pubDate: 2025-11-18
+image: "/images/articles/laravel.png"
+minRead: 6
+author:
+  name: Steve McDougall
+  avatar:
+    src: https://avatars.githubusercontent.com/u/6368379?v=4
+    alt: Steve McDougall
+tags: ["laravel", "api-development", "beginner-friendly", "authentication", "authorization", "eloquent", "multi-tenancy", "webhooks", "rate-limiting", "graphql"]
+categories: ["laravel", "api-development"]
+seo:
+    title: "API-First Laravel Projects: Beginner Path (10 Projects)"
+    description: "Beginner-friendly, API-first Laravel path: 10 progressive projects covering resources, auth, search, multi-tenancy, webhooks, rate limits, and GraphQL."
+    keywords: [
+        "laravel",
+        "api development",
+        "rest api",
+        "laravel sanctum",
+        "eloquent",
+        "pagination",
+        "multi-tenancy",
+        "webhooks",
+        "rate limiting",
+        "graphql",
+        "beginner guide"
+    ]
+---
+
+I've been building APIs with Laravel for years now, and one thing has become clear: the way we learn Laravel hasn't caught up with how we actually use it. Most beginner tutorials still focus on full-stack applications with Blade views, authentication scaffolding, and server-rendered pages. That's fine for understanding Laravel's fundamentals, but the reality of modern development is different.
+
+Today, Laravel is the backend. It powers React frontends, Vue applications, mobile apps, and third-party integrations. It speaks JSON, not HTML. Understanding how to build clean, maintainable APIs isn't a nice-to-have skill anymore - it's the foundation.
+
+This guide presents ten progressive projects designed to teach you API development with Laravel. Each project builds on concepts from the previous ones, introducing new patterns and challenges that you'll face in production applications. I'm not going to sugarcoat it: some of these will frustrate you. That's good. Wrestling with these concepts now means you won't be learning them under deadline pressure later.
+
+## Why These Projects Matter
+
+Before we dive in, let's talk about what makes these projects different from typical beginner tutorials.
+
+First, they're API-focused. You won't build a single Blade view. Every interaction happens through HTTP endpoints returning JSON. This forces you to think about state management, authentication, and data transformation differently than you would in a traditional web application.
+
+Second, they're progressive. Project one teaches basic CRUD. Project ten involves webhooks, queues, and complex state management. Don't skip ahead. The patterns you learn early compound into the more complex projects.
+
+Third, they're incomplete by design. I'm giving you the framework and the key concepts, but I'm not going to hold your hand through every line of code. You'll need to read documentation, make decisions, and sometimes refactor when you realize your first approach wasn't ideal. That's not a bug - that's how you actually learn.
+
+## Project 1: Task API - Learning to Think in Resources
+
+**Core Concepts:** CRUD operations, API Resources, HTTP status codes, validation
+
+Let's start simple. Build an API that manages tasks. This is intentionally basic because the goal isn't the complexity of the domain - it's learning how Laravel handles API responses.
+
+### The Endpoints
+
+```php
+GET    /api/tasks       # List all tasks
+POST   /api/tasks       # Create a new task
+GET    /api/tasks/{id}  # Show a specific task
+PUT    /api/tasks/{id}  # Update a task
+DELETE /api/tasks/{id}  # Delete a task
+```
+
+Standard REST conventions. Nothing surprising here. But here's where beginners usually go wrong: they return models directly.
+
+```php
+// Don't do this
+public function index()
+{
+    return Task::all();
+}
+```
+
+This works, sure. But it's inflexible and exposes your database structure directly to your API consumers. What happens when you rename a column? What if you need to format dates consistently? What about including computed values?
+
+This is where API Resources come in. They're transformation layers that sit between your models and your JSON responses.
+
+```php
+namespace App\Http\Resources;
+
+use Illuminate\Http\Request;
+use Illuminate\Http\Resources\Json\JsonResource;
+
+class TaskResource extends JsonResource
+{
+    public function toArray(Request $request): array
+    {
+        return [
+            'id' => $this->id,
+            'title' => $this->title,
+            'description' => $this->description,
+            'completed' => (bool) $this->completed,
+            'completed_at' => $this->completed_at?->toISOString(),
+            'created_at' => $this->created_at->toISOString(),
+            'updated_at' => $this->updated_at->toISOString(),
+        ];
+    }
+}
+```
+
+Now your controller looks like this:
+
+```php
+public function index()
+{
+    return TaskResource::collection(
+        Task::all()
+    );
+}
+
+public function show(Task $task)
+{
+    return new TaskResource($task);
+}
+```
+
+See the difference? Your API response structure is now decoupled from your database schema. You can change your database without breaking your API contract. This separation becomes critical as your application grows.
+
+### Validation That Actually Helps
+
+Form Requests are your friend. Don't validate in controllers.
+
+```php
+namespace App\Http\Requests;
+
+use Illuminate\Foundation\Http\FormRequest;
+
+class StoreTaskRequest extends FormRequest
+{
+    public function authorize(): bool
+    {
+        return true;
+    }
+
+    public function rules(): array
+    {
+        return [
+            'title' => ['required', 'string', 'max:255'],
+            'description' => ['nullable', 'string'],
+            'completed' => ['boolean'],
+        ];
+    }
+}
+```
+
+Then use it in your controller:
+
+```php
+public function store(StoreTaskRequest $request)
+{
+    $task = Task::create($request->validated());
+    
+    return new TaskResource($task);
+}
+```
+
+Laravel automatically returns a 422 with validation errors if the request fails. You don't write that code - it just happens. This is one of those Laravel conveniences that makes API development pleasant.
+
+### The Status Code Problem
+
+HTTP status codes matter. A lot. Your API clients need to programmatically understand what happened without parsing error messages.
+
+```php
+// Creating a resource
+return (new TaskResource($task))
+    ->response()
+    ->setStatusCode(201);
+
+// Successful deletion
+return response()->json(null, 204);
+
+// Not found (handled automatically with route model binding)
+return response()->json([
+    'message' => 'Task not found'
+], 404);
+```
+
+Get comfortable with 200 (OK), 201 (Created), 204 (No Content), 400 (Bad Request), 404 (Not Found), and 422 (Unprocessable Entity). You'll use these constantly.
+
+### What You're Really Learning
+
+This project isn't about task management. It's about understanding the request-response cycle in an API context. It's about learning that Laravel provides tools specifically designed for API development, and that using them makes your life easier.
+
+Don't move on until you can create this API and test it with a tool like Postman or Insomnia. Actually send the requests. See what responses you get. Break things on purpose to understand the error responses.
+
+## Project 2: Blog API with Categories - Mastering Relationships
+
+**Core Concepts:** Eloquent relationships, eager loading, filtering, pagination, N+1 queries
+
+Now we add complexity. Posts belong to categories. Authors write posts. This is where you start seeing the real power of Eloquent, and where you'll encounter your first performance issues if you're not careful.
+
+### The Schema
+
+```php
+Schema::create('categories', function (Blueprint $table) {
+    $table->id();
+    $table->string('name');
+    $table->string('slug')->unique();
+    $table->timestamps();
+});
+
+Schema::create('posts', function (Blueprint $table) {
+    $table->id();
+    $table->foreignId('category_id')->constrained();
+    $table->foreignId('user_id')->constrained();
+    $table->string('title');
+    $table->string('slug')->unique();
+    $table->text('content');
+    $table->timestamp('published_at')->nullable();
+    $table->timestamps();
+});
+```
+
+Simple enough. But the relationships are where things get interesting.
+
+```php
+class Post extends Model
+{
+    public function category(): BelongsTo
+    {
+        return $this->belongsTo(Category::class);
+    }
+    
+    public function author(): BelongsTo
+    {
+        return $this->belongsTo(User::class, 'user_id');
+    }
+}
+
+class Category extends Model
+{
+    public function posts(): HasMany
+    {
+        return $this->hasMany(Post::class);
+    }
+}
+```
+
+### The N+1 Problem
+
+Here's a controller that looks fine but will kill your database:
+
+```php
+public function index()
+{
+    $posts = Post::all();
+    
+    return PostResource::collection($posts);
+}
+```
+
+If your `PostResource` includes the category name, you've just created an N+1 query. Laravel will execute one query to fetch all posts, then one additional query for each post to fetch its category. With 100 posts, that's 101 queries.
+
+The fix is eager loading:
+
+```php
+public function index()
+{
+    $posts = Post::with(['category', 'author'])->get();
+    
+    return PostResource::collection($posts);
+}
+```
+
+Now Laravel executes three queries total: one for posts, one for all categories, one for all authors. It then matches them up in PHP. This is the difference between a fast API and a slow one.
+
+Enable query logging in development to see this:
+
+```php
+DB::listen(function ($query) {
+    Log::info($query->sql);
+});
+```
+
+You'll be surprised how many queries your innocent-looking code generates.
+
+### Filtering and Pagination
+
+Real APIs need filtering. Users want posts from a specific category, or published posts, or posts from a date range. Don't hardcode these - make them flexible.
+
+```php
+public function index(Request $request)
+{
+    $query = Post::with(['category', 'author']);
+    
+    if ($request->has('category')) {
+        $query->whereHas('category', function ($q) use ($request) {
+            $q->where('slug', $request->category);
+        });
+    }
+    
+    if ($request->has('author')) {
+        $query->where('user_id', $request->author);
+    }
+    
+    if ($request->boolean('published')) {
+        $query->whereNotNull('published_at');
+    }
+    
+    return PostResource::collection(
+        $query->latest()->paginate(15)
+    );
+}
+```
+
+Notice the `paginate()` call. Never return unbounded collections. Always paginate. Laravel's pagination includes `meta` data and `links` in the JSON response automatically, which your frontend can use to build pagination controls.
+
+### Nested Resources
+
+Should categories have their own posts endpoint? Yes.
+
+```php
+Route::get('categories/{category}/posts', function (Category $category) {
+    return PostResource::collection(
+        $category->posts()->with('author')->latest()->paginate()
+    );
+});
+```
+
+This is cleaner than filtering on the main posts index. It's also more semantic - you're asking for "posts within this category," not "posts filtered by category." The difference matters when you're building an intuitive API.
+
+### What You're Learning
+
+Relationships are Eloquent's superpower, but they're also where performance problems hide. This project teaches you to think about queries, not just models. It teaches you that `->with()` is almost always necessary. It teaches you that pagination isn't optional.
+
+You're also learning that API design involves trade-offs. Do you include the full category object in the post response, or just the category ID? There's no universally correct answer - it depends on your use case.
+
+## Project 3: Bookmark Manager API - Authentication Done Right
+
+**Core Concepts:** Laravel Sanctum, token authentication, protected routes, user-scoped data
+
+This is where your API becomes real. Users can register, log in, and manage their own data. Other users can't see it. This is the foundation of every SaaS application you'll ever build.
+
+### Setting Up Sanctum
+
+Laravel Sanctum is built for exactly this use case: token-based authentication for SPAs and mobile apps. It's simpler than Passport and perfect for most applications.
+
+```bash
+composer require laravel/sanctum
+php artisan vendor:publish --provider="Laravel\Sanctum\SanctumServiceProvider"
+php artisan migrate
+```
+
+Add Sanctum's middleware to your API middleware group in `app/Http/Kernel.php`:
+
+```php
+'api' => [
+    \Laravel\Sanctum\Http\Middleware\EnsureFrontendRequestsAreStateful::class,
+    'throttle:api',
+    \Illuminate\Routing\Middleware\SubstituteBindings::class,
+],
+```
+
+And add the `HasApiTokens` trait to your User model:
+
+```php
+use Laravel\Sanctum\HasApiTokens;
+
+class User extends Authenticatable
+{
+    use HasApiTokens, HasFactory, Notifiable;
+    // ...
+}
+```
+
+### Registration and Login
+
+Here's a basic registration endpoint:
+
+```php
+public function register(Request $request)
+{
+    $request->validate([
+        'name' => ['required', 'string', 'max:255'],
+        'email' => ['required', 'string', 'email', 'max:255', 'unique:users'],
+        'password' => ['required', 'string', 'min:8', 'confirmed'],
+    ]);
+    
+    $user = User::create([
+        'name' => $request->name,
+        'email' => $request->email,
+        'password' => Hash::make($request->password),
+    ]);
+    
+    $token = $user->createToken('auth-token')->plainTextToken;
+    
+    return response()->json([
+        'user' => new UserResource($user),
+        'token' => $token,
+    ], 201);
+}
+```
+
+And login:
+
+```php
+public function login(Request $request)
+{
+    $request->validate([
+        'email' => ['required', 'email'],
+        'password' => ['required'],
+    ]);
+    
+    if (!Auth::attempt($request->only('email', 'password'))) {
+        return response()->json([
+            'message' => 'Invalid credentials'
+        ], 401);
+    }
+    
+    $user = User::where('email', $request->email)->firstOrFail();
+    $token = $user->createToken('auth-token')->plainTextToken;
+    
+    return response()->json([
+        'user' => new UserResource($user),
+        'token' => $token,
+    ]);
+}
+```
+
+Your API clients store this token and send it with every request:
+
+```
+Authorization: Bearer {token}
+```
+
+### Protecting Routes
+
+Now wrap your bookmark routes in authentication:
+
+```php
+Route::middleware('auth:sanctum')->group(function () {
+    Route::apiResource('bookmarks', BookmarkController::class);
+});
+```
+
+That's it. Any request to these routes without a valid token gets a 401 response automatically.
+
+### Scoping Data to Users
+
+This is critical. Users should only see their own bookmarks. Every query needs scoping:
+
+```php
+public function index(Request $request)
+{
+    return BookmarkResource::collection(
+        $request->user()->bookmarks()->latest()->paginate()
+    );
+}
+
+public function store(Request $request)
+{
+    $bookmark = $request->user()->bookmarks()->create(
+        $request->validated()
+    );
+    
+    return new BookmarkResource($bookmark);
+}
+```
+
+Notice we're using `$request->user()` to get the authenticated user, then accessing their bookmarks through the relationship. This ensures users can't access other users' data.
+
+For update and delete operations, you need authorization policies:
+
+```php
+public function update(Request $request, Bookmark $bookmark)
+{
+    $this->authorize('update', $bookmark);
+    
+    $bookmark->update($request->validated());
+    
+    return new BookmarkResource($bookmark);
+}
+```
+
+And the policy:
+
+```php
+public function update(User $user, Bookmark $bookmark): bool
+{
+    return $user->id === $bookmark->user_id;
+}
+```
+
+Laravel checks this automatically. If the policy returns false, Laravel returns a 403 Forbidden response. You don't write that code.
+
+### What You're Learning
+
+Authentication is table stakes for any real application. This project teaches you how to implement it properly with modern Laravel tools. You're learning that authentication (who are you?) and authorization (what can you do?) are separate concerns, and Laravel handles both elegantly.
+
+You're also learning that security isn't an add-on - it's baked into your architecture. Scoping queries to authenticated users from the start is easier than trying to add it later.
+
+## Project 4: Recipe API with Search - Query Complexity
+
+**Core Concepts:** Full-text search, complex filtering, query scopes, search optimization
+
+Users need to find recipes. By ingredient. By cuisine. By dietary restrictions. This is where simple `where` clauses stop being enough, and you need to think about how to make queries composable and maintainable.
+
+### The Schema
+
+```php
+Schema::create('recipes', function (Blueprint $table) {
+    $table->id();
+    $table->foreignId('user_id')->constrained();
+    $table->string('title');
+    $table->text('description');
+    $table->text('instructions');
+    $table->string('cuisine')->nullable();
+    $table->integer('prep_time'); // in minutes
+    $table->integer('cook_time');
+    $table->integer('servings');
+    $table->json('dietary_info')->nullable(); // ['vegetarian', 'gluten-free']
+    $table->timestamps();
+});
+
+Schema::create('ingredients', function (Blueprint $table) {
+    $table->id();
+    $table->string('name');
+    $table->timestamps();
+});
+
+Schema::create('ingredient_recipe', function (Blueprint $table) {
+    $table->foreignId('recipe_id')->constrained()->onDelete('cascade');
+    $table->foreignId('ingredient_id')->constrained()->onDelete('cascade');
+    $table->string('quantity');
+    $table->string('unit')->nullable();
+});
+```
+
+### Query Scopes Keep Controllers Clean
+
+Don't do this:
+
+```php
+public function index(Request $request)
+{
+    $query = Recipe::query();
+    
+    if ($request->has('cuisine')) {
+        $query->where('cuisine', $request->cuisine);
+    }
+    
+    if ($request->has('max_time')) {
+        $query->where(DB::raw('prep_time + cook_time'), '<=', $request->max_time);
+    }
+    
+    if ($request->has('dietary')) {
+        $dietary = json_decode($request->dietary);
+        $query->where(function ($q) use ($dietary) {
+            foreach ($dietary as $diet) {
+                $q->orWhereJsonContains('dietary_info', $diet);
+            }
+        });
+    }
+    
+    if ($request->has('search')) {
+        $search = $request->search;
+        $query->where(function ($q) use ($search) {
+            $q->where('title', 'like', "%{$search}%")
+              ->orWhere('description', 'like', "%{$search}%");
+        });
+    }
+    
+    return RecipeResource::collection($query->paginate());
+}
+```
+
+That controller is doing too much. Extract the query logic into scopes:
+
+```php
+class Recipe extends Model
+{
+    public function scopeCuisine($query, $cuisine)
+    {
+        return $query->where('cuisine', $cuisine);
+    }
+    
+    public function scopeMaxTotalTime($query, $minutes)
+    {
+        return $query->whereRaw('(prep_time + cook_time) <= ?', [$minutes]);
+    }
+    
+    public function scopeDietary($query, array $requirements)
+    {
+        foreach ($requirements as $requirement) {
+            $query->whereJsonContains('dietary_info', $requirement);
+        }
+        
+        return $query;
+    }
+    
+    public function scopeSearch($query, $term)
+    {
+        return $query->where(function ($q) use ($term) {
+            $q->where('title', 'like', "%{$term}%")
+              ->orWhere('description', 'like', "%{$term}%");
+        });
+    }
+    
+    public function scopeWithIngredient($query, $ingredientId)
+    {
+        return $query->whereHas('ingredients', function ($q) use ($ingredientId) {
+            $q->where('ingredient_id', $ingredientId);
+        });
+    }
+}
+```
+
+Now your controller is readable:
+
+```php
+public function index(Request $request)
+{
+    $query = Recipe::with(['user', 'ingredients']);
+    
+    if ($request->filled('cuisine')) {
+        $query->cuisine($request->cuisine);
+    }
+    
+    if ($request->filled('max_time')) {
+        $query->maxTotalTime($request->max_time);
+    }
+    
+    if ($request->filled('dietary')) {
+        $query->dietary($request->dietary);
+    }
+    
+    if ($request->filled('search')) {
+        $query->search($request->search);
+    }
+    
+    if ($request->filled('ingredient')) {
+        $query->withIngredient($request->ingredient);
+    }
+    
+    return RecipeResource::collection(
+        $query->latest()->paginate()
+    );
+}
+```
+
+Each scope is reusable, testable, and expressive. This is how you keep controllers thin and queries maintainable.
+
+### Full-Text Search with Scout
+
+The `LIKE` approach works for small datasets, but it doesn't scale. For real search, use Laravel Scout with a driver like Meilisearch or Algolia.
+
+```bash
+composer require laravel/scout
+php artisan vendor:publish --provider="Laravel\Scout\ScoutServiceProvider"
+```
+
+Make your model searchable:
+
+```php
+use Laravel\Scout\Searchable;
+
+class Recipe extends Model
+{
+    use Searchable;
+    
+    public function toSearchableArray()
+    {
+        return [
+            'id' => $this->id,
+            'title' => $this->title,
+            'description' => $this->description,
+            'cuisine' => $this->cuisine,
+            'ingredients' => $this->ingredients->pluck('name')->toArray(),
+        ];
+    }
+}
+```
+
+Then search becomes:
+
+```php
+$recipes = Recipe::search($request->search)
+    ->query(fn ($query) => $query->with('ingredients'))
+    ->paginate();
+```
+
+Scout handles the heavy lifting. It syncs your database with the search index automatically.
+
+### What You're Learning
+
+This project is about managing complexity. As your queries get more sophisticated, you need patterns to keep them maintainable. Query scopes are one of those patterns. They let you compose queries from small, understandable pieces.
+
+You're also learning that some problems need specialized tools. Full-text search with `LIKE` is fine for demos, but production applications need real search infrastructure. Laravel's ecosystem provides that without making you reinvent wheels.
+
+## Project 5: Expense Tracker API with Reports - Data Aggregation
+
+**Core Concepts:** Database aggregations, date filtering, grouping, data transformation, computed values
+
+APIs don't just return raw data - they often need to perform calculations and transformations. This project teaches you how to use Laravel's query builder for aggregations and how to structure complex analytical data in your API responses.
+
+### The Domain
+
+Users track expenses. Each expense has an amount, category, date, and optional notes. The API needs to provide not just the expense list, but aggregated reports: totals by category, monthly summaries, year-over-year comparisons.
+
+```php
+Schema::create('expenses', function (Blueprint $table) {
+    $table->id();
+    $table->foreignId('user_id')->constrained();
+    $table->foreignId('category_id')->constrained();
+    $table->decimal('amount', 10, 2);
+    $table->date('date');
+    $table->string('description')->nullable();
+    $table->timestamps();
+});
+
+Schema::create('categories', function (Blueprint $table) {
+    $table->id();
+    $table->foreignId('user_id')->constrained();
+    $table->string('name');
+    $table->string('color')->nullable();
+    $table->timestamps();
+});
+```
+
+### Basic Aggregations
+
+Getting category totals:
+
+```php
+public function categoryTotals(Request $request)
+{
+    $totals = $request->user()
+        ->expenses()
+        ->selectRaw('category_id, SUM(amount) as total')
+        ->groupBy('category_id')
+        ->with('category:id,name,color')
+        ->get();
+    
+    return response()->json([
+        'data' => $totals->map(fn ($item) => [
+            'category' => [
+                'id' => $item->category->id,
+                'name' => $item->category->name,
+                'color' => $item->category->color,
+            ],
+            'total' => (float) $item->total,
+        ])
+    ]);
+}
+```
+
+Notice the `selectRaw` and `groupBy`. These are SQL aggregation functions, and they're powerful. But they also mean you're no longer getting full Eloquent models back - you're getting partial models with only the selected fields.
+
+### Date Range Filtering
+
+```php
+public function summary(Request $request)
+{
+    $request->validate([
+        'start_date' => ['required', 'date'],
+        'end_date' => ['required', 'date', 'after_or_equal:start_date'],
+    ]);
+    
+    $expenses = $request->user()
+        ->expenses()
+        ->whereBetween('date', [$request->start_date, $request->end_date])
+        ->with('category')
+        ->get();
+    
+    return response()->json([
+        'period' => [
+            'start' => $request->start_date,
+            'end' => $request->end_date,
+        ],
+        'total_expenses' => $expenses->sum('amount'),
+        'count' => $expenses->count(),
+        'average' => $expenses->avg('amount'),
+        'by_category' => $expenses->groupBy('category_id')->map(function ($items) {
+            return [
+                'category' => $items->first()->category->name,
+                'total' => $items->sum('amount'),
+                'count' => $items->count(),
+            ];
+        })->values(),
+    ]);
+}
+```
+
+This uses collection methods for aggregation rather than database queries. For smaller datasets, this is fine and often more flexible. For larger datasets, you'd want to push the aggregation to the database.
+
+### Monthly Reports
+
+```php
+public function monthlyReport(Request $request, int $year)
+{
+    $expenses = $request->user()
+        ->expenses()
+        ->whereYear('date', $year)
+        ->selectRaw('MONTH(date) as month, SUM(amount) as total, COUNT(*) as count')
+        ->groupBy('month')
+        ->orderBy('month')
+        ->get();
+    
+    // Fill in missing months with zeros
+    $months = collect(range(1, 12))->map(function ($month) use ($expenses) {
+        $data = $expenses->firstWhere('month', $month);
+        
+        return [
+            'month' => $month,
+            'month_name' => Carbon::create()->month($month)->format('F'),
+            'total' => $data ? (float) $data->total : 0,
+            'count' => $data ? $data->count : 0,
+        ];
+    });
+    
+    return response()->json([
+        'year' => $year,
+        'months' => $months,
+        'yearly_total' => $months->sum('total'),
+    ]);
+}
+```
+
+This is a common pattern: query for aggregate data, then fill in gaps with default values. Without the gap filling, months without expenses wouldn't appear in the results, which would break any frontend charting.
+
+### What You're Learning
+
+This project teaches you that APIs are more than CRUD. Real applications need to transform and aggregate data. You're learning when to use database aggregations versus collection methods. You're learning how to structure complex analytical responses so frontends can consume them easily.
+
+You're also learning that date handling is surprisingly complex. Timezones, date ranges, and aggregating by time periods all have edge cases. Carbon is your friend here, but you still need to think carefully about what you're calculating.
+
+## Project 6: Event RSVP API - Complex Relationships and State
+
+**Core Concepts:** Many-to-many relationships, pivot tables, state management, capacity constraints
+
+Many-to-many relationships are where Eloquent really shines, but they're also where things get complex. Events have attendees. Attendees can RSVP to multiple events. The relationship itself has state (going, maybe, not going). Events have capacity limits. This is real-world complexity.
+
+### The Schema
+
+```php
+Schema::create('events', function (Blueprint $table) {
+    $table->id();
+    $table->foreignId('user_id')->constrained(); // event creator
+    $table->string('title');
+    $table->text('description');
+    $table->string('location');
+    $table->dateTime('starts_at');
+    $table->dateTime('ends_at');
+    $table->integer('capacity')->nullable();
+    $table->timestamps();
+});
+
+Schema::create('event_user', function (Blueprint $table) {
+    $table->id();
+    $table->foreignId('event_id')->constrained()->onDelete('cascade');
+    $table->foreignId('user_id')->constrained()->onDelete('cascade');
+    $table->enum('status', ['going', 'maybe', 'not_going']);
+    $table->text('note')->nullable();
+    $table->timestamps();
+    
+    $table->unique(['event_id', 'user_id']);
+});
+```
+
+### The Relationships
+
+```php
+class Event extends Model
+{
+    public function creator(): BelongsTo
+    {
+        return $this->belongsTo(User::class, 'user_id');
+    }
+    
+    public function attendees(): BelongsToMany
+    {
+        return $this->belongsToMany(User::class)
+            ->withPivot('status', 'note')
+            ->withTimestamps();
+    }
+    
+    public function confirmed(): BelongsToMany
+    {
+        return $this->attendees()->wherePivot('status', 'going');
+    }
+    
+    public function maybe(): BelongsToMany
+    {
+        return $this->attendees()->wherePivot('status', 'maybe');
+    }
+}
+
+class User extends Model
+{
+    public function events(): BelongsToMany
+    {
+        return $this->belongsToMany(Event::class)
+            ->withPivot('status', 'note')
+            ->withTimestamps();
+    }
+    
+    public function createdEvents(): HasMany
+    {
+        return $this->hasMany(Event::class);
+    }
+}
+```
+
+Notice the `withPivot()` call. This tells Eloquent to include those columns from the pivot table when accessing the relationship. Without it, you can't see the RSVP status.
+
+### RSVP Logic
+
+```php
+public function rsvp(Request $request, Event $event)
+{
+    $request->validate([
+        'status' => ['required', 'in:going,maybe,not_going'],
+        'note' => ['nullable', 'string', 'max:500'],
+    ]);
+    
+    // Check capacity if they're marking as "going"
+    if ($request->status === 'going' && $event->capacity) {
+        $confirmed = $event->confirmed()->count();
+        
+        if ($confirmed >= $event->capacity) {
+            return response()->json([
+                'message' => 'This event is at capacity'
+            ], 422);
+        }
+    }
+    
+    // Attach or update the RSVP
+    $event->attendees()->syncWithoutDetaching([
+        $request->user()->id => [
+            'status' => $request->status,
+            'note' => $request->note,
+        ]
+    ]);
+    
+    return response()->json([
+        'message' => 'RSVP updated successfully',
+        'status' => $request->status,
+    ]);
+}
+```
+
+The `syncWithoutDetaching` method is perfect here. It updates the pivot record if it exists, creates it if it doesn't, but doesn't remove other relationships.
+
+### Accessing Pivot Data
+
+When you fetch an event with attendees, the pivot data is available:
+
+```php
+$event = Event::with('attendees')->find($id);
+
+foreach ($event->attendees as $attendee) {
+    echo $attendee->pivot->status; // 'going', 'maybe', or 'not_going'
+    echo $attendee->pivot->created_at; // when they RSVP'd
+}
+```
+
+This is exposed in your resource:
+
+```php
+class EventResource extends JsonResource
+{
+    public function toArray(Request $request): array
+    {
+        return [
+            'id' => $this->id,
+            'title' => $this->title,
+            'description' => $this->description,
+            'starts_at' => $this->starts_at->toISOString(),
+            'capacity' => $this->capacity,
+            'attendee_count' => $this->confirmed()->count(),
+            'spots_remaining' => $this->capacity 
+                ? max(0, $this->capacity - $this->confirmed()->count())
+                : null,
+            'attendees' => $this->whenLoaded('attendees', function () {
+                return $this->attendees->map(fn ($user) => [
+                    'id' => $user->id,
+                    'name' => $user->name,
+                    'status' => $user->pivot->status,
+                    'rsvp_at' => $user->pivot->created_at->toISOString(),
+                ]);
+            }),
+        ];
+    }
+}
+```
+
+### What You're Learning
+
+Many-to-many relationships with pivot data are common in real applications: users and roles, products and orders, students and courses. This project teaches you how to work with them properly in Laravel.
+
+You're learning that relationships aren't just links between tables - they're first-class data structures with their own attributes and logic. The pivot table is a model in its own right, even if you don't always explicitly define it as one.
+
+You're also learning about state management at the database level. RSVPs have state. Events have capacity constraints. These aren't just data models - they're business rules that your API needs to enforce.
+
+## Project 7: Multi-Tenant SaaS API - Scoping Everything
+
+**Core Concepts:** Multi-tenancy, global scopes, team-based access, role-based permissions
+
+Real SaaS applications are multi-tenant. Users belong to teams (or organizations, workspaces, accounts - pick your terminology). All data belongs to a team. Users can belong to multiple teams. This changes everything about how you structure your application.
+
+### The Core Concept
+
+Every table that contains user data needs a `team_id`. Every query needs to be scoped to the current team. Users can switch between teams. This is harder than it sounds.
+
+```php
+Schema::create('teams', function (Blueprint $table) {
+    $table->id();
+    $table->string('name');
+    $table->string('slug')->unique();
+    $table->foreignId('owner_id')->constrained('users');
+    $table->timestamps();
+});
+
+Schema::create('team_user', function (Blueprint $table) {
+    $table->foreignId('team_id')->constrained()->onDelete('cascade');
+    $table->foreignId('user_id')->constrained()->onDelete('cascade');
+    $table->string('role')->default('member');
+    $table->timestamps();
+    
+    $table->primary(['team_id', 'user_id']);
+});
+
+Schema::create('projects', function (Blueprint $table) {
+    $table->id();
+    $table->foreignId('team_id')->constrained()->onDelete('cascade');
+    $table->string('name');
+    $table->text('description')->nullable();
+    $table->timestamps();
+});
+```
+
+### Global Scopes for Automatic Filtering
+
+Don't manually add `where('team_id', ...)` to every query. Use global scopes:
+
+```php
+namespace App\Models\Scopes;
+
+use Illuminate\Database\Eloquent\Builder;
+use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\Scope;
+
+class TeamScope implements Scope
+{
+    public function apply(Builder $builder, Model $model): void
+    {
+        if ($teamId = $this->getCurrentTeamId()) {
+            $builder->where("{$model->getTable()}.team_id", $teamId);
+        }
+    }
+    
+    protected function getCurrentTeamId(): ?int
+    {
+        return auth()->user()?->currentTeam?->id;
+    }
+}
+```
+
+Apply it to your models:
+
+```php
+class Project extends Model
+{
+    protected static function booted(): void
+    {
+        static::addGlobalScope(new TeamScope);
+    }
+}
+```
+
+Now every query on `Project` is automatically scoped to the current team. You can't accidentally leak data between teams.
+
+### Team Switching
+
+Users need to switch between teams. Store the current team on the user:
+
+```php
+class User extends Model
+{
+    public function currentTeam(): BelongsTo
+    {
+        return $this->belongsTo(Team::class, 'current_team_id');
+    }
+    
+    public function teams(): BelongsToMany
+    {
+        return $this->belongsToMany(Team::class)
+            ->withPivot('role')
+            ->withTimestamps();
+    }
+    
+    public function switchTeam(Team $team): void
+    {
+        if (!$this->teams->contains($team->id)) {
+            throw new \Exception('User does not belong to this team');
+        }
+        
+        $this->current_team_id = $team->id;
+        $this->save();
+    }
+}
+```
+
+The switch endpoint:
+
+```php
+public function switch(Request $request, Team $team)
+{
+    $request->user()->switchTeam($team);
+    
+    return response()->json([
+        'message' => 'Switched to team: ' . $team->name,
+        'current_team' => new TeamResource($team),
+    ]);
+}
+```
+
+### Role-Based Permissions
+
+Use Spatie's Laravel Permission package. Don't build this from scratch.
+
+```bash
+composer require spatie/laravel-permission
+php artisan vendor:publish --provider="Spatie\Permission\PermissionServiceProvider"
+php artisan migrate
+```
+
+Define roles and permissions per team:
+
+```php
+$team = Team::find(1);
+$user = User::find(1);
+
+// Assign role within team context
+$user->assignRole('admin');
+
+// Check permissions
+if ($user->hasPermissionTo('create projects')) {
+    // allowed
+}
+
+// In your policies
+public function create(User $user): bool
+{
+    return $user->hasPermissionTo('create projects');
+}
+```
+
+### What You're Learning
+
+Multi-tenancy is a architectural decision that affects your entire application. This project teaches you that isolation isn't just about security - it's about making your application logically correct. Users should never accidentally see data from other teams, even if there's a bug in your code.
+
+You're learning that global scopes are powerful but need to be used carefully. They're invisible, which is both their strength and their danger. You're also learning that some problems are so common that using battle-tested packages is the right choice.
+
+## Project 8: API with Webhooks - Asynchronous Notifications
+
+**Core Concepts:** Webhooks, Laravel events, queue workers, retry logic, signature verification
+
+Webhooks let your API notify other services when things happen. User created an account? Fire a webhook. Payment processed? Fire a webhook. This is how modern APIs integrate with each other.
+
+### The Schema
+
+```php
+Schema::create('webhooks', function (Blueprint $table) {
+    $table->id();
+    $table->foreignId('user_id')->constrained();
+    $table->string('url');
+    $table->json('events'); // ['user.created', 'project.updated']
+    $table->string('secret');
+    $table->boolean('active')->default(true);
+    $table->timestamps();
+});
+
+Schema::create('webhook_calls', function (Blueprint $table) {
+    $table->id();
+    $table->foreignId('webhook_id')->constrained()->onDelete('cascade');
+    $table->string('event');
+    $table->json('payload');
+    $table->integer('response_status')->nullable();
+    $table->text('response_body')->nullable();
+    $table->integer('attempt')->default(1);
+    $table->timestamp('delivered_at')->nullable();
+    $table->timestamps();
+});
+```
+
+### Events and Listeners
+
+When something happens, fire an event:
+
+```php
+event(new ProjectCreated($project));
+```
+
+The event itself:
+
+```php
+namespace App\Events;
+
+use App\Models\Project;
+use Illuminate\Foundation\Events\Dispatchable;
+use Illuminate\Queue\SerializesModels;
+
+class ProjectCreated
+{
+    use Dispatchable, SerializesModels;
+    
+    public function __construct(
+        public Project $project
+    ) {}
+}
+```
+
+Listen for events and fire webhooks:
+
+```php
+namespace App\Listeners;
+
+use App\Events\ProjectCreated;
+use App\Jobs\SendWebhookJob;
+use App\Models\Webhook;
+
+class SendProjectWebhooks
+{
+    public function handle(ProjectCreated $event): void
+    {
+        $webhooks = Webhook::where('active', true)
+            ->where('user_id', $event->project->user_id)
+            ->whereJsonContains('events', 'project.created')
+            ->get();
+        
+        foreach ($webhooks as $webhook) {
+            SendWebhookJob::dispatch($webhook, [
+                'event' => 'project.created',
+                'data' => [
+                    'id' => $event->project->id,
+                    'name' => $event->project->name,
+                    'created_at' => $event->project->created_at->toISOString(),
+                ],
+            ]);
+        }
+    }
+}
+```
+
+### The Webhook Job
+
+```php
+namespace App\Jobs;
+
+use App\Models\Webhook;
+use App\Models\WebhookCall;
+use Illuminate\Bus\Queueable;
+use Illuminate\Contracts\Queue\ShouldQueue;
+use Illuminate\Foundation\Bus\Dispatchable;
+use Illuminate\Queue\InteractsWithQueue;
+use Illuminate\Queue\SerializesModels;
+use Illuminate\Support\Facades\Http;
+
+class SendWebhookJob implements ShouldQueue
+{
+    use Dispatchable, InteractsWithQueue, Queueable, SerializesModels;
+    
+    public $tries = 3;
+    public $backoff = [60, 300, 900]; // 1 min, 5 min, 15 min
+    
+    public function __construct(
+        public Webhook $webhook,
+        public array $payload
+    ) {}
+    
+    public function handle(): void
+    {
+        $signature = hash_hmac('sha256', json_encode($this->payload), $this->webhook->secret);
+        
+        $response = Http::timeout(10)
+            ->withHeaders([
+                'X-Webhook-Signature' => $signature,
+                'Content-Type' => 'application/json',
+            ])
+            ->post($this->webhook->url, $this->payload);
+        
+        WebhookCall::create([
+            'webhook_id' => $this->webhook->id,
+            'event' => $this->payload['event'],
+            'payload' => $this->payload,
+            'response_status' => $response->status(),
+            'response_body' => $response->body(),
+            'attempt' => $this->attempts(),
+            'delivered_at' => $response->successful() ? now() : null,
+        ]);
+        
+        if (!$response->successful()) {
+            throw new \Exception('Webhook delivery failed: ' . $response->status());
+        }
+    }
+}
+```
+
+This job:
+- Sends the webhook with a signature header
+- Logs every attempt
+- Retries with backoff if it fails
+- Times out after 10 seconds
+
+### Signature Verification
+
+The receiving service needs to verify the signature:
+
+```php
+// On the receiving end
+$signature = $request->header('X-Webhook-Signature');
+$payload = $request->getContent();
+
+$expectedSignature = hash_hmac('sha256', $payload, $secret);
+
+if (!hash_equals($expectedSignature, $signature)) {
+    return response()->json(['error' => 'Invalid signature'], 401);
+}
+```
+
+This prevents webhook spoofing. Without signature verification, anyone could send fake webhooks to your users' endpoints.
+
+### What You're Learning
+
+Webhooks are how APIs communicate. This project teaches you that not everything can happen synchronously - some operations need to be queued. You're learning about job retries, backoff strategies, and timeout handling.
+
+You're also learning that security matters even in machine-to-machine communication. Signatures ensure that webhooks are authentic.
+
+Most importantly, you're learning that APIs need observability. Logging webhook attempts lets users debug integration issues. Good APIs make debugging easy.
+
+## Project 9: Rate-Limited Public API - Managing Access
+
+**Core Concepts:** Rate limiting, API keys, usage tracking, middleware, throttling strategies
+
+Public APIs need protection from abuse. You can't let a single client hammer your servers with unlimited requests. This project teaches you how to implement sophisticated rate limiting and usage tracking.
+
+### API Key Management
+
+```php
+Schema::create('api_keys', function (Blueprint $table) {
+    $table->id();
+    $table->foreignId('user_id')->constrained();
+    $table->string('name');
+    $table->string('key')->unique();
+    $table->string('tier')->default('free'); // free, pro, enterprise
+    $table->timestamp('last_used_at')->nullable();
+    $table->boolean('active')->default(true);
+    $table->timestamps();
+});
+
+Schema::create('api_key_usages', function (Blueprint $table) {
+    $table->id();
+    $table->foreignId('api_key_id')->constrained();
+    $table->string('endpoint');
+    $table->timestamp('requested_at');
+    $table->integer('response_status');
+    $table->integer('response_time_ms');
+    
+    $table->index(['api_key_id', 'requested_at']);
+});
+```
+
+Generate keys securely:
+
+```php
+public function create(Request $request)
+{
+    $request->validate([
+        'name' => ['required', 'string', 'max:255'],
+    ]);
+    
+    $apiKey = $request->user()->apiKeys()->create([
+        'name' => $request->name,
+        'key' => 'sk_' . bin2hex(random_bytes(32)),
+        'tier' => 'free',
+    ]);
+    
+    return response()->json([
+        'key' => $apiKey->key,
+        'name' => $apiKey->name,
+        'message' => 'Store this key securely. It will not be shown again.',
+    ], 201);
+}
+```
+
+Only show the key once. Never store it in plain text if you can hash it (though for API keys, plain text is often necessary for verification).
+
+### Rate Limiting Middleware
+
+Laravel's built-in rate limiting is powerful:
+
+```php
+// In RouteServiceProvider
+RateLimiter::for('api', function (Request $request) {
+    $apiKey = ApiKey::where('key', $request->bearerToken())->first();
+    
+    if (!$apiKey) {
+        return Limit::perMinute(10); // Unauthenticated: 10/min
+    }
+    
+    return match ($apiKey->tier) {
+        'free' => Limit::perMinute(60)->by($apiKey->id),
+        'pro' => Limit::perMinute(300)->by($apiKey->id),
+        'enterprise' => Limit::none(),
+    };
+});
+```
+
+Apply it to routes:
+
+```php
+Route::middleware('throttle:api')->group(function () {
+    // Rate-limited routes
+});
+```
+
+Laravel automatically returns a 429 Too Many Requests response when limits are exceeded, including `X-RateLimit-*` headers.
+
+### Custom Middleware for API Keys
+
+```php
+namespace App\Http\Middleware;
+
+use App\Models\ApiKey;
+use Closure;
+use Illuminate\Http\Request;
+
+class AuthenticateApiKey
+{
+    public function handle(Request $request, Closure $next)
+    {
+        $key = $request->bearerToken();
+        
+        if (!$key) {
+            return response()->json([
+                'error' => 'API key required'
+            ], 401);
+        }
+        
+        $apiKey = ApiKey::where('key', $key)
+            ->where('active', true)
+            ->first();
+        
+        if (!$apiKey) {
+            return response()->json([
+                'error' => 'Invalid API key'
+            ], 401);
+        }
+        
+        $apiKey->update(['last_used_at' => now()]);
+        $request->merge(['api_key' => $apiKey]);
+        
+        return $next($request);
+    }
+}
+```
+
+### Usage Tracking
+
+Track every request:
+
+```php
+namespace App\Http\Middleware;
+
+use App\Models\ApiKeyUsage;
+use Closure;
+use Illuminate\Http\Request;
+
+class TrackApiUsage
+{
+    public function handle(Request $request, Closure $next)
+    {
+        $startTime = microtime(true);
+        $response = $next($request);
+        $duration = (microtime(true) - $startTime) * 1000;
+        
+        if ($apiKey = $request->get('api_key')) {
+            ApiKeyUsage::create([
+                'api_key_id' => $apiKey->id,
+                'endpoint' => $request->path(),
+                'requested_at' => now(),
+                'response_status' => $response->status(),
+                'response_time_ms' => round($duration),
+            ]);
+        }
+        
+        return $response;
+    }
+}
+```
+
+This data lets you:
+- Show users their usage
+- Bill based on consumption
+- Identify slow endpoints
+- Detect abuse patterns
+
+### Usage Analytics Endpoint
+
+```php
+public function usage(Request $request)
+{
+    $apiKey = $request->get('api_key');
+    
+    $today = $apiKey->usages()
+        ->whereDate('requested_at', today())
+        ->count();
+    
+    $thisMonth = $apiKey->usages()
+        ->whereMonth('requested_at', now()->month)
+        ->count();
+    
+    $byEndpoint = $apiKey->usages()
+        ->whereMonth('requested_at', now()->month)
+        ->groupBy('endpoint')
+        ->selectRaw('endpoint, COUNT(*) as count')
+        ->orderByDesc('count')
+        ->limit(10)
+        ->get();
+    
+    return response()->json([
+        'today' => $today,
+        'this_month' => $thisMonth,
+        'limit' => $this->getLimitForTier($apiKey->tier),
+        'top_endpoints' => $byEndpoint,
+    ]);
+}
+```
+
+### What You're Learning
+
+This project teaches you that public APIs are different from authenticated user APIs. You need different authentication (API keys vs session/token), different rate limiting strategies, and comprehensive usage tracking.
+
+You're learning that rate limiting isn't just about preventing abuse - it's about managing resources and creating pricing tiers. You're also learning that observability is critical. Users need to see their usage. You need to see how your API is being used.
+
+## Project 10: GraphQL Alternative - Different Paradigm
+
+**Core Concepts:** GraphQL with Lighthouse, schema design, N+1 prevention with dataloaders, resolvers
+
+GraphQL isn't better than REST, but it solves different problems. This project teaches you an alternative API paradigm and helps you understand when each approach makes sense.
+
+### Setting Up Lighthouse
+
+```bash
+composer require nuwave/lighthouse
+php artisan vendor:publish --tag=lighthouse-schema
+```
+
+Lighthouse is Laravel-native GraphQL. It uses your Eloquent models and follows Laravel conventions.
+
+### The Schema
+
+GraphQL starts with a schema that defines your entire API:
+
+```graphql
+type Query {
+  posts(first: Int! @paginate): [Post!]! @paginate
+  post(id: ID! @eq): Post @find
+  me: User @auth
+}
+
+type Post {
+  id: ID!
+  title: String!
+  content: String!
+  author: User! @belongsTo
+  comments: [Comment!]! @hasMany
+  created_at: DateTime!
+  updated_at: DateTime!
+}
+
+type User {
+  id: ID!
+  name: String!
+  email: String!
+  posts: [Post!]! @hasMany
+}
+
+type Comment {
+  id: ID!
+  content: String!
+  post: Post! @belongsTo
+  author: User! @belongsTo
+  created_at: DateTime!
+}
+```
+
+This schema defines everything: types, relationships, queries. Lighthouse uses directives (like `@paginate`, `@hasMany`) to automatically generate resolvers based on your Eloquent models.
+
+### Automatic CRUD with Eloquent
+
+Because Lighthouse understands Laravel, you get free queries:
+
+```graphql
+query {
+  posts(first: 10) {
+    data {
+      id
+      title
+      author {
+        name
+      }
+      comments {
+        content
+        author {
+          name
+        }
+      }
+    }
+  }
+}
+```
+
+Lighthouse automatically:
+- Paginates results
+- Eager loads relationships to prevent N+1
+- Transforms models to match the schema
+- Handles authentication with `@auth`
+
+### Custom Resolvers
+
+For complex logic, write custom resolvers:
+
+```php
+namespace App\GraphQL\Queries;
+
+class PostsByTag
+{
+    public function __invoke($rootValue, array $args)
+    {
+        return Post::whereHas('tags', function ($query) use ($args) {
+            $query->where('slug', $args['tag']);
+        })->paginate($args['first']);
+    }
+}
+```
+
+Reference it in your schema:
+
+```graphql
+type Query {
+  postsByTag(tag: String!, first: Int!): [Post!]! 
+    @paginate 
+    @field(resolver: "App\\GraphQL\\Queries\\PostsByTag")
+}
+```
+
+### Mutations
+
+GraphQL mutations are like POST/PUT/DELETE in REST:
+
+```graphql
+type Mutation {
+  createPost(input: CreatePostInput! @spread): Post 
+    @create 
+    @guard
+  
+  updatePost(id: ID!, input: UpdatePostInput! @spread): Post 
+    @update 
+    @guard
+  
+  deletePost(id: ID!): Post 
+    @delete 
+    @guard
+}
+
+input CreatePostInput {
+  title: String! @rules(apply: ["required", "max:255"])
+  content: String! @rules(apply: ["required"])
+  category_id: ID!
+}
+```
+
+The `@guard` directive requires authentication. The `@rules` directive applies Laravel validation. It's Laravel patterns in GraphQL.
+
+### When GraphQL Makes Sense
+
+GraphQL solves the "over-fetching" and "under-fetching" problem. In REST, you might need multiple requests:
+
+```
+GET /api/posts/1
+GET /api/posts/1/author
+GET /api/posts/1/comments
+GET /api/posts/1/comments/123/author
+```
+
+With GraphQL, one query:
+
+```graphql
+query {
+  post(id: 1) {
+    title
+    author { name }
+    comments {
+      content
+      author { name }
+    }
+  }
+}
+```
+
+The client asks for exactly what it needs. No more, no less.
+
+But GraphQL has costs:
+- More complex to implement
+- Harder to cache (no URL-based caching)
+- Query complexity can be hard to limit
+- REST is simpler for simple use cases
+
+### What You're Learning
+
+This project teaches you that REST isn't the only way to build APIs. GraphQL offers different trade-offs: more flexibility for clients, more complexity for servers. Neither is universally better.
+
+You're learning that Laravel's ecosystem supports multiple paradigms. Lighthouse proves that GraphQL can feel native to Laravel, using the same models, validation, and patterns you already know.
+
+## Beyond the Projects
+
+These ten projects give you a foundation, but they're not comprehensive. Real production APIs need more:
+
+### Testing
+
+Every endpoint needs tests. Use Pest or PHPUnit:
+
+```php
+test('authenticated users can create posts', function () {
+    $user = User::factory()->create();
+    
+    $response = $this->actingAs($user)->postJson('/api/posts', [
+        'title' => 'Test Post',
+        'content' => 'Content here',
+    ]);
+    
+    $response->assertCreated()
+        ->assertJsonStructure(['data' => ['id', 'title', 'content']]);
+    
+    $this->assertDatabaseHas('posts', [
+        'title' => 'Test Post',
+        'user_id' => $user->id,
+    ]);
+});
+```
+
+Testing APIs is often easier than testing full-stack applications because you're just verifying JSON responses. Write tests as you build features, not after.
+
+### Documentation
+
+APIs are useless if nobody knows how to use them. I use Scribe for automatic documentation generation:
+
+```bash
+composer require --dev knuckleswtf/scribe
+php artisan vendor:publish --tag=scribe-config
+php artisan scribe:generate
+```
+
+Scribe reads your routes, controllers, and Form Requests to generate documentation automatically. Add annotations for clarity:
+
+```php
+/**
+ * Create a new post
+ * 
+ * Creates a new post for the authenticated user.
+ * 
+ * @bodyParam title string required The post title. Example: My First Post
+ * @bodyParam content string required The post content. Example: This is the content.
+ * 
+ * @response 201 {"data":{"id":1,"title":"My First Post"}}
+ */
+public function store(StorePostRequest $request)
+{
+    // ...
+}
+```
+
+Good documentation is as important as good code.
+
+### Versioning
+
+APIs need versioning. Breaking changes happen. Don't break existing clients:
+
+```php
+Route::prefix('v1')->group(function () {
+    // Version 1 routes
+});
+
+Route::prefix('v2')->group(function () {
+    // Version 2 routes with breaking changes
+});
+```
+
+Or use header-based versioning. Either works. Just be consistent.
+
+### Error Handling
+
+Consistent error responses matter:
+
+```php
+namespace App\Exceptions;
+
+use Illuminate\Foundation\Exceptions\Handler as ExceptionHandler;
+use Illuminate\Validation\ValidationException;
+use Symfony\Component\HttpKernel\Exception\NotFoundHttpException;
+
+class Handler extends ExceptionHandler
+{
+    public function render($request, Throwable $e)
+    {
+        if ($request->expectsJson()) {
+            if ($e instanceof NotFoundHttpException) {
+                return response()->json([
+                    'message' => 'Resource not found'
+                ], 404);
+            }
+            
+            if ($e instanceof ValidationException) {
+                return response()->json([
+                    'message' => 'Validation failed',
+                    'errors' => $e->errors()
+                ], 422);
+            }
+            
+            return response()->json([
+                'message' => $e->getMessage()
+            ], 500);
+        }
+        
+        return parent::render($request, $e);
+    }
+}
+```
+
+Clients should never see HTML error pages or stack traces in production.
+
+### Monitoring
+
+You need to know when your API is broken. Use tools like Sentry or Bugsnag for error tracking. Use Laravel Telescope in development to see every query, job, and event.
+
+Set up health check endpoints:
+
+```php
+Route::get('/health', function () {
+    return response()->json([
+        'status' => 'healthy',
+        'timestamp' => now()->toISOString(),
+    ]);
+});
+```
+
+Your monitoring tools can ping this to verify your API is responding.
+
+## The Real Learning Happens Next
+
+Here's the truth: you don't really learn these concepts by reading about them. You learn them by building them, making mistakes, refactoring, and building them again.
+
+Pick one project from this list. Don't pick the hardest one to prove something. Pick one that sounds interesting. Build it completely: tests, documentation, error handling, the works. Deploy it somewhere. Let it run for a week. Then come back and refactor it with what you've learned.
+
+Then pick the next project.
+
+The goal isn't to collect finished projects in a GitHub repo. The goal is to internalize the patterns that make Laravel APIs maintainable. You want to reach the point where you don't think about whether to use an API Resource - you just use one. Where rate limiting isn't something you add later - it's part of your initial setup.
+
+That takes time. It takes repetition. It takes building the same patterns enough times that they become automatic.
+
+These projects give you the structure. But the learning? That only happens when you actually write the code.

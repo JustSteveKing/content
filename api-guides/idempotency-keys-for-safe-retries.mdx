@@ -1,0 +1,82 @@
+---
+title: "Idempotency keys for safe retries"
+slug: "idempotency-keys-for-safe-retries"
+description: "Let clients safely retry non-idempotent calls without accidentally creating duplicates. Essential for payments and critical operations."
+category: "writing-data"
+complexity: "intro"
+apiStyles: ["rest"]
+useWhen: "Clients may retry requests and you want to avoid duplicate side effects."
+avoidWhen: "The operation is naturally idempotent or read-only."
+tags: ["idempotency", "retries", "reliability"]
+related: ["bulk-updates-via-async-jobs"]
+---
+
+Idempotency keys let clients safely retry non‑idempotent calls (like `POST /charges`) without accidentally creating duplicates. The client sends an `Idempotency-Key` header that uniquely identifies “this logical operation”. Your API stores the result keyed by that value and returns the same response for subsequent attempts.
+
+Example: create a payment with idempotency.
+
+```http
+POST /payments
+Idempotency-Key: 9e71e58f-5c5e-4ff2-9cec-e4f58d9e4b45
+Content-Type: application/json
+
+{
+  "customer_id": "cus_123",
+  "amount": 4900,
+  "currency": "GBP",
+  "source": "card_abc"
+}
+```
+
+First request:
+
+```
+HTTP/1.1 201 Created
+Content-Type: application/json
+
+{
+  "id": "pay_456",
+  "status": "confirmed",
+  "amount": 4900,
+  "currency": "GBP",
+  "customer_id": "cus_123"
+}
+```
+
+Second request (retry with same key, same body):
+
+```
+HTTP/1.1 201 Created
+Idempotent-Replay: true
+Content-Type: application/json
+
+{
+  "id": "pay_456",
+  "status": "confirmed",
+  "amount": 4900,
+  "currency": "GBP",
+  "customer_id": "cus_123"
+}
+```
+
+Trade-offs and notes ￼
+
+Pros
+
+- Protects against duplicate charges and orders from retries and “double taps”.
+
+- Gives clients confidence to retry on 5xx or timeouts.
+
+Cons
+
+- Requires server‑side storage keyed by idempotency key plus route and payload hash.
+
+- You must define a clear TTL for stored results.
+
+Implementation details
+
+- The key should be opaque to the server; treat it as a token, not data.
+
+- Guard against mismatched payloads reusing the same key – either reject or treat as a new logical operation.
+
+- Be explicit in docs: which endpoints support idempotency, how long results are retained, and what headers are used.

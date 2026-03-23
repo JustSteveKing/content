@@ -1,0 +1,432 @@
+---
+title: "Building APIs that scale with Nitro, Drizzle, and unstorage"
+description: "Discover how Nitro, Drizzle ORM, and unstorage create a modern TypeScript API stack that's faster to build, easier to scale, and ready for edge deployments."
+category: API Development
+pubDate: 2025-10-08
+tags: ["TypeScript", "Node.js", "API", "Nitro", "Drizzle", "Express", "Sevalla", "ORM", "Caching"]
+draft: false
+sponsor:
+  name: Sevalla
+  url: https://juststeveking.link/host
+  logo: https://github.com/sevalla-hosting.png
+featured: true
+readingTime: 15
+canonical: "https://sevalla.com/blog/express-typescript-apis/"
+crossPost:
+  originalUrl: "https://sevalla.com/blog/express-typescript-apis/"
+  originalSite: "Sevalla Blog"
+  publishedDate: 2025-09-30
+  permission: true
+---
+
+## Building APIs that scale with Nitro, Drizzle, and unstorage
+
+For years, [Express](https://expressjs.com/) has been the de facto standard for building APIs in Node.js. It's simple, flexible, and has a massive ecosystem. But if you've tried to use it with [TypeScript](https://www.typescriptlang.org/) or deploy it beyond a traditional server, you've probably felt the friction of repetitive boilerplate, patchy type safety, and a lot of manual setup.
+
+That's why more developers are now using [Nitro](https://nitro.build/), a framework that feels built for how we write and ship APIs today. When you combine it with [Drizzle ORM](https://orm.drizzle.team/) for fully typed database queries and [unstorage](https://unstorage.unjs.io/) for flexible caching, you get a stack that cuts out the headaches and makes backend development feel modern again.
+
+In this post, we'll look at what makes this stack different, why it's a big step up from Express, and how the pieces fit together in a real-world project.
+
+## The Express fatigue is real
+
+Express has been around for years in web development, and it deserves credit for changing the way APIs are built in [Node.js](https://nodejs.org/). It was lightweight, unopinionated, and gave developers full control over their code.
+
+Over time, the cracks start to show. Every new project comes with the same setup: wiring up JSON parsing, configuring CORS, adding security middleware, defining routes manually, and sprinkling in error handlers. And if you're working with TypeScript, you're left constantly hoping your types line up while wrapping everything in try/catch blocks.
+
+Here's a typical example most of us have written at some point:
+
+```javascript
+// The familiar Express boilerplate dance
+const express = require("express")
+const app = express()
+
+app.use(express.json())
+app.use(cors())
+app.use(helmet())
+
+// Manual route definition
+app.get("/api/users/:id", async (req, res, next) => {
+  try {
+    // Hope the types work out...
+    const userId = req.params.id
+    const user = await getUserById(userId)
+    res.json(user)
+  } catch (error) {
+    next(error)
+  }
+})
+
+// Error handling middleware
+app.use((error, req, res, next) => {
+  // More boilerplate...
+})
+```
+
+It works, but it's verbose, repetitive, and fragile. The more you scale a project, the heavier this boilerplate feels. Modern TypeScript development deserves a cleaner, more reliable foundation, and that's where Nitro changes the game.
+
+## Enter Nitro: TypeScript-first by design
+
+Nitro is a framework built from the ground up to simplify API development while maintaining flexibility for any deployment target.
+
+### Zero-config TypeScript setup
+
+With Nitro, getting started is straightforward:
+
+```bash
+npx giget@latest nitro my-api --install
+cd my-api
+npm run dev
+```
+
+TypeScript is ready out of the box, hot reload works immediately, and there's no need to wrestle with complex Webpack, Babel, or `tsconfig` setups. This reduces friction and lets teams move directly into building.
+
+### File-based routing that actually makes sense
+
+Instead of manually registering routes, Nitro uses a file-based approach. Creating an endpoint is as simple as adding a file to the correct directory:
+
+```typescript
+// server/api/users/[id].get.ts
+export default defineEventHandler(async (event) => {
+  const userId = getRouterParam(event, "id")
+
+  // Full TypeScript support out of the box
+  if (!userId || isNaN(Number(userId))) {
+    throw createError({
+      statusCode: 400,
+      statusMessage: "Invalid user ID",
+    })
+  }
+
+  // Your business logic here
+  const user = await getUserById(Number(userId))
+
+  if (!user) {
+    throw createError({
+      statusCode: 404,
+      statusMessage: "User not found",
+    })
+  }
+
+  return { user }
+})
+```
+
+This approach eliminates repetitive boilerplate, including route registration, lengthy middleware chains, and scattered try/catch blocks. The result is cleaner code and stronger TypeScript inference throughout the API.
+
+### Universal deployment magic
+
+One of Nitro's biggest strengths is its flexibility in deployment. The same codebase can run on:
+
+• Node.js servers
+• Vercel Edge Functions
+• Cloudflare Workers
+• AWS Lambda
+• Deno Deploy
+• and more
+
+This allows teams to adapt their infrastructure strategy without having to rewrite their application. For example, transitioning from a traditional VPS setup to edge functions can often be accomplished with just a configuration change.
+
+## Leveling up data access with Drizzle ORM
+
+Databases are at the heart of almost every application, and selecting the right Object-Relational Mapping (ORM) tool can make a significant difference in both productivity and reliability.
+
+Drizzle ORM is designed with TypeScript in mind from the outset, providing teams with a system that is fully type-safe, lightweight, and closely aligned with the SQL that many developers already know.
+
+### Schema definition that reads like documentation
+
+With Drizzle, database schema definitions are written in TypeScript. This makes the schema both human-readable and a single source of truth for types across the application:
+
+```typescript
+// db/schema.ts
+import {
+  pgTable,
+  serial,
+  varchar,
+  integer,
+  timestamp,
+  text,
+} from "drizzle-orm/pg-core"
+import { relations } from "drizzle-orm"
+
+export const users = pgTable("users", {
+  id: serial("id").primaryKey(),
+  email: varchar("email", { length: 256 }).notNull().unique(),
+  name: varchar("name", { length: 256 }).notNull(),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+})
+
+export const posts = pgTable("posts", {
+  id: serial("id").primaryKey(),
+  title: varchar("title", { length: 256 }).notNull(),
+  content: text("content").notNull(),
+  authorId: integer("author_id")
+    .notNull()
+    .references(() => users.id),
+  publishedAt: timestamp("published_at"),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+})
+
+export const usersRelations = relations(users, ({ many }) => ({
+  posts: many(posts),
+}))
+
+export const postsRelations = relations(posts, ({ one }) => ({
+  author: one(users, {
+    fields: [posts.authorId],
+    references: [users.id],
+  }),
+}))
+```
+
+Instead of spreading database types, application models, and API response types across different files, Drizzle ensures everything flows from this single definition.
+
+### Queries that feel natural
+
+Writing queries in Drizzle is both type-safe and familiar. For example, fetching a user and their posts looks like this:
+
+```typescript
+// server/api/users/[id]/posts.get.ts
+import { db } from "~/db"
+import { users, posts } from "~/db/schema"
+import { eq } from "drizzle-orm"
+
+export default defineEventHandler(async (event) => {
+  const userId = getRouterParam(event, "id")
+
+  // Type-safe query with automatic joins
+  const userWithPosts = await db.query.users.findFirst({
+    where: eq(users.id, Number(userId)),
+    with: {
+      posts: {
+        where: eq(posts.publishedAt, null), // Only published posts
+        orderBy: (posts, { desc }) => [desc(posts.createdAt)],
+      },
+    },
+  })
+
+  if (!userWithPosts) {
+    throw createError({
+      statusCode: 404,
+      statusMessage: "User not found",
+    })
+  }
+
+  return userWithPosts
+})
+```
+
+The result is fully typed end-to-end, from database query to API response, with predictable SQL under the hood.
+
+### Complex queries made simple
+
+For more advanced use cases, Drizzle's query builder feels like writing SQL directly - only with the safety and tooling of TypeScript. For example, selecting popular posts within a certain timeframe:
+
+```typescript
+// server/api/analytics/popular-posts.get.ts
+import { db } from "~/db"
+import { posts, users } from "~/db/schema"
+import { desc, count, gte, and, eq } from "drizzle-orm"
+
+export default defineEventHandler(async (event) => {
+  const query = getQuery(event)
+  const daysBack = Number(query.days) || 30
+  const cutoffDate = new Date()
+  cutoffDate.setDate(cutoffDate.getDate() - daysBack)
+
+  const popularPosts = await db
+    .select({
+      id: posts.id,
+      title: posts.title,
+      authorName: users.name,
+      publishedAt: posts.publishedAt,
+    })
+    .from(posts)
+    .innerJoin(users, eq(posts.authorId, users.id))
+    .where(
+      and(
+        gte(posts.publishedAt, cutoffDate),
+        // Add other conditions as needed
+      ),
+    )
+    .orderBy(desc(posts.createdAt))
+    .limit(10)
+
+  return { posts: popularPosts }
+})
+```
+
+Instead of juggling raw SQL strings or verbose ORM patterns, queries remain expressive, type-safe, and easy to maintain.
+
+## Smart caching with unstorage
+
+Modern APIs often require caching to remain performant, but setting it up typically involves selecting a specific provider and integrating everything with that service. That creates vendor lock-in, making switching providers or even environments painful.
+
+Nitro solves this with unstorage, a storage abstraction layer that lets developers add caching or session storage without committing to a single backend.
+
+### Development-friendly caching
+
+In development, caching can be added with just a few lines of code:
+
+```typescript
+// server/api/expensive-calculation.get.ts
+export default defineEventHandler(async (event) => {
+  const query = getQuery(event)
+  const cacheKey = `calculation:${JSON.stringify(query)}`
+
+  // Check cache first
+  const cached = await useStorage("cache").getItem(cacheKey)
+  if (cached) {
+    return cached
+  }
+
+  // Expensive operation
+  const result = await performComplexCalculation(query)
+
+  // Cache for 1 hour
+  await useStorage("cache").setItem(cacheKey, result, {
+    ttl: 60 * 60 * 1000,
+  })
+
+  return result
+})
+```
+
+This makes it easy to add caching logic while iterating locally, with no extra infrastructure required.
+
+### Production-ready storage configuration
+
+When moving to production, the same caching code can be reused across different storage providers by updating the configuration:
+
+```typescript
+// nitro.config.ts
+export default defineNitroConfig({
+  storage: {
+    cache: {
+      driver: "redis",
+      host: process.env.REDIS_HOST,
+      port: process.env.REDIS_PORT,
+      password: process.env.REDIS_PASSWORD,
+    },
+    sessions: {
+      driver: "cloudflare-kv-binding",
+      binding: "SESSIONS",
+    },
+  },
+})
+```
+
+This flexibility allows developers to start with in-memory caching during development and then scale to Redis, Cloudflare KV, or other providers in production without needing to rewrite application logic.
+
+## Real-world example: Building a blog API
+
+To see how these pieces fit together, imagine building a simple blog API. With Nitro, Drizzle ORM, and unstorage, the code remains clean, type-safe, and production-ready.
+
+A paginated list of posts can be served efficiently with built-in caching:
+
+```typescript
+// server/api/posts/index.get.ts
+export default defineEventHandler(async (event) => {
+  const query = getQuery(event)
+  const page = Number(query.page) || 1
+  const limit = Math.min(Number(query.limit) || 10, 50)
+  const offset = (page - 1) * limit
+
+  const cacheKey = `posts:${page}:${limit}`
+
+  // Try cache first
+  let result = await useStorage("cache").getItem(cacheKey)
+
+  if (!result) {
+    const posts = await db.query.posts.findMany({
+      with: {
+        author: {
+          columns: {
+            id: true,
+            name: true,
+          },
+        },
+      },
+      limit,
+      offset,
+      orderBy: (posts, { desc }) => [desc(posts.publishedAt)],
+      where: (posts, { isNotNull }) => isNotNull(posts.publishedAt),
+    })
+
+    result = { posts, page, limit }
+
+    // Cache for 5 minutes
+    await useStorage("cache").setItem(cacheKey, result, {
+      ttl: 5 * 60 * 1000,
+    })
+  }
+
+  return result
+})
+```
+
+Fetching a single post by slug follows the same pattern, with type-safe queries and clear error handling:
+
+```typescript
+// server/api/posts/[slug].get.ts
+export default defineEventHandler(async (event) => {
+  const slug = getRouterParam(event, "slug")
+
+  if (!slug) {
+    throw createError({
+      statusCode: 400,
+      statusMessage: "Slug is required",
+    })
+  }
+
+  const post = await db.query.posts.findFirst({
+    where: (posts, { eq, and, isNotNull }) =>
+      and(eq(posts.slug, slug), isNotNull(posts.publishedAt)),
+    with: {
+      author: {
+        columns: {
+          id: true,
+          name: true,
+          bio: true,
+        },
+      },
+    },
+  })
+
+  if (!post) {
+    throw createError({
+      statusCode: 404,
+      statusMessage: "Post not found",
+    })
+  }
+
+  return { post }
+})
+```
+
+The combination of file-based routing, type-safe queries, and flexible caching results in an API that is easy to maintain and performant by default.
+
+## A practical migration path
+
+For teams currently using Express, transitioning to Nitro doesn't require a complete rewrite. A gradual migration path often works best:
+
+1. **Start small** – Rebuild a non-critical endpoint in Nitro to validate the workflow.
+2. **Introduce Drizzle ORM** – Replace existing ORM layers table by table for a smoother transition.
+3. **Add caching strategically** – Use unstorage to optimize known bottlenecks.
+4. **Experiment with deployment targets** – Test edge functions or serverless platforms to measure performance gains.
+5. **Expand incrementally** – Move additional routes until the application is fully migrated.
+
+This step-by-step approach minimizes risk and allows teams to adopt modern tooling without disrupting production systems.
+
+## Why this matters
+
+The combination of Nitro, Drizzle, and unstorage isn't just about using newer tools, but also about developer productivity and application reliability.
+
+When your types flow seamlessly from database schema to API responses, when your caching layer adapts to any backend, and when your deployment targets are flexible, you spend more time building features and less time fighting your tools.
+
+And with Sevalla, you can take this stack even further. Deploy your Nitro backend in just a few clicks, [set up pipelines](https://docs.sevalla.com/applications/get-started/pipelines) to automate delivery, and leverage preview deployments to test changes before they go live.
+
+Ready to give it a try? Start with a small project, deploy it to Sevalla, and see how seamless the workflow feels.
+
+---
+
+*This article was originally published on [Sevalla Blog](https://sevalla.com/blog/express-typescript-apis/). Follow me on [Twitter](https://twitter.com/juststeveking) for more TypeScript and API development insights.*

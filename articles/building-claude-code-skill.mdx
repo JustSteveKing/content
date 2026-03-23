@@ -1,0 +1,186 @@
+---
+title: "Building a Claude Code skill"
+description: "Create portable instruction manuals for Claude to teach domain-specific approaches, with a deep dive into building a production-grade Laravel API skill."
+pubDate: "2026-01-30"
+canonical: "https://sevalla.com/blog/building-claude-code-skill/"
+crossPost:
+    originalUrl: "https://sevalla.com/blog/building-claude-code-skill/"
+    originalSite: "Sevalla"
+    publishedDate: "2026-01-30"
+    permission: true
+author:
+    name: "Steve McDougall"
+---
+
+I have been asked time and time again how I build APIs. Now with the new Claude Code Skills, I can actually describe how I approach these problems when it comes to APIs, and allow Claude to act as if it were me. Not only that, but I can publish it for others to use, contribute to, and help me polish as time goes on.
+The one thing to bear in mind when it comes to a "skill" is that it isn't static. The published version is out of date the moment you publish it. There is always a new approach, a new idea, a revelation, or simply something that was forgotten.
+So while I think these Claude Code Skills are useful, you still shouldn't be taking them as gospel. You should still be fact-checking, assessing, and reviewing any code they create, even if it's been fine-tuned by someone like myself.
+With that being said, let's walk through how to build a Claude Code skill, what's needed to build one, and what we might add to it.
+
+## What actually is a skill?
+Think of a Claude Code skill as a portable instruction manual. At its core, it's a folder containing markdown files and optional assets that teach Claude how to approach a specific domain.
+When you install a skill, you're essentially giving Claude a specialised knowledge base it can reference when working on related tasks.
+The structure is surprisingly simple. Here's what mine looks like:
+```
+laravel-api/
+├── SKILL.md # The main entry point
+├── references/ # Deep-dive documentation
+│ ├── architecture.md
+│ ├── code-examples.md
+│ └── code-quality.md
+└── assets/ └── templates/ # Ready-to-use code templates ├── Action.php ├── Controller.php ├── FormRequest.php ├── Model.php └── Payload.php
+```
+The magic happens in `SKILL.md`. This file has YAML frontmatter that tells Claude when to use the skill, followed by the actual guidance. Here's mine:
+```
+---
+name: laravel-api
+description: Build production-grade Laravel REST APIs with clean architecture, type safety, and Laravel best practices. Use when building, scaffolding, or reviewing Laravel APIs...
+---
+```
+That description is critical. It's how Claude decides when to load your skill into its context. I spent time making mine specific enough to trigger on the right queries but broad enough to be useful.
+
+## The progressive disclosure problem
+Here's where it gets interesting. Claude has a limited context window. Every skill competes for that space, along with your conversation history, uploaded files, and everything else Claude needs to think about.
+This is why skills use what's called "progressive disclosure." Only the name and description are always loaded. The body of `SKILL.md` gets loaded when the skill triggers. And those reference files? They only load if Claude decides it needs them.
+This matters because you need to think carefully about what goes where. Your `SKILL.md` should contain quick-start patterns and essential workflows. Detailed examples go in reference files. I structured mine like this:
+**SKILL.md (~300 lines):**
+* Quick start workflow
+* Core architecture principles
+* Step-by-step component creation
+* Essential patterns
+**references/code-examples.md (~600 lines):**
+* Complete working code for every component
+* Multiple variations and edge cases
+* Full implementations you can copy
+**references/code-quality.md (~350 lines):**
+* Refactoring patterns
+* Code review checklists
+* PSR-12 standards
+* Anti-patterns to avoid
+The idea is that Claude reads `SKILL.md` first, gets the high-level approach, then dips into references only when it needs specific details.
+
+## Making opinionated decisions
+When I built this skill, I had to make concrete decisions about architecture. This is where your expertise matters. A skill isn't just documentation; it's your opinionated take on how things should be done.
+For example, I made these specific calls:
+**ULIDs everywhere, no auto-increment IDs:**
+```
+final class Task extends Model
+{ use HasFactory; use HasUlids; // Not auto-incrementing
+}
+```
+**Action classes always use `handle()`, not `execute()`:**
+```
+final readonly class CreateTask
+{ public function handle(StoreTaskPayload $payload): Task { return Task::create($payload->toArray()); }
+}
+```
+**Every PHP file starts with strict types:**
+```
+<?php
+declare(strict_types=1);
+namespace App\Actions\Tasks;
+```
+These are architectural decisions that affect how Claude writes code. I could have gone with auto-increment IDs. I could have used `execute()`. But I made a choice, documented it clearly, and now Claude follows that pattern consistently.
+
+## The art of writing good examples
+I learned quickly that Claude benefits more from working examples than from explanations. This is where I spent most of my time creating complete, copy-paste-ready code that demonstrates the patterns.
+Here's a full controller example from my skill:
+```
+<?php
+declare(strict_types=1);
+namespace App\Http\Controllers\Tasks\V1;
+use App\Actions\Tasks\CreateTask;
+use App\Http\Requests\Tasks\V1\StoreTaskRequest;
+use App\Http\Responses\JsonDataResponse;
+use Illuminate\Http\JsonResponse;
+final readonly class StoreController
+{ public function __construct( private CreateTask $createTask, ) {} public function __invoke(StoreTaskRequest $request): JsonResponse { $task = $this->createTask->handle( payload: $request->payload(), ); return new JsonDataResponse( data: $task, status: 201, ); }
+}
+```
+Notice what this does:
+* Shows the full namespace structure
+* Demonstrates the invokable controller pattern
+* Includes type hints everywhere
+* Uses named parameters
+* Shows dependency injection
+Claude can see this pattern and replicate it. That's more valuable than me saying "controllers should be invokable and use dependency injection."
+
+## Templates: The secret weapon
+One feature I found incredibly useful is bundling templates. These are starter files that Claude can reference or copy. Mine live in `assets/templates/`:
+```
+<?php
+declare(strict_types=1);
+namespace App\Actions\{Resource};
+use App\Http\Payloads\{Resource}\{Payload};
+use App\Models\{Model};
+final readonly class {Action}
+{ public function handle({Payload} $payload): {Model} { // Implement action logic }
+}
+```
+The placeholders (`{Resource}`, `{Payload}`, etc.) let Claude fill in the specifics. This ensures consistency across all generated code.
+
+## Integrating Laravel's official patterns
+While building this, I discovered Laravel has its own code simplifier plugin. Rather than compete with it, I integrated their best practices into my skill. This is where things got interesting.
+Their plugin focuses on code quality like avoiding nested ternaries and preferring match expressions:
+```
+// Instead of this mess
+$status = $task->completed_at ? ($task->verified ? 'verified' : 'completed') : ($task->started_at ? 'in_progress' : 'pending');
+// Do this
+$status = match (true) { $task->completed_at && $task->verified => 'verified', $task->completed_at => 'completed', $task->started_at => 'in_progress', default => 'pending',
+};
+```
+I created a whole reference file on code quality patterns, refactoring techniques, and PSR-12 compliance. This way, the skill teaches both architecture and code quality.
+
+## Packaging the script
+Once you've built your skill, you need to package it. A `.skill` file is just a zip archive with a specific structure. I wrote a simple Python script that handles this:
+```
+def package_skill(skill_path, output_dir=None): skill_path = Path(skill_path).resolve() # Validate first valid, message = validate_skill(skill_path) if not valid: print(f"❌ Validation failed: {message}") return None # Create the .skill file (zip format) skill_name = skill_path.name skill_filename = output_path / f"{skill_name}.skill" with zipfile.ZipFile(skill_filename, 'w', zipfile.ZIP_DEFLATED) as zipf: for file_path in skill_path.rglob('*'): if file_path.is_file(): arcname = file_path.relative_to(skill_path.parent) zipf.write(file_path, arcname)
+```
+Now whenever I make changes, I just run:
+```
+python scripts/package_skill.py
+```
+And I get a fresh `laravel-api.skill` file ready to distribute.
+
+## Testing and iteration
+This is crucial: you have to actually use your skill. I uploaded mine to Claude and started building test APIs. That's when you discover what works and what doesn't.
+For instance, I initially had too much detail in `SKILL.md`. Claude would get bogged down in examples when it just needed to know the pattern. I moved those to reference files, and suddenly the responses were faster and more focused.
+I also found that Claude sometimes skipped the `declare(strict_types=1)` line. So I made sure every single example in my skill included it. Now it's consistent.
+
+## Publishing and maintaining
+GitHub is the obvious choice for hosting. Your repository structure should look like this:
+```
+laravel-api-skill/
+├── README.md # For GitHub visitors
+├── LICENSE
+├── CHANGELOG.md
+├── scripts/
+│ └── package_skill.py
+└── laravel-api/ # The actual skill ├── SKILL.md ├── references/ └── assets/
+```
+The key is keeping the skill source separate from repository documentation. When someone clones your repo, they can package it themselves or grab a release.
+For versioning, I'm using semantic versioning:
+* Patch (1.0.1): Bug fixes, typo corrections
+* Minor (1.1.0): New features, additional examples
+* Major (2.0.0): Breaking changes to the structure
+And here's the thing about maintenance: this skill will evolve. Laravel changes. Best practices evolve. I'll discover better patterns. That's fine. Version it, document changes in `CHANGELOG.md`, and release updates.
+
+## What I learned
+Building this skill taught me a few things:
+1. **Conciseness matters.** Every word in your skill competes for Claude's attention. Make every line count.
+2. **Examples beat explanations.** Show, don't tell. A complete working example is worth a thousand words of description.
+3. **Make it opinionated.** Don't try to cover every possible approach. Pick one way of doing things and document it well.
+4. **Test relentlessly.** Use your own skill. Build real projects with it. You'll find gaps and inconsistencies you never noticed.
+5. **Version properly.** People will depend on your skill. Don't break things without warning.
+
+## The result
+My Laravel API skill weighs in at about 17KB compressed. It includes:
+* Complete architectural patterns
+* Working code examples for every component
+* Code quality and refactoring guidance
+* Ready-to-use templates
+* PSR-12 compliance checks
+When someone installs it and asks Claude to "build a Laravel API for managing tasks," Claude knows exactly how I would approach it. It creates invokable controllers, uses Action classes with `handle()` methods, implements proper DTOs, and follows all the patterns I've established.
+That's the power of a well-crafted skill. It's a transferable expertise package, and not just documentation.
+Now build your own. Take your approach to solving problems and codify it. Make it shareable. Let others learn from it and contribute back. That's how we all get better.
+The repository for my Laravel API skill is on [GitHub](https://github.com/JustSteveKing/laravel-api-skill). Feel free to use it, fork it, or just see how it's structured.

@@ -1,0 +1,562 @@
+---
+title: Building AI Powered Applications in Laravel
+description: "This guide walks through prompt organization, structured outputs, and AI-discoverable capabilities using Prism and Laravel MCP."
+category: SDKs
+pubDate: 2025-12-12
+image: "/images/articles/astro.png"
+minRead: 7
+sponsor:
+  name: Sevalla
+  url: https://juststeveking.link/host
+  logo: https://github.com/sevalla-hosting.png
+author:
+  name: Steve McDougall
+  avatar:
+    src: https://avatars.githubusercontent.com/u/6368379?v=4
+    alt: Steve McDougall
+crossPost:
+  originalUrl: "https://sevalla.com/blog/ai-powered-laravel-applications/"
+  originalSite: "Sevalla Blog"
+  publishedDate: 2025-12-12
+  permission: true
+tags: ["laravel", "ai", "prism", "mcp"]
+---
+
+I've been researching AI integration patterns for Laravel applications, and I want to share what I've learned about building maintainable, provider-agnostic AI features. We're going to build a weather intelligence system together that demonstrates the key concepts you'll need for any AI-powered Laravel application.
+
+The goal here isn't just to get something working. It's to establish patterns that will scale as your AI features grow in complexity.
+
+## The Problem with Direct LLM Integration
+
+Before we start building, let me explain why this matters. The simplest approach to adding AI to a Laravel app is to just make HTTP calls to an LLM API directly in your controllers. And honestly? That works fine for a prototype or a simple feature.
+
+But here's what happens as your application grows:
+
+You want to test a different model. Now you're updating code in multiple places. You need structured outputs for reliability. Now you're parsing JSON strings and hoping for the best. You want to expose your AI capabilities to other agents. Now you're building custom APIs on top of APIs.
+
+Each addition compounds the complexity. What I discovered through my research is that you need proper abstractions from the start.
+
+That's where **Prism PHP** and **Laravel MCP** come in.
+
+Prism gives you a clean, consistent interface for any LLM provider. Ollama, Claude, GPT-4, whatever. Switch between them with a single line change.
+
+Laravel MCP (Model Context Protocol) lets you expose your AI capabilities as structured tools that other AI agents can discover and use. It's like building an API specifically designed for AI consumption.
+
+Let's build something real.
+
+## Setting Up Your Environment
+
+Start with a fresh Laravel application. I'm assuming you've got PHP 8.4+ and Composer installed:
+
+```bash
+laravel new ai-weather-app
+cd ai-weather-app
+```
+
+Install the dependencies:
+
+```bash
+composer require prism-php/prism
+composer require laravel/mcp
+```
+
+Why Prism specifically? After evaluating several options, Prism stood out because it handles provider-specific differences while giving you a Laravel-native experience. You're not learning a new paradigm. You're using familiar patterns.
+
+## Configuring Ollama
+
+For this tutorial, we're using Ollama. It runs locally, costs nothing to experiment with, and performs well for most tasks. Plus, it keeps us provider-neutral.
+
+Install Ollama from [ollama.ai](https://ollama.ai/), then pull a model:
+
+```bash
+ollama pull llama3.2
+```
+
+I'm using llama3.2 here because it's fast and capable for this kind of work, but swap in any model you prefer.
+
+Publish Prism's configuration:
+
+```bash
+php artisan vendor:publish --tag=prism-config
+```
+
+In `config/prism.php`, verify the Ollama configuration:
+
+```php
+'providers' => [
+    'ollama' => [
+        'url' => env('OLLAMA_URL', 'http://localhost:11434'),
+    ],
+    // ... other providers
+],
+```
+
+Add to your `.env`:
+
+```
+OLLAMA_URL=http://localhost:11434
+```
+
+## Organizing Prompts as Files
+
+Here's a pattern that dramatically improves maintainability: keep your prompts in separate files instead of inline strings scattered throughout your code.
+
+Why does this matter? Prompts evolve. You'll want to A/B test different approaches. You'll want non-developers to help refine the AI's personality. You'll want version control for your prompt engineering efforts.
+
+Inline strings make all of this painful. Separate files make it trivial.
+
+Create the directory structure:
+
+```bash
+mkdir -p resources/prompts/system
+mkdir -p resources/prompts/user
+```
+
+Create `resources/prompts/system/weather_analyst.txt`:
+
+```
+You are an expert meteorological analyst with a gift for explaining weather patterns in clear, practical terms. 
+
+Your role is to:
+- Interpret weather data accurately
+- Provide context about what the conditions mean for daily activities
+- Offer insights about trends or unusual patterns
+- Communicate in a friendly, accessible tone
+
+Always prioritize accuracy while remaining conversational.
+```
+
+The specificity here is intentional. Generic prompts like "you are a helpful assistant" rarely produce focused results. Give your AI a clear role.
+
+Create `resources/prompts/user/analyze_weather.blade.php`:
+
+```blade
+I need you to analyze the weather conditions for {{ $city }}.
+
+Current conditions:
+- Temperature: {{ $temperature }}°C
+- Conditions: {{ $conditions }}
+- Humidity: {{ $humidity }}%
+- Wind Speed: {{ $wind_speed }} km/h
+
+Provide a practical summary that helps someone plan their day. What should they know about these conditions?
+```
+
+Using Blade templates for user prompts gives you the full power of Laravel's templating engine. Variables, conditionals, loops. Everything you already know.
+
+## Building Your First AI Service
+
+Let's create a service to handle the AI interaction. Keeping this logic separate from your controllers is important for testing and reusability.
+
+```bash
+php artisan make:class Services/WeatherAnalysisService
+```
+
+In `app/Services/WeatherAnalysisService.php`:
+
+```php
+<?php
+
+namespace App\Services;
+
+use EchoLabs\Prism\Facades\Prism;
+use EchoLabs\Prism\Enums\Provider;
+
+class WeatherAnalysisService
+{
+    public function analyzeConditions(array $weatherData): string
+    {
+        $systemPrompt = file_get_contents(
+            resource_path('prompts/system/weather_analyst.txt')
+        );
+
+        $userPrompt = view('prompts.user.analyze_weather', [
+            'city' => $weatherData['city'],
+            'temperature' => $weatherData['temperature'],
+            'conditions' => $weatherData['conditions'],
+            'humidity' => $weatherData['humidity'],
+            'wind_speed' => $weatherData['wind_speed'],
+        ])->render();
+
+        $response = Prism::text()
+            ->using(Provider::Ollama, 'llama3.2')
+            ->withSystemPrompt($systemPrompt)
+            ->withPrompt($userPrompt)
+            ->generate();
+
+        return $response->text;
+    }
+}
+```
+
+Look at how clean this is. The service orchestrates the pieces. The prompts live in maintainable files. The LLM provider is explicitly specified but easily changed.
+
+Let's test it with a simple route in `routes/web.php`:
+
+```php
+use App\Services\WeatherAnalysisService;
+use Illuminate\Support\Facades\Route;
+
+Route::get('/test-weather', function (WeatherAnalysisService $service) {
+    $analysis = $service->analyzeConditions([
+        'city' => 'London',
+        'temperature' => 18,
+        'conditions' => 'Partly cloudy',
+        'humidity' => 65,
+        'wind_speed' => 15,
+    ]);
+
+    return response()->json(['analysis' => $analysis]);
+});
+```
+
+Visit `/test-weather` in your browser. You should get back an AI-generated weather analysis. If you're getting connection errors, make sure Ollama is running in the background.
+
+## Understanding MCP: AI-Discoverable Capabilities
+
+Now let's talk about something powerful: making your AI features discoverable and usable by other AI agents.
+
+The Model Context Protocol (MCP) is a standardized way for AI agents to discover and invoke tools. Think of it like this: instead of building a REST API that returns JSON for humans to parse, you're building an interface that AI agents can understand natively.
+
+This matters if you're building Claude Desktop integrations, creating custom tools for VS Code, or enabling AI-to-AI communication in your applications.
+
+Laravel MCP implements this protocol in a Laravel-native way.
+
+First, publish the MCP routes:
+
+```bash
+php artisan vendor:publish --tag=ai-routes
+```
+
+This creates `routes/ai.php`. Just like `routes/api.php` defines your HTTP API, `routes/ai.php` defines your AI capabilities.
+
+## Creating an MCP Server
+
+An MCP Server groups related AI capabilities together. Let's create one for weather analysis:
+
+```bash
+php artisan make:mcp-server WeatherServer
+```
+
+This generates `app/Mcp/Servers/WeatherServer.php`:
+
+```php
+<?php
+
+namespace App\Mcp\Servers;
+
+use Laravel\Mcp\Server;
+
+class WeatherServer extends Server
+{
+    protected string $name = 'Weather Intelligence';
+    
+    protected string $version = '1.0.0';
+    
+    protected string $description = 
+        'Provides AI-powered weather analysis and insights using local LLM capabilities.';
+
+    protected array $tools = [
+        \App\Mcp\Tools\AnalyzeWeatherTool::class,
+    ];
+
+    protected array $prompts = [
+        \App\Mcp\Prompts\WeatherInsightPrompt::class,
+    ];
+}
+```
+
+Register it in `routes/ai.php`:
+
+```php
+use App\Mcp\Servers\WeatherServer;
+use Laravel\Mcp\Facades\Mcp;
+
+Mcp::serve(WeatherServer::class);
+```
+
+## Defining an MCP Tool
+
+Tools are the actual capabilities your AI exposes. Let's create the weather analysis tool:
+
+```bash
+php artisan make:mcp-tool AnalyzeWeatherTool
+```
+
+In `app/Mcp/Tools/AnalyzeWeatherTool.php`:
+
+```php
+<?php
+
+namespace App\Mcp\Tools;
+
+use App\Services\WeatherAnalysisService;
+use Laravel\Mcp\Tool;
+
+class AnalyzeWeatherTool extends Tool
+{
+    protected string $name = 'analyze_weather';
+    
+    protected string $description = 
+        'Analyzes weather conditions for a city and provides practical insights.';
+
+    public function __construct(
+        private WeatherAnalysisService $weatherService
+    ) {}
+
+    public function schema(): array
+    {
+        return [
+            'type' => 'object',
+            'properties' => [
+                'city' => [
+                    'type' => 'string',
+                    'description' => 'The city to analyze weather for',
+                ],
+                'temperature' => [
+                    'type' => 'number',
+                    'description' => 'Current temperature in Celsius',
+                ],
+                'conditions' => [
+                    'type' => 'string',
+                    'description' => 'Current weather conditions (e.g., sunny, cloudy, rainy)',
+                ],
+                'humidity' => [
+                    'type' => 'number',
+                    'description' => 'Humidity percentage',
+                ],
+                'wind_speed' => [
+                    'type' => 'number',
+                    'description' => 'Wind speed in km/h',
+                ],
+            ],
+            'required' => ['city', 'temperature', 'conditions'],
+        ];
+    }
+
+    public function handle(array $arguments): array
+    {
+        $analysis = $this->weatherService->analyzeConditions($arguments);
+
+        return [
+            'success' => true,
+            'city' => $arguments['city'],
+            'analysis' => $analysis,
+            'timestamp' => now()->toIso8601String(),
+        ];
+    }
+}
+```
+
+The schema method is crucial. It tells AI agents exactly what parameters they need to provide. The handle method does the actual work. Any AI agent that understands MCP can now discover this tool, understand its requirements, and invoke it.
+
+## Enforcing Response Structure
+
+One challenge with LLMs is output consistency. Sometimes you get JSON, sometimes prose, sometimes a mix. Prism's structured outputs solve this by enforcing a schema.
+
+Add this method to your `WeatherAnalysisService`:
+
+```php
+use EchoLabs\Prism\Schema\ObjectSchema;
+use EchoLabs\Prism\Schema\StringSchema;
+use EchoLabs\Prism\Schema\NumberSchema;
+
+public function analyzeConditionsStructured(array $weatherData): object
+{
+    $schema = new ObjectSchema(
+        name: 'weather_analysis',
+        description: 'Structured weather analysis response',
+        properties: [
+            new StringSchema(
+                name: 'summary',
+                description: 'Brief weather summary'
+            ),
+            new StringSchema(
+                name: 'recommendations',
+                description: 'Practical recommendations for the day'
+            ),
+            new StringSchema(
+                name: 'notable_conditions',
+                description: 'Any unusual or noteworthy conditions'
+            ),
+            new NumberSchema(
+                name: 'comfort_index',
+                description: 'Comfort rating from 1-10'
+            ),
+        ],
+        requiredFields: ['summary', 'recommendations', 'comfort_index']
+    );
+
+    $systemPrompt = file_get_contents(
+        resource_path('prompts/system/weather_analyst.txt')
+    );
+
+    $userPrompt = view('prompts.user.analyze_weather', $weatherData)->render();
+
+    $response = Prism::structured()
+        ->using(Provider::Ollama, 'llama3.2')
+        ->withSystemPrompt($systemPrompt)
+        ->withPrompt($userPrompt)
+        ->withSchema($schema)
+        ->generate();
+
+    return $response->structured;
+}
+```
+
+Now you're guaranteed to receive an object with exactly the fields you specified. No parsing. No validation. No surprises.
+
+## Streaming for Better User Experience
+
+When your AI features face users, waiting for a complete response creates a poor experience. Streaming displays the response as it's generated:
+
+```php
+public function analyzeConditionsStream(array $weatherData): \Generator
+{
+    $systemPrompt = file_get_contents(
+        resource_path('prompts/system/weather_analyst.txt')
+    );
+
+    $userPrompt = view('prompts.user.analyze_weather', $weatherData)->render();
+
+    $stream = Prism::text()
+        ->using(Provider::Ollama, 'llama3.2')
+        ->withSystemPrompt($systemPrompt)
+        ->withPrompt($userPrompt)
+        ->stream();
+
+    foreach ($stream as $chunk) {
+        yield $chunk->text;
+    }
+}
+```
+
+Combine this with Server-Sent Events or WebSockets on your frontend for a responsive, engaging user experience.
+
+## Testing Without API Calls
+
+Your test suite shouldn't make real LLM calls. It would be slow, potentially expensive, and non-deterministic. Prism provides fakes for this:
+
+```php
+use Tests\TestCase;
+use EchoLabs\Prism\Facades\Prism;
+use EchoLabs\Prism\Testing\PrismFake;
+
+class WeatherAnalysisServiceTest extends TestCase
+{
+    public function test_it_analyzes_weather_conditions(): void
+    {
+        $fake = Prism::fake([
+            'This is a beautiful day in London with perfect conditions for outdoor activities.',
+        ]);
+
+        $service = app(WeatherAnalysisService::class);
+        
+        $result = $service->analyzeConditions([
+            'city' => 'London',
+            'temperature' => 22,
+            'conditions' => 'Sunny',
+            'humidity' => 55,
+            'wind_speed' => 10,
+        ]);
+
+        $this->assertStringContainsString('beautiful day', $result);
+        
+        $fake->assertPromptContains('London');
+    }
+}
+```
+
+Fast tests. Full control. No API costs.
+
+## Putting It Together
+
+Here's a complete controller demonstrating both traditional HTTP endpoints and streaming:
+
+```php
+<?php
+
+namespace App\Http\Controllers;
+
+use App\Services\WeatherAnalysisService;
+use Illuminate\Http\Request;
+
+class WeatherAnalysisController extends Controller
+{
+    public function __construct(
+        private WeatherAnalysisService $service
+    ) {}
+
+    public function analyze(Request $request)
+    {
+        $validated = $request->validate([
+            'city' => 'required|string',
+            'temperature' => 'required|numeric',
+            'conditions' => 'required|string',
+            'humidity' => 'nullable|numeric',
+            'wind_speed' => 'nullable|numeric',
+        ]);
+
+        $analysis = $this->service->analyzeConditionsStructured($validated);
+
+        return response()->json([
+            'data' => $analysis,
+        ]);
+    }
+
+    public function analyzeStream(Request $request)
+    {
+        $validated = $request->validate([
+            'city' => 'required|string',
+            'temperature' => 'required|numeric',
+            'conditions' => 'required|string',
+            'humidity' => 'nullable|numeric',
+            'wind_speed' => 'nullable|numeric',
+        ]);
+
+        return response()->stream(function () use ($validated) {
+            foreach ($this->service->analyzeConditionsStream($validated) as $chunk) {
+                echo "data: " . json_encode(['chunk' => $chunk]) . "\n\n";
+                ob_flush();
+                flush();
+            }
+        }, 200, [
+            'Content-Type' => 'text/event-stream',
+            'Cache-Control' => 'no-cache',
+            'X-Accel-Buffering' => 'no',
+        ]);
+    }
+}
+```
+
+## Why These Patterns Matter
+
+Let me break down what makes this architecture work:
+- **Separation of concerns**: Prism handles LLM communication. MCP handles capability exposure. Your application logic stays focused on business problems.
+- **Provider flexibility**: Switching from Ollama to GPT-4 or Claude? Change one line. A/B testing different models? Easy.
+- **Prompt maintainability**: Your prompts live in version-controlled files. Anyone can iterate on them without touching code.
+- **Testability**: Mock LLM responses for reliable, fast tests.
+- **Scalability**: Adding new AI capabilities means adding new tools and prompts. The structure doesn't fight you.
+- **Interoperability**: AI agents can discover and use your capabilities through MCP without custom integration work.
+
+## Where to Go From Here
+
+This foundation supports increasingly sophisticated features:
+- **Multi-step workflows**: Chain AI calls together. Have one AI analyze data, another synthesize it, another present it.
+- **Dynamic tool selection**: Let the AI choose which tools to use based on context.
+- **Multi-modal capabilities**: Add image analysis, document processing, or audio transcription.
+- **Response caching**: Reduce costs by caching expensive AI responses.
+- **Usage monitoring**: Track token consumption, response times, and costs across your application.
+- **Rate limiting**: Protect your resources from runaway AI loops or abuse.
+
+The patterns you've learned here scale as your needs grow.
+
+## Wrapping Up
+
+Building AI features into Laravel applications doesn't require complexity. With Prism and MCP, you get clean abstractions that keep your options open.
+
+File-based prompts make iteration easy. Structured outputs ensure reliability. Provider agnosticism means you can experiment freely. MCP integration enables AI-to-AI communication without custom API work.
+
+When you want to switch providers, test new models, or expose your capabilities to other agents, these patterns have you covered.
+
+Now build something useful. The foundation is solid. The patterns are proven. The rest is up to you.

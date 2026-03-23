@@ -1,0 +1,92 @@
+---
+title: "Expandable relationships with sparse expansions"
+slug: "expandable-relationships-with-sparse-expansions"
+description: "Avoid over-fetching by default while letting clients pull related data in one call when needed using expand parameters."
+category: "reading-data"
+complexity: "intermediate"
+apiStyles: ["rest"]
+useWhen: "You want to avoid over-fetching by default but let clients pull related data in one call when needed."
+avoidWhen: "Relationships are huge or consistently expensive to fetch, and bundling them will hurt performance."
+tags: ["relationships", "expansions", "over-fetching"]
+related: ["cursor-based-pagination-for-stable-lists"]
+---
+
+Instead of always embedding everything, or always forcing N+1 client calls, you expose a base representation and allow clients to “expand” specific relationships via a query parameter like `expand=`.
+
+Example: base order representation.
+
+```http
+GET /orders/ord_123
+Accept: application/json
+HTTP/1.1 200 OK
+Content-Type: application/json
+
+{
+  "id": "ord_123",
+  "total": 4900,
+  "currency": "GBP",
+  "customer_id": "cus_123",
+  "item_ids": ["item_1", "item_2"]
+}
+```
+
+Expanded view:
+
+```
+GET /orders/ord_123?expand=customer,items
+Accept: application/json
+
+HTTP/1.1 200 OK
+Content-Type: application/json
+
+{
+  "id": "ord_123",
+  "total": 4900,
+  "currency": "GBP",
+  "customer": {
+    "id": "cus_123",
+    "name": "Ada Lovelace",
+    "email": "ada@example.test"
+  },
+  "items": [
+    {
+      "id": "item_1",
+      "sku": "TSHIRT-001",
+      "quantity": 1
+    },
+    {
+      "id": "item_2",
+      "sku": "MUG-042",
+      "quantity": 2
+    }
+  ]
+}
+```
+
+You can also support nested expansions such as ‎`expand=customer.address`.
+
+Trade-offs and notes ￼
+
+Pros
+
+- Default responses stay lean and fast.
+
+- Clients can trade extra payload for fewer round trips when it makes sense.
+
+- Reduces proliferation of “special” endpoints like ‎`/orders-with-customer-and-items`.
+
+Cons
+
+- Implementation complexity grows with the depth of expansions.
+
+- Harder to cache responses if variations explode.
+
+DX tips
+
+- Document available expansion paths per resource (‎`customer`, ‎`items`, ‎`items.product`, and so on).
+
+- Enforce a sane limit on the number of expansions to avoid “fetch everything” abuse.
+
+- Consider combining with sparse fieldsets (‎`fields[customer]=id,name`).
+
+

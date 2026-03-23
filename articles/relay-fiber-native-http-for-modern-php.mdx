@@ -1,0 +1,281 @@
+---
+title: "Relay: Building a Fiber-Native HTTP Layer for Modern PHP"
+description: Explore the design and implementation of Relay, a new HTTP transport layer for PHP 8.5+.
+category: PHP
+pubDate: 2026-02-03
+image: "/images/social/articles/relay-fiber-native-http-for-modern-php.png"
+minRead: 12
+canonical: https://sevalla.com/blog/relay-fiber-native-http-for-modern-php/
+sponsor:
+  name: Sevalla
+  url: https://juststeveking.link/host
+  logo: https://github.com/sevalla-hosting.png
+author:
+  name: Steve McDougall
+  avatar:
+    src: https://avatars.githubusercontent.com/u/6368379?v=4
+    alt: Steve McDougall
+tags: ["php", "http", "fibers", "concurrency", "relay", "modern-php"]
+---
+
+I have been thinking about HTTP clients in PHP for a while now. We have had [Guzzle](https://docs.guzzlephp.org/en/stable/) for years, and it has served us well. But PHP is changing.
+
+With Fibers landing in [PHP 8.1](https://www.php.net/releases/8.1/en.php) and the language continuing to evolve, I started asking myself: what would an HTTP transport layer look like if we built it from scratch today, with no baggage from the past?
+
+That question led me to build Relay.
+
+## What is Relay?
+
+Relay is a zero-bloat, fiber-native transport layer for PHP 8.5+. At its core, it treats HTTP requests as immutable signals flowing through a pipeline. No massive dependency tree, no adapter abstractions, just `ext-curl`, native Fibers, and a functional API.
+
+Here is what a basic request looks like:
+
+```php
+use JustSteveKing\Relay\Http\Request;
+use JustSteveKing\Relay\Http\Transceiver;
+use JustSteveKing\Relay\Http\Success;
+use JustSteveKing\Relay\Http\Failure;
+
+$signal = new Request(uri: 'https://api.example.com/users')
+    |> Transceiver::send(...);
+
+match (true) {
+    $signal instanceof Success => handleSuccess($signal),
+    $signal instanceof Failure => handleFailure($signal),
+};
+```
+
+Notice that there is no try-catch. No exceptions flying around for a 404 or 500 response. The result is always a `Signal`, either `Success` or `Failure`. You pattern match on the outcome and handle it explicitly.
+
+## Why am I building this?
+
+Three reasons kept nagging at me.
+
+### 1. Exceptions are not errors
+
+This is the big one. In most PHP HTTP clients, a 404 response throws an exception. A 500 throws an exception. Network timeout? Exception. Server returned invalid JSON? Exception.
+
+But here is the thing: a 404 is not an exception. It is a completely valid HTTP response. The server did exactly what it was supposed to do. Treating expected outcomes as exceptions leads to awkward code where you wrap everything in try-catch blocks and then inspect the exception to figure out what actually happened.
+
+Relay takes a different approach. The `Signal` interface has two implementations:
+
+```php
+readonly class Success implements Signal
+{
+    public function __construct(
+        public mixed $data,
+        public Status $status,
+        public array $headers = [],
+    ) {}
+}
+
+readonly class Failure implements Signal
+{
+    public function __construct(
+        public string $reason,
+        public Status $status,
+        public array $context = [],
+    ) {}
+}
+```
+
+A 404? That is a `Success` with a `Status::NOT_FOUND`. The request succeeded. The server responded. You got your answer. A `Failure` is reserved for actual failures: network timeouts, DNS resolution errors, connection refused.
+
+This distinction matters. It makes your code cleaner and your intent clearer.
+
+### 2. Fibers change everything
+
+PHP 8.1 gave us Fibers, but most libraries treat them as an afterthought. Relay is built from the ground up, assuming Fibers are the primary execution model.
+
+The `Scheduler` manages a `curl_multi` handle under the hood. When you call `Transceiver::send()`, your Fiber suspends while waiting for I/O and resumes when the response arrives. Other Fibers can run in the meantime.
+
+This means you can write concurrent code that looks synchronous:
+
+```php
+use JustSteveKing\Relay\Http\Concurrent;
+
+$results = Concurrent::run([
+    'users' => fn() => Transceiver::send($usersRequest),
+    'posts' => fn() => Transceiver::send($postsRequest),
+    'comments' => fn() => Transceiver::send($commentsRequest),
+]);
+```
+
+Three requests, running in parallel, without callbacks or promises. The syntax is boring in the best possible way. You write what you mean, and Relay handles the coordination.
+
+Need to limit concurrency? Use the Pool:
+
+```php
+use JustSteveKing\Relay\Http\Pool;
+
+// Process 100 requests, but only 5 at a time
+$results = Pool::work($tasks, concurrency: 5);
+```
+
+Want to race multiple mirrors and take the fastest response? There is `Race::any()` for that.
+
+### 3. Immutability simplifies everything
+
+Requests in Relay are immutable. When you call `with()`, you get a new instance:
+
+```php
+$request = new Request(uri: 'https://api.example.com');
+
+$authenticated = $request->with([
+    'headers' => [
+        ...$request->headers,
+        'Authorization' => 'Bearer token',
+    ],
+]);
+```
+
+The original `$request` is unchanged. This makes middleware composition trivial and eliminates entire categories of bugs where shared state gets mutated unexpectedly.
+
+## How does it compare to Guzzle?
+
+Guzzle is battle-tested. It has been around for over a decade. It handles edge cases I have probably never even thought about. I am not here to say Guzzle is bad, I've used and relied upon it for many years.
+
+But Guzzle carries history. It was designed for a different version of PHP. It uses PSR-7 and PSR-18 interfaces, which add abstraction layers that you pay for whether you need them or not. It uses exceptions for HTTP error responses. It requires a promise library for async operations.
+
+Here is a side-by-side comparison for concurrent requests:
+
+Guzzle with Promises:
+
+```php
+use GuzzleHttp\Client;
+use GuzzleHttp\Promise\Utils;
+
+$client = new Client();
+
+$promises = [
+    'users' => $client->getAsync('/users'),
+    'posts' => $client->getAsync('/posts'),
+];
+
+$results = Utils::settle($promises)->wait();
+
+foreach ($results as $key => $result) {
+    if ($result['state'] === 'fulfilled') {
+        $response = $result['value'];
+    } else {
+        $exception = $result['reason'];
+    }
+}
+```
+
+Relay with Fibers:
+
+```php
+use JustSteveKing\Relay\Http\Concurrent;
+
+$results = Concurrent::run([
+    'users' => fn() => Transceiver::send($usersRequest),
+    'posts' => fn() => Transceiver::send($postsRequest),
+]);
+
+foreach ($results as $key => $signal) {
+    match (true) {
+        $signal instanceof Success => process($signal),
+        $signal instanceof Failure => log($signal->reason),
+    };
+}
+```
+
+The Relay version reads top to bottom. No promises, no `wait()`, no state inspection. The concurrent execution is an implementation detail, not something you have to manage.
+
+## The architecture
+
+Relay uses a few key concepts, and I borrow some naming from Star Trek, because why not?
+
+- **Signal**: The result of an HTTP operation. Either `Success` or `Failure`. You never catch exceptions for HTTP results.
+- **Transceiver**: Converts a `Request` into `Signal` by performing the actual network I/O.
+- **Scheduler (The WarpCore)**: The event loop. It manages `curl_multi` handles and suspends/resumes Fibers. You wrap your application entry point with it:
+
+```php
+use JustSteveKing\Relay\Http\Scheduler;
+
+Scheduler::run(function () {
+    // Your application code runs here
+});
+```
+
+- **Conduit**: The conceptual pipeline through which requests flow. With the pipe operator, this becomes literal:
+
+```php
+$signal = $request
+    |> Auth::bearer($token)
+    |> Transceiver::send(...);
+```
+
+## Middleware without the complexity
+
+Relay supports middleware, but it is just function composition. A middleware is a callable that wraps a sender:
+
+```php
+use JustSteveKing\Relay\Http\Middleware\Retry;
+use JustSteveKing\Relay\Http\Middleware\Cache;
+
+$sender = Transceiver::send(...);
+$sender = Retry::wrap($sender, attempts: 3, delayMs: 100);
+$sender = Cache::wrap($sender, $cache, ttl: 3600);
+
+$signal = $sender($request);
+```
+
+The `Retry` middleware will retry failed requests up to three times. The `Cache` middleware will store successful responses and return cached results on subsequent calls.
+
+If you prefer a more traditional API, there is a `Client` class:
+
+```php
+use JustSteveKing\Relay\Client;
+
+$client = new Client(
+    baseUrl: 'https://api.example.com',
+    defaultHeaders: ['Accept' => 'application/json'],
+    middleware: [
+        fn($next) => Retry::wrap($next, attempts: 3),
+    ],
+);
+
+$signal = $client->get('/users');
+```
+
+## Testing built in
+
+One thing that always frustrates me with HTTP clients is testing. You either mock the client, use a recording proxy, or hit real endpoints in tests.
+
+Relay ships with `Recorder` and `Fixture` classes:
+
+```php
+// Record a real response
+$recorder = new Recorder(__DIR__ . '/fixtures');
+$sender = $recorder->record(Transceiver::send(...), 'user-profile');
+$signal = $sender($request); // Makes real call, saves to fixtures/user-profile.json
+
+// Replay in tests
+$fixture = new Fixture(__DIR__ . '/fixtures');
+$sender = $fixture->replay('user-profile');
+$signal = $sender($request); // Returns recorded response, no network call
+```
+
+Your tests become fast and deterministic. You record once against the real API, then relay forever.
+
+## When should you use Relay?
+
+If you are building something new on PHP 8.5+ and want to embrace modern PHP idioms, Relay is worth considering. If you need concurrent requests without callback hell, Relay makes that straightforward. If you are tired of wrapping every HTTP call in try-catch, the Signal pattern might resonate with you.
+
+If you have an existing codebase that relies heavily on PSR-7/PSR-18, Guzzle is probably the pragmatic choice. Relay does not implement those interfaces by design. It is not trying to be a drop-in replacement.
+
+## What is next?
+
+Relay is still young. I am using it in production for a handful of projects, but there are some rough edges still. The documentation needs work, some error messages could be more helpful, the pool implementation could be smarter about scheduling.
+
+But the core ideas are solid. Fiber-native concurrency, immutable requests, and explicit result handling make for code that is easier to reason about. I have been enjoying building with it, and I think others might do too.
+
+You can find Relay on [GitHub](https://github.com/JustSteveKing/relay) and install it via Composer:
+
+```bash
+composer require juststeveking/relay
+```
+
+Give it a try, [open issues](https://github.com/JustSteveKing/relay/issues) if anything breaks or you wish it did something differently. That is how we make tools better.

@@ -1,0 +1,218 @@
+---
+title: "Building a production-ready Go service with Go Blueprint"
+description: "Learn how Go Blueprint transforms your workflow for building production-ready microservices."
+category: API Development
+pubDate: 2025-10-08
+tags: ["Go", "Golang", "Microservices", "Blueprint", "DevOps", "API", "Backend", "Sevalla", "Docker", "CI/CD"]
+draft: false
+sponsor:
+  name: Sevalla
+  url: https://juststeveking.link/host
+  logo: https://github.com/sevalla-hosting.png
+featured: true
+readingTime: 14
+canonical: "https://sevalla.com/blog/scaffolding-go-services-with-blueprint/"
+crossPost:
+  originalUrl: "https://sevalla.com/blog/scaffolding-go-services-with-blueprint/"
+  originalSite: "Sevalla Blog"
+  publishedDate: 2025-08-20
+  permission: true
+---
+
+# Building a production-ready Go service with Go Blueprint
+
+I've been building Go services for a few years, and I'll be honest - I was getting tired of the same old song and dance. Every new project meant creating folders, choosing a web framework, setting up database connections, and writing yet another Dockerfile. Sounding familiar yet?
+
+A few months ago, I discovered [Go Blueprint](https://docs.go-blueprint.dev/), which has completely changed how I approach new projects.
+
+Instead of spending my first day (or, let's be real, sometimes my first week) on boilerplate, I'm now shipping functional services in hours - sometimes even minutes. Let me explain why this tool has become an essential part of my development workflow.
+
+## The problem I didn't realize I had
+
+Here's a question: how much time do you spend setting up new Go projects versus actually building features? If you're like I was, probably way too much.
+
+Every time I started a new microservice, I'd face the same decision paralysis:
+
+• Should I use [Gin](https://gin-gonic.com/) this time, or stick with [Chi](https://go-chi.io/)?
+• What's the latest best practice for structuring Go projects?
+• Do I really want to write another database connection setup from scratch?
+• Should I set up CI/CD now or "add it later" (spoiler: I never added it later)?
+
+But the real killer wasn't just the time - it was the mental overhead.
+
+I remember one particularly frustrating morning when I spent three hours debugging a connection pool configuration instead of building the authentication logic I actually needed. That's when I realized I was burning creative energy on decisions that didn't really matter for the business logic I was trying to build.
+
+### The hidden costs of setup fatigue
+
+Let me paint you a more specific picture. Last year, I tracked my time across five new microservices I built for a distributed system. Between project structure decisions, framework integration, database setup, Docker configuration, and CI/CD setup, I was losing anywhere from 17 to 33 hours per service before writing a single line of business logic.
+
+For a team of five developers starting 2 to 3 services per month, we're talking about losing 2 to 4 weeks of development time monthly to boilerplate. That's not just inefficient, but demoralising.
+
+That's where Go Blueprint comes in. It handles all these decisions with sensible defaults, letting me focus on what actually matters.
+
+## Getting started: My first Go Blueprint project
+
+Installation is straightforward. You need Go 1.18 or later (which you probably already have), it's just:
+
+```bash
+go install github.com/melkeydev/go-blueprint@latest
+```
+
+The real magic happens when you run your first project:
+
+```bash
+go-blueprint create
+```
+
+I love the interactive mode. It walks you through each decision with clear explanations, making it perfect when you're experimenting or learning.
+
+But when I know exactly what I want (which is most of the time now), I use the CLI flags for speed:
+
+```bash
+go-blueprint create \
+  --name my-service \
+  --framework gin \
+  --driver postgres \
+  --git commit
+```
+
+This generates a complete, Git initialized project with Gin and Postgres integration.
+
+I was immediately impressed by how thoughtfully the generated code is structured. You get proper error handling, connection pooling, graceful shutdown, HTTP server setup with middleware for logging and CORS, and a sensible folder structure that follows Go community best practices. This isn't skeleton code - it's functional infrastructure you can build on immediately.
+
+## Framework choices: Finding what works for you
+
+One thing I appreciate about Go Blueprint is that it doesn't force you into a specific framework. It supports all the major players, and I've experimented with most of them through different projects.
+
+Gin has become my go-to for most projects. It's fast, has excellent middleware support, and has a huge community. I've used Gin-based services in production that handle 10,000+ requests per minute with minimal latency. When I'm building APIs that need to handle significant traffic, this is usually my first choice.
+
+• **Chi** is what I reach for when I want something that feels more "Go-native." It builds on the standard library patterns you already know, which makes the codebase easier for other Go developers to jump into. Chi feels more idiomatic to Go's standard library, and the routing is incredibly flexible.
+
+• **Fiber** is interesting if you're coming from Node.js. I've used it when working with teams that have Express experience - the syntax feels familiar, which reduces the learning curve. Fiber is extremely fast and has a feature-rich API.
+
+The beauty of Go Blueprint is that switching between these frameworks is just a flag change. Want to try the same service architecture with a different router? Generate two versions and compare.
+
+I've benchmarked all three in production scenarios, and while performance differences exist, they're often negligible in real applications compared to the productivity gains from using familiar patterns.
+
+## Database integration: Beyond the basics
+
+I've worked on teams where setting up database connections was a multi-day affair involving architectural reviews and endless Slack discussions. Go Blueprint cuts through all that complexity.
+
+When I generate a project with Postgres support, I don't just get a connection string and a prayer. I get a properly structured database package with connection pooling, error handling, timeout handling, context usage, health check implementation, and integration patterns that follow Go best practices.
+
+The Redis integration is equally thoughtful. It includes proper context handling and error management, which I've used in production chat applications handling thousands of concurrent connections. For document-heavy services, the MongoDB integration includes proper connection pooling and context handling, which got me up and running in minutes, not hours.
+
+One thing I've learned to add to every Go Blueprint project is a migration strategy. While the tool doesn't automatically generate migrations, the structure makes it easy to add them. I typically call migration functions from my main function during development and use proper migration tools like `golang-migrate` in production.
+
+## Production features that actually matter
+
+Here's where Go Blueprint really shines - it doesn't just give you a `hello world` service. It scaffolds production-ready infrastructure.
+
+The advanced features flag is where things get serious:
+
+```bash
+go-blueprint create \
+  --name my-api \
+  --framework chi \
+  --driver postgres \
+  --advanced \
+  --feature docker \
+  --feature githubaction \
+  --feature websocket \
+  --feature react
+```
+
+### CI/CD that actually works
+
+I can't tell you how many projects I've seen that never got proper CI/CD because "we'll add it later." Go Blueprint generates a GitHub Actions workflow that includes service containers for testing with real databases, proper test isolation, and Docker image building.
+
+I've extended this exact workflow for production deployments by adding security scanning and deployment steps.
+
+### Docker that just works
+
+The generated Dockerfile follows multi-stage build best practices with efficient layer caching. I've used this exact pattern in production services handling millions of requests daily.
+
+It's lean (typically under 20MB final image), secure (non-root user, minimal attack surface), and builds fast.
+
+### WebSocket support for real-time features
+
+When I needed to add real-time capabilities to a project, the WebSocket integration saved me hours of research and setup. The generated code includes a properly implemented WebSocket hub with connection management, broadcasting, and error handling. I've used variations of this code in production chat applications serving thousands of concurrent users.
+
+## Frontend integration: Full-stack in one command
+
+I was skeptical about the frontend options at first. How good could auto-generated React really be? Turns out, pretty good.
+
+The React option generates a complete Vite-powered frontend with TypeScript and Tailwind CSS. It includes a clean `useApi` hook that provides a solid interface for communicating with your Go backend. This provides a solid foundation for building admin dashboards, API documentation sites, and user-facing applications.
+
+The HTMX option is particularly clever if you're building server-rendered applications. It gives you the interactivity of an SPA without the complexity of a separate frontend build process. For many internal tools and dashboards, this approach is perfect.
+
+## Real-world example: Building a chat API
+
+Let me walk you through a real example. I recently wanted to build a chat API with real-time messaging and a web dashboard:
+
+```bash
+go-blueprint create \
+  --name chat-api \
+  --framework fiber \
+  --driver redis \
+  --frontend react \
+  --advanced \
+  --feature websocket \
+  --feature docker \
+  --feature githubaction
+```
+
+In about 30 seconds, I had a complete WebSocket-enabled chat server, Redis integration for message persistence, React frontend for testing, Docker setup for deployment, and a CI pipeline for automated testing.
+
+The total time from command to the first message sent through the chat system was less than 5 minutes. But here's where it gets interesting - extending the generated code was straightforward. I added room-based messaging by creating new services that followed the established patterns and integrated cleanly with the generated database layer.
+
+## Customization: Making it your own
+
+What I really appreciate is that Go Blueprint doesn't lock you into anything. The generated code is clean, readable, and completely yours to modify.
+
+I typically start by adding my preferred configuration management (I'm a fan of [viper](https://pkg.go.dev/github.com/spf13/viper)), integrating my logging setup (usually [zerolog](https://pkg.go.dev/github.com/rs/zerolog)), adding my standard middleware for metrics and tracing, and customising the error handling patterns. The beauty is that I'm starting from a solid foundation instead of a blank file. I can focus on the customisations that matter for my specific use case.
+
+For production services, I usually extend the generated structure with security headers, input validation, comprehensive health checks, metrics collection with [Prometheus](https://pkg.go.dev/github.com/prometheus/client_golang/prometheus), and structured logging. The Go Blueprint structure makes all of these additions natural and maintainable.
+
+## Deployment: From local to production with Sevalla
+
+Deploying Go Blueprint applications is an easy process, thanks to the built-in Docker support. You can easily containerize your app and deploy it to various platforms with minimal setup.
+
+One option that works well is [Sevalla](https://app.sevalla.com/), a PaaS platform for apps, databases, and static sites. Sevalla runs on Google Kubernetes Engine with Cloudflare integration, supports Git-based deployments and Dockerfiles out of the box, and takes care of scaling and networking for you.
+
+Like most PaaS platforms, the workflow is straightforward:
+
+1. Connect your GitHub repo to Sevalla.
+2. Sevalla auto-detects the Dockerfile and builds your app.
+3. Add environment variables for database URLs and secrets.
+4. Push to your main branch and watch it go live.
+
+For example, I deployed a chat API with Redis and WebSockets in just a few minutes using this flow. When traffic spiked, Sevalla [automatically scaled](https://docs.sevalla.com/applications/scalability#automatic-horizontal-scaling) the service up and back down without extra setup on my part.
+
+For teams starting with Go Blueprint, Sevalla's simplicity and Docker-first approach make it a good fit, especially compared to the overhead of managing cloud infrastructure directly.
+
+## Why this matters for your team
+
+If you're working on a team, Go Blueprint solves an even bigger problem: consistency. When everyone uses the same scaffolding tool, new services follow the same patterns. Code reviews become easier, deployments are more predictable, and onboarding new developers is smoother.
+
+I've started using Go Blueprint for all new services. I've standardised the approach with a custom template that ensures every service has a consistent framework choice, standardised database integration, Docker containerisation, CI/CD pipeline, and Git initialisation.
+
+This has reduced my average code review time by about 40% because reviewers can quickly navigate to relevant code sections.
+
+## The bottom line
+
+Go Blueprint has fundamentally changed how I start new Go projects. Instead of spending my energy on boilerplate and setup decisions, I'm building features from day one.
+
+The tool embodies something I've learned over my career: the best abstractions don't hide complexity - they eliminate unnecessary complexity while preserving flexibility where you need it. Go Blueprint gives you production-ready infrastructure patterns, consistent project structure, working CI/CD pipelines, and proper Docker configuration, all while keeping the generated code readable and customisable.
+
+If you're building Go services and finding yourself repeating the same setup steps project after project, Go Blueprint is worth trying. It's not just a code generator - it's a distillation of Go community best practices into a tool that gets you building faster.
+
+Ready to try it yourself? Start with a simple project and see how it feels. I think you'll find, like I did, that you never want to start a Go project from scratch again.
+
+Check it out at: [https://github.com/melkeydev/go-blueprint](https://github.com/melkeydev/go-blueprint)
+
+What's your biggest pain point when starting new Go projects? Share your experience with us on [X](https://x.com/sevalla_hosting).
+
+---
+
+*This article was originally published on [Sevalla Blog](https://sevalla.com/blog/scaffolding-go-services-with-blueprint/). Follow me on [Twitter](https://twitter.com/juststeveking) for more Go and backend development insights.*

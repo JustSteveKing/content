@@ -1,0 +1,272 @@
+---
+title: "Event-driven architecture with domain-driven design"
+description: "Learn how to implement event-driven architecture using domain-driven design principles to build scalable and maintainable systems."
+pubDate: "2026-01-12"
+canonical: "https://sevalla.com/blog/event-driven-architecture-ddd/"
+crossPost:
+    originalUrl: "https://sevalla.com/blog/event-driven-architecture-ddd/"
+    originalSite: "Sevalla"
+    publishedDate: "2026-01-12"
+    permission: true
+author:
+    name: "Steve McDougall"
+---
+
+Modern software does not fail because developers cannot figure out frameworks. It fails because teams do not understand the domain they are building for. Architecture, scalability, and performance all follow from that understanding.
+Event-driven architectures built on Domain-Driven Design address this directly. They force teams to model what actually happens in the business, provide a structure that keeps complexity contained, and scale horizontally without turning into distributed spaghetti.
+This guide shows how to design an event-driven system properly. There is no hand-waving and no romanticising. The focus is on the mechanics that make this approach work in real systems.
+
+## Before you write code: Map the domain reality
+Most architectures die early because the team started by choosing the tech stack instead of understanding the business behaviour.
+DDD treats the domain as the primary truth. Everything else is an implementation detail. To do this properly, you start with Event Storming, a workshop method that weeds out ambiguity and exposes actual business behaviour.
+Let's anchor everything to a realistic example domain.
+
+### The example domain: A media licensing platform
+Photographers upload assets, buyers purchase licenses, consumers report usage, and a compliance team investigates infringements. At a high level, assets are uploaded, metadata is extracted, assets are indexed, licenses are purchased, usage is reported, and compliance investigates anomalies.
+Each of these is a fact that happened. That's what events represent. From an initial workshop, you might capture raw events like this:
+```
+AssetUploaded
+MetadataExtracted
+AssetIndexed
+LicensePurchased
+UsageReported
+UsageExceededLicense
+InfringementDetected
+```
+A raw board like this looks chaotic, and that's intentional. Event Storming deliberately starts unstructured because you want the mess to reveal itself before you try to organise it.
+
+## From chaos to structure: The Event Storming process
+The value of Event Storming becomes clear once you start grouping related events together. As patterns form, the domain begins to reveal its own boundaries.
+You start with scattered events. At this stage, they are simply a list of things that happen in the system:
+```
+AssetUploaded MetadataExtracted LicensePurchased
+UsageReported AssetIndexed InfringementDetected
+```
+Next, you group these events by flow. This exposes the processes that already exist in the business, even if they were never explicitly defined:
+```
+[ AssetUploaded → MetadataExtracted → AssetIndexed ]
+[ LicensePurchased → UsageReported → InfringementDetected ]
+```
+As these flows take shape, bounded contexts emerge naturally from them:
+```
+[Asset Processing BC] : Upload → Metadata → Index
+[Licensing BC] : Purchase → Usage
+[Compliance BC] : Usage → Infringement
+```
+At this point, you have identified three bounded contexts without debating terminology or drawing architectural diagrams. The domain itself defines the boundaries.
+
+## Understanding bounded contexts
+Bounded contexts are often mistaken for microservices, but they are distinct entities. A bounded context defines a linguistic and behavioural boundary within the domain.
+Inside a bounded context, terms have precise meanings, models stay consistent, rules and invariants get enforced, and domain events reflect internal behaviour. Between contexts, communication happens through explicit integration events, anti-corruption layers, and message contracts.
+Using our example domain, we can identify three bounded contexts.
+* **Asset Processing** handles uploads, validates basic metadata, extracts technical metadata, moves assets into long-term storage, and prepares assets for search.
+* **Licensing** defines license types, enforces selling rules, processes license purchases, and manages usage rights.
+* **Compliance** analyses reported usage, detects infringements, and triggers manual reviews.
+Each bounded context emits domain events internally and produces integration events for external consumers. This separation keeps responsibilities clear and provides a foundation for an architecture that can evolve without degrading over time.
+
+## Domain events vs integration events
+Teams fail when they treat "events" like a single universal thing. There are two distinct categories, and understanding the difference eliminates approximately 80% of the pain associated with event-driven architecture.
+
+### Domain events stay inside
+Domain events describe business facts meaningful within the bounded context. Think `AssetUploaded`, `LicensePurchased`, or `UsageReported`. These aren't designed as API payloads - they're stored internally in an event log, table, or stream. They trigger domain policies and can run synchronously during a transaction.
+
+### Integration events go outside
+Integration events describe facts that other systems need to know about. Think `AssetReadyForIndexing`, `LicensePurchaseConfirmed`, or `UsageViolationDetected`. These are public contracts, always asynchronous, always versioned, and always published via an outbox to a message broker.
+The golden rule is simple: domain events stay inside, integration events go outside. Follow this and you avoid the distributed monolith trap that kills most event-driven systems.
+
+## Commands: Expressing user intent
+Commands represent attempts to change the state of the domain. They don't express what happened, rather they express what should happen.
+A command validates user intent, targets a specific aggregate, gets handled synchronously, and produces domain events if successful. Examples include `UploadAsset`, `PurchaseLicense`, and `ReportUsage`.
+The flow is straightforward:
+```
+User → issues PurchaseLicense
+ ↓
+Command Handler → loads License aggregate
+ ↓
+Aggregate validates invariant: "cannot purchase twice"
+ ↓
+Aggregate emits domain event: LicensePurchased
+ ↓
+Domain Bus dispatches handlers
+```
+No magic. No "it just runs." Every step is explicit and traceable.
+
+## Aggregates: The guardians of invariants
+Aggregates are consistency boundaries that protect business invariants, apply commands, and emit domain events. They're the enforcement mechanism that keeps your domain honest.
+Let's model a License aggregate with the following invariants: a license can only be purchased once, a license cannot exceed its allowed usage, and a license cannot be used before it is purchased.
+```php
+final class License extends AggregateRoot
+{
+ private bool $sold = false;
+ private int $allowedUsage = 0;
+ private int $used = 0;
+
+ public function purchase(UserId $buyer): void
+ {
+ if ($this->sold) {
+ throw new DomainException("License already purchased.");
+ }
+
+ $this->sold = true;
+
+ $this->record(new LicensePurchased(
+ licenseId: $this->id,
+ buyer: $buyer,
+ occurredAt: now(),
+ ));
+ }
+
+ public function reportUsage(int $amount): void
+ {
+ if (! $this->sold) {
+ throw new DomainException("Cannot report usage before purchase.");
+ }
+
+ $this->used += $amount;
+
+ $this->record(new UsageReported(
+ licenseId: $this->id,
+ used: $this->used,
+ occurredAt: now(),
+ ));
+
+ if ($this->used > $this->allowedUsage) {
+ $this->record(new UsageExceededLicense(
+ licenseId: $this->id,
+ used: $this->used,
+ occurredAt: now(),
+ ));
+ }
+ }
+}
+```
+The aggregate maintains consistency across the domain, regardless of who or what interacts with the system.
+
+## The domain event bus
+The domain bus is synchronous, resides within the bounded context, executes within the same transaction, and dispatches domain handlers and policies. If a domain event needs to trigger external integration, that must go through the outbox - never directly to the broker.
+The flow looks like this:
+```
+Aggregate emits DomainEvent
+ ↓
+Domain Bus (sync)
+ ↓
+Handlers execute
+ ↓
+Some handlers write IntegrationEvent to Outbox
+```
+If any part of the transaction fails, it rolls back. That's correctness by design.
+
+## The outbox pattern
+This is non-negotiable. If you publish messages directly to Kafka, SQS, or NATS at the same time as updating your database, you will eventually suffer inconsistency. Either the database succeeds while the broker fails (resulting in a lost event), or the broker succeeds while the database rolls back (resulting in a ghost event being created).
+The outbox fixes this by ensuring database state and integration events commit atomically. Messaging becomes guaranteed eventually consistent, with no lost or phantom events, and horizontal scaling becomes trivial.
+The lifecycle works like this: the aggregate emits domain events, a domain handler saves the integration event into an Outbox table, the database transaction commits, an outbox worker reads pending rows, publishes them to the broker, and marks them as delivered.
+Solid, reliable, production-grade.
+
+## Message brokers
+Brokers like Kafka, NATS, RabbitMQ, AWS SNS/SQS, or Google Pub/Sub provide replay capability, ordering guarantees (in some cases), durable delivery, fan-out, and consumer groups.
+Your integration events travel through them. Domain events never do.
+
+## Read models and projections
+Write models are optimised for correctness. Read models are optimised for querying. A projection subscribes to integration events (or domain events inside a bounded context) and updates its own private model.
+In our domain, you might have a `SearchIndexProjection` that builds search documents, a `LicenseUsageByDayProjection` for analytics, or a `ComplianceAlertsFeedProjection` for the UI.
+A simple projection might look like this:
+```php
+final class LicensePurchasedProjection
+{
+ public function __invoke(LicensePurchased $event): void
+ {
+ PurchaseDailyStats::increment(
+ date: $event->occurredAt->toDateString(),
+ );
+ }
+}
+```
+Read models are disposable, can be rebuilt from an event history, scale independently, and are often stored in different engines, such as Elasticsearch, Redis, ClickHouse, or DynamoDB.
+
+## Sagas and process managers
+A saga manages long-running, multi-step workflows across bounded contexts. Consider an asset processing pipeline that moves through `AssetUploaded`, then `MetadataExtracted`, then `AssetIndexed`, and finally emits `AssetReadyForSearch`.
+The saga tracks state through each step:
+```
+Step 1: Awaiting Metadata
+ → AssetUploaded received
+ → metadata = pending, index = pending
+
+Step 2: Awaiting Index
+ → MetadataExtracted received
+ → metadata = done, index = pending
+
+Step 3: Complete
+ → AssetIndexed received
+ → metadata = done, index = done
+ → Saga emits AssetReadyForSearch
+```
+Sagas store state. Policies do not. Knowing the difference saves you from architectural headaches.
+
+## Anti-corruption layers
+An ACL insulates one bounded context from another. Use them when integrating with legacy systems, protecting one bounded context from another's model, translating terms (like "Customer" vs "Client" vs "User"), or handling breaking changes.
+ACLs map integration events into domain commands, transform models, validate inbound data, and prevent coupling. Good ACLs keep your domain pure.
+
+## Event versioning
+Events are forever, but schemas change. The rules for safe versioning: additive changes are safe, renaming or removing fields is not, use new events only when meaning changes, consumers must handle missing fields, and producers must maintain backward compatibility.
+When an event's meaning fundamentally changes, version the entire event - `LicensePurchased.v1` becomes `LicensePurchased.v2`. Versioning is a fact of life. Embrace it early.
+
+## End-to-end flow
+Let's stitch everything together with a complete scenario: a user uploads an asset.
+The user issues an `UploadAsset` command. The command handler loads the Asset aggregate. The aggregate validates and emits `AssetUploaded` as a domain event. The domain bus dispatches internal handlers. A handler stores `AssetUploadedIntegrationEvent` in the outbox. The database commits.
+The outbox publisher sends the event to the broker. The Asset Processing bounded context receives it. The metadata extractor emits `MetadataExtracted`. The indexer emits `AssetIndexed`. The saga detects completion and emits `AssetReadyForSearch`. The search index projection updates the read model. The UI can now display the searchable asset.
+This is industrial-grade behaviour - not a toy example.
+
+## Implementation structure
+A production-ready structure might look like this:
+```bash
+/src
+ /AssetProcessing
+ /Domain
+ /Aggregates
+ /Entities
+ /ValueObjects
+ /DomainEvents
+ /Services
+ /Repositories
+ /Application
+ /Commands
+ /Handlers
+ /Policies
+ /Infrastructure
+ /ORM
+ /Adapters
+ /Outbox
+ /Messaging
+
+ /Licensing
+ /Domain
+ /Application
+ /Infrastructure
+
+ /Compliance
+ /Domain
+ /Application
+ /Infrastructure
+
+/shared
+ /Kernel
+ /Messaging
+ /EventBus
+ /OutboxProcessing
+```
+Context boundaries remain clear. Infrastructure never pollutes the domain.
+
+## When to avoid events
+Don't apply event-driven patterns everywhere. Use events when the fact is meaningful business history, when multiple consumers need to know, when state transitions matter, or when the domain demands traceability.
+Avoid them when you only need a hook or callback, when you're avoiding writing a simple function, or when a domain service would suffice. Event misuse leads to complexity explosions. Be intentional.
+
+## The business case
+Why this architecture works long-term: complexity stays isolated, behaviour flows are explicit, teams can own bounded contexts independently, the system evolves safely, read models scale effortlessly, events give you an audit history naturally, and behaviour becomes visible, testable, and observable.
+Event-driven DDD isn't academic. It's operational excellence.
+
+## The principles
+These principles keep event-driven DDD systems healthy over time.
+Domain events never leave the bounded context. Integration events are public contracts. Commands express intent, and aggregates enforce rules. The domain bus is synchronous and local, and the outbox is mandatory for maintaining consistency across distributed systems.
+Message brokers exist to transport integration events. Projections build read models, and those read models are disposable. Sagas manage long-running workflows, while anti-corruption layers protect domains from unwanted coupling.
+Events represent immutable historical facts and should be versioned carefully and additively. Do not use events where a simple method call is sufficient.
+When you follow these principles, you end up with a system that can grow for years without collapsing under its own complexity.

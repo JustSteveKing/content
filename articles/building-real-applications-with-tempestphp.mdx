@@ -1,0 +1,986 @@
+---
+title: Building Real Applications with TempestPHP
+description: How to structure TempestPHP applications with domain-first folders, repositories, command handlers, and thin controllers that stay maintainable.
+category: PHP
+pubDate: 2026-03-09
+minRead: 18
+author:
+  name: Steve McDougall
+  avatar:
+    src: https://avatars.githubusercontent.com/u/6368379?v=4
+    alt: Steve McDougall
+tags: ["php", "tempestphp", "architecture", "ddd", "apis", "backend"]
+---
+
+Look, Tempest's documentation does a solid job of showing you what each piece does. But what it doesn't tell you is how to actually put those pieces together into something that won't make you want to rewrite it in six months.
+
+I've been experimenting with Tempest as a Laravel alternative, and one thing became clear pretty quickly: the framework gives you tools, but it doesn't force an architecture on you. That's both liberating and terrifying. When you come from Laravel, you have conventions. You know controllers go in `app/Http/Controllers`. You know models go in `app/Models`. Even if you disagree with those conventions, at least you're not making architecture decisions every time you create a file.
+
+Tempest doesn't give you that. It's minimalist by design. The entire framework is built around the idea that you should be able to see how everything works. No magic, no hidden abstractions. But that means you need to decide how to organize your code.
+
+After building a few projects with it, I've settled on an approach that borrows from domain-driven design without being dogmatic about it. The goal is simple: when you open the codebase six months from now, you should be able to find what you're looking for without grepping through everything.
+
+We're going to build a blog API. Nothing fancy, no frontend, just a clean JSON API that demonstrates these architectural principles. More importantly, I'm going to explain why we make each decision along the way. You'll see how Tempest's command bus and event bus create natural boundaries in your application, and how a little bit of structure upfront saves you from the "throw everything in a pile" trap that kills so many side projects.
+
+## The domain we're building
+
+Pretty straightforward stuff:
+
+- Articles belong to Categories
+- Articles have Authors (Users)
+- Articles can optionally have Sponsors
+- Everything exposed as JSON
+
+The interesting part isn't the domain itself. It's how we organize the code so you can find things six months from now. But before we jump into folder structures, let's talk about why this domain is actually a good teaching tool.
+
+It has just enough complexity to be realistic. A single Article entity with no relationships would be too trivial. A full-blown e-commerce system with products, orders, inventory, shipping, and payments would be overwhelming. This blog domain sits in the sweet spot: multiple entities with clear relationships, optional relationships (sponsors), and business logic that goes beyond simple CRUD.
+
+The relationships here are also representative of what you'll encounter in real applications:
+
+- **One-to-many relationships** (a Category has many Articles)
+- **Required relationships** (every Article must have an Author)
+- **Optional relationships** (an Article might have a Sponsor)
+
+These patterns show up everywhere. An Order has a Customer. A Task has an Assignee. A Project might have a Sponsor. Once you understand how to model this blog API, you can apply the same patterns to whatever you're actually building.
+
+## Getting started
+
+I'm assuming you've already got a fresh Tempest install:
+
+```bash
+composer create-project tempest/app blog-api && cd blog-api
+```
+
+And you've configured your database. I use Postgres, so my `database.config.php` looks like this:
+
+```php
+<?php // app/Config/database.config.php
+
+use Tempest\Database\Config\PostgresConfig;
+use function Tempest\env;
+
+return new PostgresConfig(
+    host: env('DATABASE_HOST', default: '127.0.0.1'),
+    port: env('DATABASE_PORT', default: '5432'),
+    username: env('DATABASE_USERNAME', default: 'postgres'),
+    password: env('DATABASE_PASSWORD', default: 'postgres'),
+    database: env('DATABASE_DATABASE', default: 'blog_api'),
+);
+```
+
+## The architecture problem
+
+When I first started with Tempest, I made the mistake of just dumping everything into `app/` like it was a junk drawer. Controllers mixed with models mixed with commands. It worked, technically, but I couldn't find anything.
+
+The thing is, Tempest doesn't care where you put your files. That's powerful, but it means you need to decide on a structure and stick to it.
+
+Here's the mental trap I fell into: I thought "no structure" meant freedom. It doesn't. It means decision fatigue. Every time I created a new file, I had to think about where it should go. Should this command handler go next to the command? Should it go in a separate handlers folder? Should repositories live in the domain or somewhere else? These micro-decisions add up, and before you know it, you're spending more time organizing code than writing it.
+
+The solution isn't to adopt someone else's structure blindly. It's to understand the principles behind good organization and then apply them consistently.
+
+Here's what I've settled on:
+
+```text
+app/
+  Domain/
+    Articles/
+      Article.php
+      ArticleRepository.php
+      Commands/
+        CreateArticle.php
+        PublishArticle.php
+      Events/
+        ArticleCreated.php
+        ArticlePublished.php
+      Exceptions/
+        ArticleNotFound.php
+        CategoryNotFound.php
+        UserNotFound.php
+        SponsorNotFound.php
+    Categories/
+      Category.php
+    Sponsors/
+      Sponsor.php
+    Users/
+      User.php
+  Infrastructure/
+    Persistence/
+      TempestArticleRepository.php
+    Http/
+      Controllers/
+        ArticlesController.php
+  Database/
+    Migrations/
+      2025_02_06_create_users_table.php
+      2025_02_06_create_categories_table.php
+      2025_02_06_create_sponsors_table.php
+      2025_02_06_create_articles_table.php
+```
+
+Let me break down the thinking here:
+
+**Domain vs Infrastructure**
+
+This is the core separation. Domain code represents your business logic, the things that would exist even if you weren't using Tempest, even if you weren't building a web application. An Article has a title, belongs to a Category, can be published. That's domain logic.
+
+Infrastructure code is how you implement those concepts using Tempest's tools. Controllers that handle HTTP requests. Repository implementations that use Tempest's query builder. These are infrastructure concerns.
+
+Why does this matter? Because your domain logic should be stable. The rules about what makes a valid Article don't change often. But you might swap out Tempest for something else someday. You might add a GraphQL API alongside your REST API. You might want to expose your domain logic through a CLI tool. If your domain is tangled up with HTTP requests and database queries, those changes become much harder.
+
+**Organizing by feature, not by type**
+
+Notice that under `Domain/`, we have `Articles/`, `Categories/`, `Sponsors/`, and `Users/`. Each of these folders contains everything related to that concept. The Article model lives next to ArticleRepository, which lives next to Article commands and events.
+
+This is intentional. When you're working on article-related functionality, everything you need is in one place. You're not jumping between `app/Models`, `app/Repositories`, `app/Commands`, and `app/Events` trying to find related pieces.
+
+Compare that to organizing by type:
+
+```text
+app/
+  Models/
+    Article.php
+    Category.php
+    User.php
+    Sponsor.php
+  Repositories/
+    ArticleRepository.php
+    CategoryRepository.php
+  Commands/
+    CreateArticle.php
+    PublishArticle.php
+```
+
+This structure makes it hard to see the boundaries of your application. It encourages you to think in technical terms (models, repositories) rather than business terms (articles, categories).
+
+**Where does infrastructure go?**
+
+Under `Infrastructure/`, we separate by technical concern. `Persistence/` has repository implementations. `Http/` has controllers. If we add a CLI layer later, we'd add `Infrastructure/Console/`.
+
+This is where the Tempest-specific code lives. If you decide to migrate away from Tempest, this is the folder that gets rewritten. Your domain stays mostly unchanged.
+
+**What about migrations?**
+
+Migrations are a special case. They're technically infrastructure, but they're so closely tied to your domain models that it makes sense to keep them separate. You need to be able to find and run them in order, which is easier if they're all in one place.
+
+The rules are simple:
+
+- `Domain/` is for your business logic. No HTTP, no JSON, no routing.
+- `Infrastructure/` is for Tempest-specific implementations.
+- `Database/` is for migrations.
+
+This isn't dogma. Adjust it to fit your brain. But having a consistent structure makes everything easier. You stop making architecture decisions and start writing code.
+
+## Building the domain models
+
+Let's start with the entities. These are just plain PHP objects that Tempest knows how to map to database tables.
+
+Before we write any code, let's talk about what we're actually doing here. Tempest's approach to data modeling is refreshingly simple. You write a class that represents your concept. You add properties for the data you care about. Tempest figures out the rest.
+
+This is different from Active Record ORMs where your model extends a base class and inherits a bunch of magic methods. It's also different from Data Mapper ORMs where you have to configure relationships in XML or annotations. Tempest just looks at your class and maps it.
+
+The key is understanding how Tempest thinks about primary keys and relationships.
+
+### Users
+
+```php
+<?php // app/Domain/Users/User.php
+
+namespace App\Domain\Users;
+
+use Tempest\Database\PrimaryKey;
+use Tempest\Database\Uuid;
+
+final class User
+{
+    #[Uuid]
+    public PrimaryKey $uuid;
+
+    public function __construct(
+        public string $name,
+        public string $email,
+    ) {}
+}
+```
+
+Let's break down what's happening here.
+
+**The `PrimaryKey` type**
+
+Tempest has a `PrimaryKey` type that represents whatever your primary key is. It could be an integer, a UUID, whatever. By typing the property as `PrimaryKey`, you're telling Tempest "this is the identifier for this entity."
+
+**The `#[Uuid]` attribute**
+
+This tells Tempest to automatically generate a UUID v7 value when you insert a new record. You don't have to set it yourself. You don't have to worry about collisions. Tempest handles it.
+
+Why UUID v7? Because unlike UUID v4, which is completely random, UUID v7 is time-ordered. That means it's sortable and database-friendly. If you're using Postgres, MySQL, or SQLite, you get the benefits of UUIDs (no auto-increment conflicts, globally unique identifiers) without the performance penalty of completely random values.
+
+**Constructor promotion**
+
+Notice that `$name` and `$email` are declared in the constructor using PHP 8's constructor promotion. This is just cleaner PHP. Instead of declaring properties and then assigning them in the constructor body, we get it all in one line. This isn't Tempest-specific, it's just modern PHP, but it makes your domain models much easier to read.
+
+**Making the class `final`**
+
+I mark all my domain models as `final`. This is a personal preference, but there's reasoning behind it. If a class is `final`, you know it can't be extended. That means you can read the class and understand its complete behavior without having to hunt down subclasses.
+
+In a domain model, there's rarely a good reason to use inheritance. Composition is almost always clearer. So I make them `final` by default to prevent future me from getting clever.
+
+### Categories and Sponsors
+
+Same pattern for both, but let's look at what makes them different from User:
+
+```php
+<?php // app/Domain/Categories/Category.php
+
+namespace App\Domain\Categories;
+
+use Tempest\Database\PrimaryKey;
+use Tempest\Database\Uuid;
+
+final class Category
+{
+    #[Uuid]
+    public PrimaryKey $uuid;
+
+    public function __construct(
+        public string $name,
+        public string $slug,
+    ) {}
+}
+```
+
+```php
+<?php // app/Domain/Sponsors/Sponsor.php
+
+namespace App\Domain\Sponsors;
+
+use Tempest\Database\PrimaryKey;
+use Tempest\Database\Uuid;
+
+final class Sponsor
+{
+    #[Uuid]
+    public PrimaryKey $uuid;
+
+    public function __construct(
+        public string $name,
+        public ?string $website = null,
+    ) {}
+}
+```
+
+Nothing surprising here, but notice that `$website` on Sponsor is nullable. Not every sponsor has a website. We model that reality in the type system using `?string` rather than hiding it in validation logic somewhere.
+
+This is one of those small decisions that makes your code more honest. If something is optional in your domain, make it optional in your type system. Don't make it required and then special-case empty strings or null values later.
+
+### Articles: where relationships get interesting
+
+Now for the main entity. An Article relates to a Category, a User (as author), and optionally a Sponsor:
+
+```php
+<?php // app/Domain/Articles/Article.php
+
+namespace App\Domain\Articles;
+
+use App\Domain\Categories\Category;
+use App\Domain\Sponsors\Sponsor;
+use App\Domain\Users\User;
+use Tempest\Database\BelongsTo;
+use Tempest\Database\PrimaryKey;
+use Tempest\Database\Uuid;
+
+final class Article
+{
+    #[Uuid]
+    public PrimaryKey $uuid;
+
+    #[BelongsTo(ownerJoin: 'category_uuid', relationJoin: 'uuid')]
+    public Category $category;
+
+    #[BelongsTo(ownerJoin: 'author_uuid', relationJoin: 'uuid')]
+    public User $author;
+
+    #[BelongsTo(ownerJoin: 'sponsor_uuid', relationJoin: 'uuid')]
+    public ?Sponsor $sponsor = null;
+
+    public function __construct(
+        public string $title,
+        public string $slug,
+        public string $content,
+        public bool $published = false,
+    ) {}
+}
+```
+
+This is where Tempest's relationship system shows its hand. Let me break down what's actually happening here.
+
+**Understanding `#[BelongsTo]`**
+
+The `BelongsTo` attribute tells Tempest about a relationship. It takes two arguments:
+
+- `ownerJoin` - The column on the articles table that holds the foreign key
+- `relationJoin` - The column on the related table that matches
+
+So `#[BelongsTo(ownerJoin: 'category_uuid', relationJoin: 'uuid')]` means: "This Article belongs to a Category. The `category_uuid` column on the articles table references the `uuid` column on the categories table."
+
+I expected Tempest to infer this from property types and naming conventions. It doesn't. You have to be explicit. But that explicitness gives you control. You can use non-standard foreign key names. You can relate to tables that don't use `id` as their primary key. You're not fighting conventions.
+
+**Required vs optional relationships**
+
+Look at how we model the relationships:
+
+```php
+public Category $category;       // Required
+public User $author;             // Required
+public ?Sponsor $sponsor = null; // Optional
+```
+
+This isn't just about null safety. This is encoding business rules into your type system.
+
+Every Article must have a Category and an Author. That's a business rule. An Article might have a Sponsor, but doesn't have to. That's also a business rule.
+
+By making these properties non-nullable (for category and author) and nullable (for sponsor), we make it impossible to create an Article in an invalid state. The type system enforces your business logic.
+
+**Properties outside the constructor**
+
+Notice the relationship properties are declared outside the constructor. This is intentional.
+
+When you create a new Article, you're not passing in a Category object. You're building the Article with its core data, then setting relationships separately:
+
+```php
+$article = new Article(
+    title: 'My Article',
+    slug: 'my-article',
+    content: 'Content here',
+    published: false,
+);
+
+// Later, after fetching from the database
+$article->category = $category;
+$article->author = $user;
+```
+
+The constructor stays focused on the core data. Relationships get attached afterward.
+
+**Eager loading with `with()`**
+
+When you query for Articles, you need to explicitly tell Tempest to load relationships:
+
+```php
+query(Article::class)
+    ->select()
+    ->with('category', 'author', 'sponsor')
+    ->where('published', true)
+    ->all();
+```
+
+Forget `->with('category', 'author', 'sponsor')` and those properties won't load. You'll get null reference errors.
+
+The property names in `with()` are the actual property names on your class, not class names. So you use `'category'`, not `'Category'`. This confused me at first.
+
+## Migrations: keeping your database in sync
+
+Tempest's migration system is refreshingly simple. You create a class that implements `MigratesUp`, and it discovers it automatically. No migration generators, no magic commands. Just PHP classes that Tempest runs in order.
+
+This simplicity is intentional. Migrations are just instructions for building your database schema. They don't need to be complicated.
+
+Here's what you need to know: Each migration class has a `$name` property that determines the order migrations run. Use a date prefix (like `2025_02_06_`) to keep them sorted chronologically. The `up()` method returns a `QueryStatement` that builds your table.
+
+### Users table
+
+```php
+<?php // app/Database/Migrations/2025_02_06_create_users_table.php
+
+namespace App\Database\Migrations;
+
+use Tempest\Database\MigratesUp;
+use Tempest\Database\QueryStatement;
+use Tempest\Database\QueryStatements\CreateTableStatement;
+
+final class CreateUsersTable implements MigratesUp
+{
+    public string $name = '2026_02_06_create_users_table';
+
+    public function up(): QueryStatement
+    {
+        return new CreateTableStatement('users')
+            ->primary('uuid', uuid: true)
+            ->text('name')
+            ->text('email');
+    }
+}
+```
+
+The `CreateTableStatement` class is a fluent builder for CREATE TABLE queries. The `->primary('uuid', uuid: true)` call creates a UUID primary key column. The `uuid: true` parameter tells Tempest this is a UUID column, not an integer.
+
+For text columns, we just call `->text('name')`. No need to specify lengths or constraints unless you need them. Tempest uses sensible defaults.
+
+Same pattern for categories:
+
+```php
+<?php // app/Database/Migrations/2025_02_06_create_categories_table.php
+
+namespace App\Database\Migrations;
+
+use Tempest\Database\MigratesUp;
+use Tempest\Database\QueryStatement;
+use Tempest\Database\QueryStatements\CreateTableStatement;
+
+final class CreateCategoriesTable implements MigratesUp
+{
+    public string $name = '2026_02_06_create_categories_table';
+
+    public function up(): QueryStatement
+    {
+        return new CreateTableStatement('categories')
+            ->primary('uuid', uuid: true)
+            ->text('name')
+            ->text('slug');
+    }
+}
+```
+
+And sponsors:
+
+```php
+<?php // app/Database/Migrations/2025_02_06_create_sponsors_table.php
+
+namespace App\Database\Migrations;
+
+use Tempest\Database\MigratesUp;
+use Tempest\Database\QueryStatement;
+use Tempest\Database\QueryStatements\CreateTableStatement;
+
+final class CreateSponsorsTable implements MigratesUp
+{
+    public string $name = '2026_02_06_create_sponsors_table';
+
+    public function up(): QueryStatement
+    {
+        return new CreateTableStatement('sponsors')
+            ->primary('uuid', uuid: true)
+            ->text('name')
+            ->text('website', nullable: true);
+    }
+}
+```
+
+Now the articles table with all the foreign keys:
+
+```php
+<?php // app/Database/Migrations/2025_02_06_create_articles_table.php
+
+namespace App\Database\Migrations;
+
+use Tempest\Database\MigratesUp;
+use Tempest\Database\QueryStatement;
+use Tempest\Database\QueryStatements\CreateTableStatement;
+
+final class CreateArticlesTable implements MigratesUp
+{
+    public string $name = '2026_02_06_create_articles_table';
+
+    public function up(): QueryStatement
+    {
+        return new CreateTableStatement('articles')
+            ->primary('uuid', uuid: true)
+            ->text('title')
+            ->text('slug')
+            ->text('content')
+            ->boolean('published', default: false)
+            ->text('category_uuid')
+            ->text('author_uuid')
+            ->text('sponsor_uuid', nullable: true);
+    }
+}
+```
+
+Notice the foreign key columns at the end: `category_uuid`, `author_uuid`, and `sponsor_uuid`. These match the `ownerJoin` values we used in the `#[BelongsTo]` attributes on our Article model.
+
+Tempest doesn't automatically create foreign key constraints for you. That's intentional. Foreign key constraints can make development and testing harder (you can't delete a Category that has Articles). For many applications, enforcing referential integrity at the application level is enough.
+
+If you do want foreign key constraints, you can add them explicitly. But for this tutorial, we're keeping it simple.
+
+One more thing: notice that `sponsor_uuid` is nullable. That matches our domain model where Sponsor is optional. The database schema should reflect your domain rules.
+
+Now run the migrations:
+
+```bash
+./tempest migrate:up
+```
+
+At this point, you've got a working database schema that maps cleanly to your domain models. Tempest can hydrate everything automatically.
+
+## The repository pattern (without the ceremony)
+
+I'm not a zealot about repositories. I've worked on projects where every single database query went through a repository, and it felt like bureaucracy for the sake of bureaucracy. But I've also worked on projects where database queries were scattered everywhere, and refactoring anything was a nightmare.
+
+The key is understanding what problem repositories actually solve. They give you a boundary between "how you think about your data" and "how you actually get that data." Your domain code asks for "all published articles" without knowing whether that comes from MySQL, Postgres, an API, or a JSON file.
+
+That boundary serves two purposes:
+
+1. It makes testing easier. You can swap the real repository for a fake one that returns test data.
+2. It keeps your domain logic focused. Your command handlers don't need to know about query builders and joins.
+
+Here's a simple interface that captures what we actually need:
+
+```php
+<?php // app/Domain/Articles/ArticleRepository.php
+
+namespace App\Domain\Articles;
+
+interface ArticleRepository
+{
+    public function findByUuid(string $uuid): ?Article;
+
+    public function findBySlug(string $slug): ?Article;
+
+    /** @return Article[] */
+    public function listPublished(): array;
+
+    public function save(Article $article): void;
+}
+```
+
+And here's the Tempest implementation:
+
+```php
+<?php // app/Infrastructure/Persistence/TempestArticleRepository.php
+
+namespace App\Infrastructure\Persistence;
+
+use App\Domain\Articles\Article;
+use App\Domain\Articles\ArticleRepository;
+use Tempest\Database\PrimaryKey;
+use function Tempest\Database\query;
+
+final class TempestArticleRepository implements ArticleRepository
+{
+    public function findByUuid(string $uuid): ?Article
+    {
+        return query(Article::class)
+            ->select()
+            ->with('category', 'author', 'sponsor')
+            ->where('uuid', $uuid)
+            ->first() ?? null;
+    }
+
+    public function findBySlug(string $slug): ?Article
+    {
+        return query(Article::class)
+            ->select()
+            ->with('category', 'author', 'sponsor')
+            ->where('slug', $slug)
+            ->first() ?? null;
+    }
+
+    public function listPublished(): array
+    {
+        return query(Article::class)
+            ->select()
+            ->with('category', 'author', 'sponsor')
+            ->where('published', true)
+            ->all();
+    }
+
+    public function save(Article $article): void
+    {
+        if (! isset($article->uuid)) {
+            $primaryKey = query(Article::class)
+                ->insert($article)
+                ->execute();
+
+            if ($primaryKey instanceof PrimaryKey) {
+                $article->uuid = $primaryKey;
+            }
+
+            return;
+        }
+
+        query(Article::class)
+            ->update($article)
+            ->where('uuid', $article->uuid)
+            ->execute();
+    }
+}
+```
+
+The `with()` calls are important. They tell Tempest to eager-load the relationships. Without them, you'll get null reference errors when you try to access related objects.
+
+## Commands and events: keeping things organized
+
+This is where Tempest really shines. Instead of stuffing all your logic into controllers or models, you use commands and events to represent what happens in your application.
+
+Commands represent intentions: "create an article," "publish an article." Events represent facts: "an article was created," "an article was published."
+
+Let's build these out.
+
+### The commands
+
+```php
+<?php // app/Domain/Articles/Commands/CreateArticle.php
+
+namespace App\Domain\Articles\Commands;
+
+final class CreateArticle
+{
+    public function __construct(
+        public string $title,
+        public string $slug,
+        public string $content,
+        public string $categoryUuid,
+        public string $authorUuid,
+        public ?string $sponsorUuid = null,
+    ) {}
+}
+```
+
+```php
+<?php // app/Domain/Articles/Commands/PublishArticle.php
+
+namespace App\Domain\Articles\Commands;
+
+final class PublishArticle
+{
+    public function __construct(
+        public string $articleUuid,
+    ) {}
+}
+```
+
+These are just data containers. No logic here.
+
+### The events
+
+```php
+<?php // app/Domain/Articles/Events/ArticleCreated.php
+
+namespace App\Domain\Articles\Events;
+
+final class ArticleCreated
+{
+    public function __construct(
+        public string $articleUuid,
+        public string $slug,
+    ) {}
+}
+```
+
+```php
+<?php // app/Domain/Articles/Events/ArticlePublished.php
+
+namespace App\Domain\Articles\Events;
+
+final class ArticlePublished
+{
+    public function __construct(
+        public string $articleUuid,
+    ) {}
+}
+```
+
+Same deal. Just facts about what happened.
+
+### Domain exceptions
+
+Before we write the handlers, let's define some exceptions:
+
+```php
+<?php // app/Domain/Articles/Exceptions/ArticleNotFound.php
+
+namespace App\Domain\Articles\Exceptions;
+
+use RuntimeException;
+
+final class ArticleNotFound extends RuntimeException
+{
+    public static function byUuid(string $uuid): self
+    {
+        return new self("Article with UUID [{$uuid}] not found.");
+    }
+}
+```
+
+Repeat this pattern for `CategoryNotFound`, `UserNotFound`, and `SponsorNotFound`. Same structure, different message.
+
+### Command handlers: where the magic happens
+
+Now we write the handlers that actually do the work:
+
+```php
+<?php // app/Domain/Articles/Commands/Handlers/CreateArticleHandler.php
+
+namespace App\Domain\Articles\Commands\Handlers;
+
+use App\Domain\Articles\Article;
+use App\Domain\Articles\ArticleRepository;
+use App\Domain\Articles\Commands\CreateArticle;
+use App\Domain\Articles\Events\ArticleCreated;
+use App\Domain\Articles\Exceptions\CategoryNotFound;
+use App\Domain\Articles\Exceptions\SponsorNotFound;
+use App\Domain\Articles\Exceptions\UserNotFound;
+use Tempest\CommandBus\Handles;
+use Tempest\Database\PrimaryKey;
+use Tempest\EventBus\EventBus;
+use function Tempest\Database\query;
+
+final class CreateArticleHandler
+{
+    public function __construct(
+        private ArticleRepository $articles,
+        private EventBus $events,
+    ) {}
+
+    #[Handles(CreateArticle::class)]
+    public function __invoke(CreateArticle $command): PrimaryKey
+    {
+        $article = new Article(
+            title: $command->title,
+            slug: $command->slug,
+            content: $command->content,
+            published: false,
+        );
+
+        $article->category = $this->findCategory($command->categoryUuid);
+        $article->author = $this->findAuthor($command->authorUuid);
+
+        if ($command->sponsorUuid !== null) {
+            $article->sponsor = $this->findSponsor($command->sponsorUuid);
+        }
+
+        $this->articles->save($article);
+
+        $this->events->dispatch(
+            new ArticleCreated($article->uuid->toString(), $article->slug)
+        );
+
+        return $article->uuid;
+    }
+
+    private function findCategory(string $uuid)
+    {
+        return query(\App\Domain\Categories\Category::class)
+            ->select()
+            ->where('uuid', $uuid)
+            ->first() ?? throw CategoryNotFound::byUuid($uuid);
+    }
+
+    private function findAuthor(string $uuid)
+    {
+        return query(\App\Domain\Users\User::class)
+            ->select()
+            ->where('uuid', $uuid)
+            ->first() ?? throw UserNotFound::byUuid($uuid);
+    }
+
+    private function findSponsor(string $uuid)
+    {
+        return query(\App\Domain\Sponsors\Sponsor::class)
+            ->select()
+            ->where('uuid', $uuid)
+            ->first() ?? throw SponsorNotFound::byUuid($uuid);
+    }
+}
+```
+
+And the publish handler:
+
+```php
+<?php // app/Domain/Articles/Commands/Handlers/PublishArticleHandler.php
+
+namespace App\Domain\Articles\Commands\Handlers;
+
+use App\Domain\Articles\ArticleRepository;
+use App\Domain\Articles\Commands\PublishArticle;
+use App\Domain\Articles\Events\ArticlePublished;
+use App\Domain\Articles\Exceptions\ArticleNotFound;
+use Tempest\CommandBus\Handles;
+use Tempest\EventBus\EventBus;
+
+final class PublishArticleHandler
+{
+    public function __construct(
+        private ArticleRepository $articles,
+        private EventBus $events,
+    ) {}
+
+    #[Handles(PublishArticle::class)]
+    public function __invoke(PublishArticle $command): void
+    {
+        $article = $this->articles->findByUuid($command->articleUuid);
+
+        if (! $article) {
+            throw ArticleNotFound::byUuid($command->articleUuid);
+        }
+
+        if ($article->published) {
+            return;
+        }
+
+        $article->published = true;
+        $this->articles->save($article);
+
+        $this->events->dispatch(
+            new ArticlePublished($article->uuid->toString())
+        );
+    }
+}
+```
+
+The `#[Handles]` attribute is what connects these handlers to the command bus. When you dispatch a command, Tempest automatically routes it to the right handler.
+
+## The HTTP layer: keeping controllers thin
+
+Controllers should be boring. They receive a request, dispatch a command, handle exceptions, and return a response. That's it.
+
+```php
+<?php // app/Infrastructure/Http/Controllers/ArticlesController.php
+
+namespace App\Infrastructure\Http\Controllers;
+
+use App\Domain\Articles\ArticleRepository;
+use App\Domain\Articles\Commands\CreateArticle;
+use App\Domain\Articles\Commands\PublishArticle;
+use App\Domain\Articles\Exceptions\ArticleNotFound;
+use App\Domain\Articles\Exceptions\CategoryNotFound;
+use App\Domain\Articles\Exceptions\SponsorNotFound;
+use App\Domain\Articles\Exceptions\UserNotFound;
+use Tempest\CommandBus\CommandBus;
+use Tempest\Http\Request;
+use Tempest\Http\Response;
+use Tempest\Router\Get;
+use Tempest\Router\Post;
+
+final class ArticlesController
+{
+    public function __construct(
+        private ArticleRepository $articles,
+        private CommandBus $commands,
+    ) {}
+
+    #[Get('/api/articles')]
+    public function index(): Response
+    {
+        $articles = $this->articles->listPublished();
+
+        return Response::json([
+            'data' => $articles,
+        ]);
+    }
+
+    #[Get('/api/articles/{slug}')]
+    public function show(string $slug): Response
+    {
+        $article = $this->articles->findBySlug($slug);
+
+        if (! $article) {
+            return Response::json(['message' => 'Not found'], 404);
+        }
+
+        return Response::json([
+            'data' => $article,
+        ]);
+    }
+
+    #[Post('/api/articles')]
+    public function store(Request $request): Response
+    {
+        $payload = $request->json();
+        $command = new CreateArticle(
+            title: $payload['title'] ?? '',
+            slug: $payload['slug'] ?? '',
+            content: $payload['content'] ?? '',
+            categoryUuid: $payload['category_uuid'] ?? '',
+            authorUuid: $payload['author_uuid'] ?? '',
+            sponsorUuid: $payload['sponsor_uuid'] ?? null,
+        );
+
+        try {
+            $uuid = $this->commands->dispatch($command);
+        } catch (CategoryNotFound|UserNotFound|SponsorNotFound $e) {
+            return Response::json(['message' => $e->getMessage()], 422);
+        }
+
+        return Response::json([
+            'data' => [
+                'uuid' => $uuid->toString(),
+            ],
+        ], 201);
+    }
+
+    #[Post('/api/articles/{uuid}/publish')]
+    public function publish(string $uuid): Response
+    {
+        try {
+            $this->commands->dispatch(
+                new PublishArticle($uuid)
+            );
+        } catch (ArticleNotFound $e) {
+            return Response::json(['message' => $e->getMessage()], 404);
+        }
+
+        return Response::json(['status' => 'ok']);
+    }
+}
+```
+
+That's it. The controller is just wiring. All the logic lives in the command handlers where it belongs.
+
+## Testing it out
+
+Start the dev server:
+
+```bash
+./tempest serve
+```
+
+Create an article:
+
+```bash
+curl -X POST http://localhost:8000/api/articles \
+    -H "Content-Type: application/json" \
+    -d '{
+        "title": "My first Tempest article",
+        "slug": "my-first-tempest-article",
+        "content": "This is the content...",
+        "category_uuid": "...",
+        "author_uuid": "..."
+    }'
+```
+
+Publish it:
+
+```bash
+curl -X POST http://localhost:8000/api/articles/{uuid}/publish
+```
+
+List published articles:
+
+```bash
+curl http://localhost:8000/api/articles
+```
+
+## What you've built
+
+You now have a Tempest application with a clear, maintainable architecture:
+
+- Domain models that map cleanly to your database
+- Repositories that keep data access logic separate
+- Commands and events that make application behavior explicit
+- Thin controllers that just handle HTTP concerns
+- A folder structure that scales
+
+This isn't the only way to structure a Tempest application, but it's a solid starting point. The key is having a consistent pattern so you're not making architecture decisions every time you add a new feature.
+
+## Where to go from here
+
+Some natural extensions:
+
+- Add a many-to-many relationship for Tags
+- Add Comments as a HasMany relationship
+- Build database seeders to populate test data
+- Add authorization checks
+- Implement pagination
+
+The beauty of this structure is that you know exactly where each piece goes. New command? Drop it in the Commands folder. New event listener? Create a handler with the `#[Listens]` attribute. New endpoint? Add a controller method.
+
+Copy this structure, adjust it to fit your brain, and you've got a foundation for building serious Tempest applications.

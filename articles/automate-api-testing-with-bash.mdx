@@ -1,0 +1,155 @@
+---
+title: "Automate local API testing with Bash"
+description: "This article shows how to automate a complete authentication workflow using Bash, curl, and jq."
+pubDate: "2025-12-16"
+canonical: "https://sevalla.com/blog/automate-api-testing-with-bash/"
+crossPost:
+    originalUrl: "https://sevalla.com/blog/automate-api-testing-with-bash/"
+    originalSite: "Sevalla"
+    publishedDate: "2025-12-16"
+    permission: true
+author:
+    name: "Steve McDougall"
+---
+
+I used to test authentication flows by clicking through a frontend: register a user, grab the verification token (from email or logs), verify, log in, poke around, then repeat the same steps again when something broke a few commits later.
+It worked, but it was slow, inconsistent, and too easy to miss regressions.
+These days, I automate the entire workflow using a Bash script, and it has become one of the simplest ways to validate authentication end-to-end.
+This article walks through building a complete authentication workflow test in Bash. Not a health check. Not a single endpoint probe. A full flow that registers a user, verifies their email, logs them in, tests authenticated routes, resets their password, and confirms token invalidation works as expected.
+By the end, you’ll have a script you can run locally, drop into CI, and rely on as a safety net any time you touch your auth system.
+
+## Why Bash?
+You might be wondering why Bash instead of a proper testing framework. Fair question.
+Here's my reasoning: when I'm testing an API, I want to test exactly what the API exposes. Raw HTTP. Real requests. Actual responses. No test harness magic abstracting away the details.
+Bash gives me that. It's installed everywhere, pairs naturally with `curl` and `jq`, runs in CI without setup, and forces me to confront the actual HTTP boundaries of my application. When something breaks, I see exactly what broke because there's nothing between me and the request.
+The other benefit is portability. I can hand this script to another developer and they can run it immediately. No installing test runners, no configuring frameworks, no "works on my machine" nonsense.
+
+## What we're building
+The script covers the entire authentication lifecycle:
+1. Register a unique user
+2. Verify their email using the backend-generated token
+3. Log in and extract the JWT
+4. Access an authenticated endpoint
+5. Request a password reset
+6. Reset the password with the token
+7. Log in with the new password
+8. Confirm the old JWT is invalidated
+9. Confirm the new JWT works
+That last part (testing that old tokens get invalidated after a password reset) is something most developers forget to verify. It's also exactly the kind of thing that causes security incidents when it breaks.
+
+## The authentication flow
+Before diving into code, here's the flow we're testing:
+```
+┌─────────────────────────────────────────────────────────┐
+│ Automated Authentication Test Flow │
+└─────────────────────────────────────────────────────────┘
+ │
+ POST /register
+ │
+ ▼
+ POST /verify { token }
+ │
+ ▼
+ POST /login
+ │
+ ▼
+ GET /me (with JWT)
+ │
+ ▼
+ POST /password/forgot
+ │
+ ▼
+ POST /password/reset
+ │
+ ▼
+ POST /login (new password)
+ │
+ ▼
+ GET /me (old JWT) → should FAIL
+ │
+ ▼
+ GET /me (new JWT) → should PASS
+ │
+ ▼
+┌─────────────────────────────────────────────────────────┐
+│ All authentication tests completed │
+└─────────────────────────────────────────────────────────┘
+```
+It's a surprisingly complex sequence of state transitions. Each step depends on the previous one succeeding, and each step can break independently. Manual testing just doesn't cut it.
+Here's the [full script](https://gist.github.com/olawanlejoel/96e4be7df6d7a06ae2f5dea2048b7f37).
+
+## Breaking down each stage
+Let me walk through why each section matters and what failures it catches.
+
+### Registration
+```
+EMAIL="testuser_$(date +%s)@example.com"
+```
+This generates a unique email using the Unix timestamp. Every run creates a fresh user, which means no duplicate user errors, no database cleanup between runs, and no collision with existing test data.
+The script immediately exits if registration fails. That's intentional. If user creation doesn't work, nothing else matters.
+
+### Email verification
+This step catches issues with your verification token generation, your verification endpoint logic, and the user state transition from "pending" to "verified."
+I've seen verification flows break in subtle ways where tokens don't match, expiration logic is off by one, or database transactions don't commit properly. This step surfaces all of that.
+
+### Login and JWT retrieval
+Login involves credential validation, JWT generation, claim embedding, and expiry configuration. There's a lot that can go wrong.
+The script extracts the token from the response and uses it for subsequent requests. If your JWT signing breaks, or if you accidentally changed a claim structure, this is where you'll find out.
+
+### Accessing `/me`
+This tests your auth middleware. Token extraction, signature validation, expiration checks, user hydration.
+I consider this the core of the auth system. If the `/me` endpoint breaks, your entire authenticated API is compromised.
+
+### Password reset flow
+The password reset covers two endpoints: requesting a reset token and using that token to set a new password.
+What I'm checking here is whether the reset token actually gets generated, whether it matches when submitted, whether the new password gets persisted correctly, and whether reset tokens can't be reused.
+
+### Login with new password
+This confirms the reset actually worked. The new password authenticates, and we get a fresh JWT.
+
+### Old token invalidation
+This is the test most people skip. When a user resets their password, their existing sessions should be invalidated. If your old JWT still works after a password reset, that's a security problem.
+The script checks for this explicitly. If the old token returns an error, good. If it still works, you've got a bug to fix.
+
+### New token verification
+The final sanity check. The new token works, the user can access their profile, and the entire authentication lifecycle is confirmed working.
+
+## Running in CI
+Dropping this into your CI pipeline is straightforward. For GitHub Actions:
+```
+- name: Auth Smoke Test
+  run: ./auth-smoke-test.sh
+```
+Now every pull request has to pass your entire authentication workflow before merging. No more "I tested it locally" followed by broken production deployments.
+
+## Extending the script
+A few ideas for taking this further.
+**Load testing:** Run the entire flow in a loop to find scalability issues.
+```
+for i in {1..50}; do
+  ./auth-smoke-test.sh
+done
+```
+**Negative testing:** Add checks for wrong passwords, expired tokens, missing headers, and malformed JWTs. Your API should reject bad input explicitly.
+**Timing:** Track how long the workflow takes.
+```
+SECONDS=0
+# run workflow
+echo "Total time: $SECONDS seconds"
+```
+**Logging:** Capture output for later analysis.
+```
+./auth-smoke-test.sh | tee "run-$(date +%s).log"
+```
+
+## Why this works
+The value of this approach comes down to a few things.
+First, it tests real HTTP. Unlike unit tests that mock dependencies, this script hits your actual endpoints with actual requests. If your middleware chain breaks, you'll see it.
+Second, it's reproducible. Run it once, run it a hundred times, run it on your machine or in CI, same script, same behavior.
+Third, it documents the flow. When a new developer asks how authentication works, hand them this script. They can read it, run it, and see real requests and responses. That's better than any diagram.
+Fourth, it catches regressions. Touch your auth code, run the script, know immediately if you broke something. That feedback loop is invaluable when you're refactoring.
+
+## Wrapping up
+I run this script every time I make changes to authentication logic. It takes a few seconds and gives me confidence that I haven't broken something critical.
+The pattern extends beyond auth, too. Any sequential workflow in your API, such as onboarding flows, checkout processes, or multi-step forms, can benefit from the same approach. A Bash script that exercises the happy path end-to-end is one of the highest-value tests you can write.
+Give it a try. Once you start testing this way, manual clicking through UIs feels painfully slow.

@@ -1,0 +1,226 @@
+---
+title: "The overlooked Git feature every Laravel developer should be using"
+description: "Use Git worktrees to maintain multiple isolated Laravel environments simultaneously without stashing or reinstalling dependencies."
+category: DevOps
+pubDate: 2026-02-18
+sponsor:
+  name: Sevalla
+  url: https://juststeveking.link/host
+  logo: https://github.com/sevalla-hosting.png
+author:
+  name: Steve McDougall
+  avatar:
+    src: https://avatars.githubusercontent.com/u/6368379?v=4
+    alt: Steve McDougall
+tags: ["git", "laravel", "workflow", "devops"]
+crossPost:
+  originalUrl: https://sevalla.com/blog/git-worktrees-laravel-developers/
+  originalSite: Sevalla
+  publishedDate: 2026-02-18
+  permission: true
+---
+
+Laravel developers run into the same friction point again and again: constant context switching between branches. You're deep into a feature, migrations are half-run, dependencies are installed, and the server is running smoothly. Then Slack lights up. Production is down. It needs attention immediately.
+
+The usual ritual begins. Stash your changes, check out `main`, pull the latest updates, create a hotfix branch. Composer reinstalls dependencies. NPM rebuilds assets. You fix the bug, push it, then switch back to your feature branch. Pop the stash. Hope nothing conflicts. Reinstall dependencies again because they changed. Restart the development server. Wait for Vite to rebuild.
+
+Ten minutes of context switching for a two-minute fix.
+
+There is a better way, and it has been built into Git for years: worktrees.
+
+## What Git worktrees actually are
+
+Here's the simple version: worktrees let you check out multiple branches of the same repository into separate directories simultaneously. Not multiple clones. Not some fancy tool you need to install. Just Git, doing something most developers don't know it can do.
+
+Instead of one working directory tied to one branch, you get multiple working directories, each on different branches, all sharing the same Git history and object database.
+
+Think of it like this: your Git repository has two parts. The object database (all your commits, trees, blobs, the actual history) and the working directory (your checked-out files, your Laravel app, vendor, node_modules, all of it). Normally, these are bundled together. Worktrees split them apart. Multiple working directories, one shared history.
+
+That's why they're fast and use minimal additional disk space compared to cloning the repo multiple times.
+
+## The real problem this solves
+
+Consider a common scenario. You are refactoring a payment processing system, splitting it into a more modular structure. It is focused work. Multiple files are open and the mental model of the system is fully loaded.
+
+Then a production alert comes in. Authentication tokens are expiring early for mobile users. It is a critical bug and it needs to be fixed immediately.
+
+Without worktrees, the usual stash-and-switch routine begins. With worktrees, you simply change directories.
+
+```shell
+cd ../my-app-hotfix
+```
+
+That directory is already on `main`. Dependencies are installed. Its `.env` file points to a separate database. You fix the token expiration issue, commit, push, and return to the refactoring branch without touching a single file in your feature work.
+
+No stashing. No reinstalling. No resetting your development environment.
+
+That's the power of worktrees.
+
+## The commands you actually need
+
+The entire worktree feature comes down to four commands. Create a worktree from an existing branch:
+
+```shell
+git worktree add ../my-app-feature feature-x
+```
+
+Create a new branch and its worktree at the same time:
+
+```shell
+git worktree add -b feature-y ../my-app-feature-y
+```
+
+List your worktrees:
+
+```shell
+git worktree list
+```
+
+Remove a worktree when it is no longer needed:
+
+```shell
+git worktree remove ../my-app-feature
+```
+
+A practical setup keeps the main working directory as the base and creates additional worktrees for everything else. Hotfixes, feature branches, upgrades, and experiments each live in their own directory, typically named after the project and the branch purpose.
+
+## Why Laravel makes this even more valuable
+
+Laravel apps are heavy. Not in a bad way, but in a realistic way. Switching branches isn't just changing some text files. It's:
+
+*   Composer dependency changes that trigger reinstalls
+*   NPM dependency changes and asset rebuilds
+*   Database migrations that might differ between branches
+*   Config files that affect how your app behaves
+*   Environment settings for different features
+*   Queue workers that need restarting
+*   Cache that needs clearing
+
+Branch switching in a Laravel app feels like rebooting your entire development environment.
+
+Worktrees let you keep each environment stable. One worktree per branch means one stable environment per feature. No rebuilds. No reinstalls. No surprises.
+
+## How to actually use this
+
+Let me show you an example current project structure:
+
+```plaintext
+laravel-saas/ # main branch, stable
+laravel-saas-billing/ # feature branch for subscription overhaul
+laravel-saas-api/ # API redesign spike
+laravel-saas-upgrade/ # Laravel 12 upgrade sandbox
+```
+
+Each directory is a worktree. Each runs independently. I have four terminal sessions open, each cd'd into a different directory. The billing feature runs on port 8000. The API redesign on 8001. Main stays on 8002. The upgrade sandbox on 8003.
+
+```shell
+# In laravel-saas-billing
+php artisan serve --port=8000
+# In laravel-saas-api
+php artisan serve --port=8001
+```
+
+This setup allows you to test billing changes, switch tabs, and immediately verify how the API redesign handles the same data. There is no waiting for dependencies to reinstall and no need to rebuild assets every time you move between branches. Context switching becomes immediate and predictable.
+
+## Environment isolation is critical
+
+Environment isolation makes or breaks this workflow. If worktrees share the same database, cache, or queue configuration, they create more problems than they solve.
+
+Each worktree should have its own:
+
+*   Database name
+*   Cache prefix
+*   Queue prefix
+*   Session configuration
+*   Port numbers
+
+My .env files look like this:
+
+```plaintext
+# laravel-saas-billing/.env
+DB_DATABASE=saas_billing_feature
+CACHE_PREFIX=billing_
+QUEUE_CONNECTION=redis
+REDIS_QUEUE=billing_queue
+SESSION_DOMAIN=billing.saas.test
+APP_URL=http://localhost:8000
+```
+
+```plaintext
+# laravel-saas-api/.env
+DB_DATABASE=saas_api_feature
+CACHE_PREFIX=api_
+QUEUE_CONNECTION=redis
+REDIS_QUEUE=api_queue
+SESSION_DOMAIN=api.saas.test
+APP_URL=http://localhost:8001
+```
+
+This configuration prevents one worktree from interfering with another's cache, queue jobs, or sessions. Without proper isolation, it becomes difficult to understand why one feature branch is processing jobs or data that belong to another.
+
+## The Laravel upgrade use case
+
+This is where worktrees really shine. Framework upgrades are messy. Breaking changes, deprecation warnings, dependency conflicts. You need to experiment, but you can't break your main development environment.
+
+Create a dedicated upgrade worktree:
+
+```shell
+git worktree add ../my-app-upgrade upgrade/laravel-12
+cd ../my-app-upgrade
+```
+
+This gives you a complete Laravel installation that you can modify freely. Update `composer.json`, run the upgrade process, resolve breaking changes, adjust configuration files, and fix tests as needed. Meanwhile, the main worktree continues running the current version without interruption.
+
+You can move between the two directories to compare behavior and determine whether an issue exists in both versions or only in the upgraded branch. Once the upgrade is stable, merge it. If it becomes too complex or unstable, remove the worktree and start again.
+
+There is no need for complex branch switching or stashing half-finished upgrade attempts. It is simply a clean, disposable sandbox dedicated to the upgrade effort.
+
+## Worktrees and Docker
+
+If you're running Laravel Sail or any Docker-based setup, worktrees become even more powerful. Each worktree can have its own `docker-compose.yml` with different ports, different database containers, different Redis instances.
+
+```plaintext
+# laravel-saas-billing/docker-compose.yml
+services:
+  mysql:
+    ports:
+      - "3307:3306"
+  redis:
+    ports:
+      - "6380:6379"
+```
+
+```plaintext
+# laravel-saas-api/docker-compose.yml
+services:
+  mysql:
+    ports:
+      - "3308:3306"
+  redis:
+    ports:
+      - "6381:6379"
+```
+
+Completely isolated stacks. No port conflicts. No shared state. Each feature gets its own containerized universe.
+
+## The dependency question
+
+Yes, you'll run composer install and npm install in each worktree. Yes, that means duplicate vendor and `node_modules` directories. That's the tradeoff.
+
+But here's the thing: branches can depend on different package versions. Your feature branch might need a beta version of a package. Your hotfix branch needs the stable version from main. Shared dependencies would break that.
+
+Speed it up by using Composer's caching:
+
+```shell
+composer install --prefer-dist --no-dev --optimize-autoloader
+```
+
+In practice, the disk space cost is negligible on modern machines, and the time cost is worth it for the stability you gain.
+
+## Wrapping up
+
+Git worktrees aren't magic. They're just a different way of organizing your working directories. But for Laravel developers who regularly context switch between features, hotfixes, upgrades, and experiments, they remove a massive amount of friction.
+
+No more stash juggling. No more dependency reinstalls every time you switch branches. No more waiting for assets to rebuild. Just stable, isolated environments that let you focus on the work instead of fighting your tools.
+
+Try it on your next feature branch. Create a worktree, set up the environment, and see how it feels to context switch without the overhead. You'll find it hard to go back.

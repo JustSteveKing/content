@@ -1,0 +1,72 @@
+---
+name: juststeveking/http-auth-strategies
+description: A simple PHP package that is used to create different Http Auth Headers
+packagist: "https://packagist.org/packages/juststeveking/http-auth-strategies"
+github: "https://github.com/JustSteveKing/http-auth-strategies"
+downloads: 70296
+monthlyDownloads: 450
+stars: 8
+version: dev-main
+updatedAt: 2026-03-09
+---
+
+# Http Auth Strategies
+
+<!-- BADGES_START -->
+[![Latest Version][badge-release]][packagist]
+[![PHP Version][badge-php]][php]
+
+[![Total Downloads][badge-downloads]][downloads]
+
+[badge-release]: https://img.shields.io/packagist/v/juststeveking/http-auth-strategies.svg?style=flat-square&label=release
+[badge-php]: https://img.shields.io/packagist/php-v/juststeveking/http-auth-strategies.svg?style=flat-square
+[badge-downloads]: https://img.shields.io/packagist/dt/juststeveking/http-auth-strategies.svg?style=flat-square&colorB=mediumvioletred
+
+[packagist]: https://packagist.org/packages/juststeveking/http-auth-strategies
+[php]: https://php.net
+[downloads]: https://packagist.org/packages/juststeveking/http-auth-strategies
+<!-- BADGES_END -->
+
+A simple PHP package that is used to create different Http Auth Headers.
+
+This is a simple to use library, to install - all you need to do is:
+
+```bash
+$ composer require juststeveking/http-auth-strategies
+```
+
+Then to use the library all you need to do is:
+
+```php
+$strategy = new BasicStrategy(
+    base64_encode("username:password")
+);
+
+// Get the Auth header as an array - passing through the required Authorization prefix
+$strategy->getHeader('Bearer');
+// ['Authorization' => 'Bearer dXNlcm5hbWU6cGFzc3dvcmQ=']
+```
+
+There is also a NullStrategy for when you want to follow a consistent pattern, but do not want to actually use any auth:
+
+```php
+$strategy = new NullStrategy();
+
+// Get the Auth header as an array - passing through the required Authorization prefix
+$strategy->getHeader('Bearer');
+// []
+```
+
+You can now also create your own custom header using the CustomStrategy, for when an API requires something specific that doesn't follow the typical pattern:
+
+```php
+$strategy = new CustomStrategy(
+    'your-api-key'
+);
+
+$strategy->setHeaderName('X-API-KEY');
+
+// Get the Auth header as an array - passing through the required Authorization prefix
+$strategy->getHeader('Bearer');
+// ['X-API-KEY' => 'Bearer your-api-key']
+```

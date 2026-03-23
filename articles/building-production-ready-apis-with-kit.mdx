@@ -1,0 +1,815 @@
+---
+title: Building production ready APIs with kit
+description: A practical guide to shaping production-ready APIs using kit, from contracts and validation to observability and rollout.
+category: API
+pubDate: 2026-02-27
+minRead: 16
+author:
+  name: Steve McDougall
+  avatar:
+    src: https://avatars.githubusercontent.com/u/6368379?v=4
+    alt: Steve McDougall
+tags: ["api-design", "production", "observability", "kit", "backend"]
+---
+
+Most API projects don't fail because the team couldn't build endpoints. They fail because the same avoidable problems keep showing up, sprint after sprint.
+
+Inconsistent response shapes. Auth that works but nobody can audit. Security controls bolted on after an incident. Docs that were accurate six months ago. Versioning handled differently by every developer on the team.
+
+I built `kit` to deal with that. It's an opinionated Laravel starter focused on token-based auth and API correctness, running on PHP 8.5 and Laravel 12. The goal is straightforward: stop rebuilding platform plumbing on every project and start spending effort on the domain logic that actually makes your product different.
+
+This tutorial walks you through everything. Not just "here's how to boot it", but why each decision was made, what problem it solves, and how to extend it the right way when you start adding your own domain.
+
+## Prerequisites
+
+Before we get started, make sure you have:
+
+- PHP 8.5 or higher
+- Composer
+- SQLite (for local development)
+- A terminal you're comfortable in
+
+You don't need a database server running locally. Kit uses SQLite by default, which means zero infrastructure setup to get your first request working.
+
+## What Kit Actually Is
+
+At its core, `kit` is an API-oriented Laravel baseline. No global `/api` prefix. No wildcard token abilities. No documentation that lives in a wiki someone forgot to update.
+
+Here's what you get out of the box:
+
+- Versioned routing at `/v1/...`
+- Sanctum personal access tokens with scoped abilities
+- Predictable request/response handling
+- Localized API messages via `Accept-Language` and `Content-Language`
+- Built-in endpoint deprecation and sunset support
+- Attribute-driven API docs with Scribe and OpenAPI output
+- Contract testing to keep generated docs aligned with real responses
+- Security hardening, audit logging, and production safety checks
+- GitHub Actions for CI, daily dependency updates, and security auditing
+
+It is not a full product scaffold. There's no billing module, no admin UI, no multi-tenant setup. Kit focuses on API platform concerns and does that job well. If you need a UI-first Laravel monolith, this probably isn't your starting point.
+
+## Getting the Project Running
+
+Clone the repo and get your environment set up:
+
+```bash
+git clone https://github.com/juststeveking/kit.git
+cd kit
+composer install
+cp .env.example .env
+php artisan key:generate
+touch database/database.sqlite
+php artisan migrate
+php artisan serve
+```
+
+Or if you prefer the bundled setup script:
+
+```bash
+composer install
+cp .env.example .env
+composer run setup
+php artisan serve
+```
+
+Your base API URL is `http://127.0.0.1:8000/v1`.
+
+One thing worth noting straight away: there is no `/api` prefix. That's intentional. Adding an `/api` prefix to every URL is a habit from Laravel's defaults that doesn't actually serve API clients. The version prefix carries all the routing information you need.
+
+## Understanding the Environment Configuration
+
+Open `.env.example` and you'll see a few config values that are specific to kit:
+
+```env
+APP_LOCALE=en
+APP_FALLBACK_LOCALE=en
+APP_SUPPORTED_LOCALES=en,es
+
+SANCTUM_EXPIRATION=120
+
+SECURITY_FORCE_HTTPS=false
+TRUSTED_HOSTS=
+TRUSTED_PROXIES=
+CORS_ALLOWED_ORIGINS=http://localhost:3000
+```
+
+`APP_SUPPORTED_LOCALES` is a comma-separated list of locales the API will accept from clients. Any `Accept-Language` header outside this list falls back to `APP_FALLBACK_LOCALE`. This is how you keep localization support manageable without accepting arbitrary locale strings.
+
+`SANCTUM_EXPIRATION` sets token lifetime in minutes. 120 minutes is the default. In production you'll want to think carefully about what fits your threat model. Short-lived tokens reduce the blast radius of a token leak. Long-lived tokens reduce friction for mobile clients. There's no universal right answer.
+
+`SECURITY_FORCE_HTTPS` is off locally but the production readiness checker will fail if you try to deploy without enabling it. That's on purpose.
+
+## The Routing Structure
+
+Most Laravel projects dump everything into `routes/api.php` and call it done. Kit splits routing into two files with a clear separation of concerns.
+
+`routes/api/routes.php` handles version grouping:
+
+```php
+Route::prefix('v1')
+    ->name('v1:')
+    ->group(base_path('routes/api/v1.php'));
+```
+
+`routes/api/v1.php` holds the concrete endpoint declarations for this version. When you add v2, you create `routes/api/v2.php` and add a new prefix group. The versions never bleed into each other.
+
+The full auth endpoint table for v1:
+
+|Method|Path|Auth Required|Purpose|
+|---|---|---|---|
+|POST|`/v1/auth/register`|No|Register and receive a token|
+|POST|`/v1/auth/login`|No|Login and receive a token|
+|GET|`/v1/auth/me`|Bearer|Current authenticated user|
+|POST|`/v1/auth/logout`|Bearer|Revoke the current token|
+|POST|`/v1/auth/email/verification-notification`|Bearer|Send or resend a verification email|
+|GET|`/v1/auth/email/verify/{id}/{hash}`|Signed URL|Verify email address|
+|POST|`/v1/auth/password/forgot`|No|Request a password reset email|
+|GET|`/v1/auth/password/reset/{token}`|No|Return reset payload for API clients|
+|POST|`/v1/auth/password/reset`|No|Complete the password reset|
+|GET|`/v1/auth/tokens`|Bearer|List all tokens for this user|
+|DELETE|`/v1/auth/tokens/{token_id}`|Bearer|Revoke a specific token|
+|DELETE|`/v1/auth/tokens`|Bearer|Revoke all tokens|
+
+Notice that the token management endpoints exist as first-class routes, not as an afterthought. That's something most starters skip entirely.
+
+## The Middleware Pipeline
+
+Every API request passes through four middleware layers before it hits a controller. Understanding what each one does helps you reason about request behavior and debug issues quickly.
+
+```php
+// bootstrap/app.php
+->withMiddleware(function (Middleware $middleware) {
+    $middleware->api(prepend: [
+        EnsureJsonApiRequest::class,
+        EnforceTransportSecurity::class,
+        SetRequestLocale::class,
+        AttachRequestId::class,
+    ]);
+})
+```
+
+### EnsureJsonApiRequest
+
+This middleware does two things. First, it configures Laravel to render all exceptions as JSON, so you never accidentally return an HTML error page to an API client. Second, it checks the `Content-Type` header on write requests (POST, PUT, PATCH). If the client sends anything other than `application/json`, it gets a `415 Unsupported Media Type` back immediately.
+
+This sounds strict, and it is. But it eliminates an entire class of bugs where a client sends form-encoded data and the server silently accepts it, resulting in partially parsed payloads and confusing validation errors.
+
+### EnforceTransportSecurity
+
+This handles HTTPS enforcement and HSTS headers based on your environment config. In local development with `SECURITY_FORCE_HTTPS=false`, it's a passthrough. In production with the flag enabled, it redirects HTTP requests to HTTPS and adds a `Strict-Transport-Security` header to responses.
+
+It also handles trusted proxy configuration, which matters when you're sitting behind a load balancer and need the original client IP to be accurate for rate limiting and audit logging.
+
+### SetRequestLocale
+
+This reads the `Accept-Language` header, resolves it against `APP_SUPPORTED_LOCALES`, sets the application locale for the duration of the request, and adds `Content-Language` to the response. If the requested locale isn't supported, it falls back to `APP_FALLBACK_LOCALE` without erroring.
+
+The result is that all translated strings in `lang/en/api.php` and `lang/es/api.php` are served in the right language automatically, without any per-controller logic.
+
+### AttachRequestId
+
+Every request gets an `X-Request-Id` header in the response. If the client sends one in the request, it's propagated back. If they don't, one is generated. This header is also attached to log context, which means every log entry for a given request shares the same ID. When something goes wrong in production, you can grep for the request ID and see exactly what happened, in order.
+
+## Authentication Deep Dive
+
+### Registration
+
+```bash
+curl -X POST http://127.0.0.1:8000/v1/auth/register \
+  -H "Accept: application/json" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "name": "Jane Doe",
+    "email": "jane@example.com",
+    "password": "Password123!",
+    "device_name": "cli"
+  }'
+```
+
+The `device_name` field is used as the token name in Sanctum. This is important. When a user has multiple devices, you can see exactly which device each token belongs to, and revoke them individually. "cli", "ios", "android", "web" are all reasonable values.
+
+A successful response looks like this:
+
+```json
+{
+  "data": {
+    "type": "users",
+    "id": "01j...",
+    "attributes": {
+      "name": "Jane Doe",
+      "email": "jane@example.com",
+      "email_verified_at": null,
+      "created_at": "2026-02-24T12:00:00.000000Z"
+    }
+  },
+  "meta": {
+    "token": "1|abc123...",
+    "expires_at": "2026-02-24T14:00:00.000000Z"
+  }
+}
+```
+
+The user data is in a JSON:API resource shape. The token lives in `meta` rather than at the top level, which keeps the resource representation clean and separate from the auth metadata.
+
+Notice the `id` is a ULID, not an integer. Kit uses ULID primary keys for users by default. ULIDs are sortable, URL-safe, and don't leak information about your user count the way sequential integers do.
+
+### Login
+
+```bash
+curl -X POST http://127.0.0.1:8000/v1/auth/login \
+  -H "Accept: application/json" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "email": "jane@example.com",
+    "password": "Password123!",
+    "device_name": "cli"
+  }'
+```
+
+The response shape is identical to registration. This consistency matters for client implementations. Your frontend or mobile app can handle both flows with the same token extraction logic.
+
+### Token Abilities
+
+This is one of the most important things kit gets right. By default, Sanctum gives new tokens `*` ability, which means they can do anything. Kit issues tokens with explicit, named abilities instead:
+
+```
+auth:me
+auth:logout
+auth:tokens:read
+```
+
+Protected routes then check for the required ability before allowing access. A token without `auth:me` cannot hit the `/v1/auth/me` endpoint, regardless of whether the token is otherwise valid.
+
+This matters for two reasons. First, if a token is compromised, the blast radius is limited to what that token can actually do. Second, when you audit your tokens, you can see exactly what each one is authorized for. That's dramatically better for incident response than "this token can do everything."
+
+When you add your own domain endpoints, you'll define new abilities and attach them to routes:
+
+```php
+Route::middleware(['auth:sanctum', 'abilities:orders:read'])
+    ->get('/v1/orders', ListOrdersController::class);
+```
+
+And when issuing tokens for those endpoints:
+
+```php
+$token = $user->createToken(
+    name: $payload->deviceName,
+    abilities: ['auth:me', 'auth:logout', 'orders:read'],
+)->plainTextToken;
+```
+
+### Logout and Token Revocation
+
+```bash
+# Revoke the current token
+curl -X POST http://127.0.0.1:8000/v1/auth/logout \
+  -H "Accept: application/json" \
+  -H "Authorization: Bearer <TOKEN>"
+
+# List all tokens for the authenticated user
+curl http://127.0.0.1:8000/v1/auth/tokens \
+  -H "Accept: application/json" \
+  -H "Authorization: Bearer <TOKEN>"
+
+# Revoke a specific token by ID
+curl -X DELETE http://127.0.0.1:8000/v1/auth/tokens/<TOKEN_ID> \
+  -H "Accept: application/json" \
+  -H "Authorization: Bearer <TOKEN>"
+
+# Revoke all tokens (full sign-out across all devices)
+curl -X DELETE http://127.0.0.1:8000/v1/auth/tokens \
+  -H "Accept: application/json" \
+  -H "Authorization: Bearer <TOKEN>"
+```
+
+The distinction between revoking one token and revoking all is practical. A user who suspects a single device was compromised can revoke just that token from another device. A user who thinks their account was fully compromised can blow out everything at once.
+
+## Email Verification and Password Reset
+
+These flows are often skipped in API starters or implemented in ways that only work for web apps. Kit implements them properly for headless API clients.
+
+### Email Verification
+
+```bash
+# Trigger a verification email
+curl -X POST http://127.0.0.1:8000/v1/auth/email/verification-notification \
+  -H "Accept: application/json" \
+  -H "Authorization: Bearer <TOKEN>"
+```
+
+The verification link uses a signed URL at `/v1/auth/email/verify/{id}/{hash}`. Your email template points to this endpoint. When the user clicks the link, the API verifies the signature and marks the email as verified.
+
+This is different from the default Laravel behavior where the verification link points to a web route that expects a browser. Kit's endpoint returns JSON, making it usable from a mobile app or SPA.
+
+### Password Reset
+
+```bash
+# Request a reset email (anti-enumeration: always returns 200)
+curl -X POST http://127.0.0.1:8000/v1/auth/password/forgot \
+  -H "Accept: application/json" \
+  -H "Content-Type: application/json" \
+  -d '{"email": "jane@example.com"}'
+
+# Retrieve the reset payload (for SPA/mobile clients)
+curl http://127.0.0.1:8000/v1/auth/password/reset/<TOKEN>
+
+# Submit the new password
+curl -X POST http://127.0.0.1:8000/v1/auth/password/reset \
+  -H "Accept: application/json" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "token": "<TOKEN>",
+    "email": "jane@example.com",
+    "password": "NewPassword456!",
+    "password_confirmation": "NewPassword456!"
+  }'
+```
+
+The forgot password endpoint always returns a `200` regardless of whether the email exists. This is anti-enumeration behavior. If you return a `404` when the email isn't found, attackers can determine which email addresses have accounts in your system. Returning `200` consistently closes that information leak.
+
+The `GET /v1/auth/password/reset/{token}` endpoint is specifically for SPAs and mobile apps. In a web flow, the reset link takes the user to a form. In a headless flow, the client needs to retrieve the token and present its own form. This endpoint returns the token payload that the client needs to submit the form correctly.
+
+## The Controller and Payload Pattern
+
+Kit uses a layered pattern that keeps each piece of the request handling narrow and testable. Let's walk through what a controller actually looks like.
+
+### Invokable Controllers
+
+Every controller in kit is invokable. It has a single `__invoke` method and does not extend a base controller. The controller's only job is orchestration: take a request, delegate to the right services, return a response.
+
+```php
+<?php
+
+declare(strict_types=1);
+
+namespace App\Http\Controllers\Api\V1\Auth;
+
+use App\Http\Payloads\V1\Auth\RegisterPayload;
+use App\Http\Requests\Auth\RegisterRequest;
+use App\Http\Resources\UserResource;
+use App\Models\User;
+use Illuminate\Http\JsonResponse;
+
+final class RegisterController
+{
+    public function __invoke(RegisterRequest $request): JsonResponse
+    {
+        $payload = RegisterPayload::from($request);
+
+        $user = User::query()->create([
+            'name' => $payload->name,
+            'email' => $payload->email,
+            'password' => $payload->password,
+        ]);
+
+        $token = $user->createToken(
+            name: $payload->deviceName,
+            abilities: ['auth:me', 'auth:logout', 'auth:tokens:read'],
+        )->plainTextToken;
+
+        return new JsonResponse([
+            'data' => UserResource::make($user),
+            'meta' => [
+                'token' => $token,
+                'expires_at' => now()->addMinutes(config('sanctum.expiration'))->toISOString(),
+            ],
+        ], 201);
+    }
+}
+```
+
+Notice there's no validation logic here. No database queries beyond the creation. No token ability logic beyond the creation call. Each of those concerns lives elsewhere.
+
+### FormRequest Validation
+
+Validation lives in `app/Http/Requests/Auth/RegisterRequest.php`. This is standard Laravel, but worth noting that kit keeps validation rules close to the request rather than in the controller or a service class.
+
+```php
+<?php
+
+declare(strict_types=1);
+
+namespace App\Http\Requests\Auth;
+
+use Illuminate\Foundation\Http\FormRequest;
+
+final class RegisterRequest extends FormRequest
+{
+    public function rules(): array
+    {
+        return [
+            'name' => ['required', 'string', 'max:255'],
+            'email' => ['required', 'string', 'email', 'max:255', 'unique:users'],
+            'password' => ['required', 'string', 'min:12'],
+            'device_name' => ['required', 'string', 'max:255'],
+        ];
+    }
+}
+```
+
+### Readonly Payload Objects
+
+The payload object is a `final readonly` class that maps from the validated request into a typed value object. This is the DTO layer.
+
+```php
+<?php
+
+declare(strict_types=1);
+
+namespace App\Http\Payloads\V1\Auth;
+
+use App\Http\Requests\Auth\RegisterRequest;
+
+final readonly class RegisterPayload
+{
+    public function __construct(
+        public string $name,
+        public string $email,
+        public string $password,
+        public string $deviceName,
+    ) {}
+
+    public static function from(RegisterRequest $request): self
+    {
+        return new self(
+            name: $request->string('name')->toString(),
+            email: $request->string('email')->toString(),
+            password: $request->string('password')->toString(),
+            deviceName: $request->string('device_name')->toString(),
+        );
+    }
+}
+```
+
+The `readonly` modifier means the payload cannot be mutated after construction. Once the request data is mapped into the payload, it's immutable. The controller receives a value object with fully typed properties, not a request bag it has to reach into.
+
+This pattern keeps the controller clean. It also makes testing easier, because you can construct a payload directly in tests without needing to build an entire HTTP request.
+
+## Rate Limiting
+
+Kit configures rate limits in `AppServiceProvider` rather than in route files. This keeps limit definitions in one place and makes them easy to reference by name.
+
+The limits in the default configuration:
+
+- `auth-register`: 10 requests per minute per IP
+- `auth-login`: 10 requests per minute, keyed on IP plus email
+- `auth-password`: 5 requests per minute, keyed on IP plus email
+- `auth-protected`: 60 requests per minute per authenticated user
+
+The login and password limits key on both IP and email. This is important. Keying only on IP allows an attacker to rotate IPs and continue brute forcing a specific account. Keying on IP plus email means that even with IP rotation, the per-account rate is still enforced.
+
+Routes then reference these limits by name:
+
+```php
+Route::middleware('throttle:auth-login')
+    ->post('/v1/auth/login', LoginController::class);
+```
+
+When you add domain endpoints, define their limits in the service provider:
+
+```php
+RateLimiter::for('orders', function (Request $request) {
+    return Limit::perMinute(30)->by($request->user()?->id ?? $request->ip());
+});
+```
+
+Then reference them in the route definition.
+
+## Idempotency on Critical Writes
+
+Registration and password reset support `Idempotency-Key`. This is a pattern borrowed from payment APIs and it's genuinely useful for any operation where the client might retry on network failure.
+
+```bash
+curl -X POST http://127.0.0.1:8000/v1/auth/register \
+  -H "Accept: application/json" \
+  -H "Content-Type: application/json" \
+  -H "Idempotency-Key: signup-session-abc123" \
+  -d '{
+    "name": "Jane Doe",
+    "email": "jane@example.com",
+    "password": "Password123!",
+    "device_name": "cli"
+  }'
+```
+
+Send this request twice with the same key and same payload and the second request replays the first response from cache rather than creating a second user. This is the behavior you want when a mobile client doesn't know whether its first registration attempt succeeded before the connection dropped.
+
+If you send the same key with a different payload, you get `409 Conflict`. The key is locked to the first payload it was used with, and subsequent attempts with different data are rejected. This prevents a class of attack where an idempotency key is reused to try different payloads.
+
+## Localization
+
+The localization model is fully API-first. There's no user preference stored in the database. The locale is resolved from the `Accept-Language` header on every request.
+
+```bash
+curl -X POST http://127.0.0.1:8000/v1/auth/password/forgot \
+  -H "Accept: application/json" \
+  -H "Content-Type: application/json" \
+  -H "Accept-Language: es" \
+  -d '{"email": "unknown@example.com"}'
+```
+
+The `SetRequestLocale` middleware reads this header, resolves it against `APP_SUPPORTED_LOCALES`, and sets the application locale. The response includes a `Content-Language` header so clients know which locale was applied.
+
+Translation strings live in `lang/en/api.php` and `lang/es/api.php`. These files contain the user-facing messages for auth flows, validation errors, and general API responses. Adding a new locale means adding a new language file and appending the locale code to `APP_SUPPORTED_LOCALES`.
+
+The machine-readable parts of the response (status codes, field names, resource types) never change. Only the human-readable message strings adapt to the locale. This keeps your API contract stable while making the messages meaningful to users in their own language.
+
+## Audit Logging
+
+Security-sensitive actions emit structured log events through `App\Support\SecurityAudit`. These events go to the `security.audit` log channel with full request context attached.
+
+Actions that emit audit events include: registration, login, logout, failed authentication attempts, token revocation, email verification, and password reset.
+
+Each event includes the request ID, the action type, a hashed version of the email address (so you can correlate events without storing plaintext emails in logs), the IP address, and the user agent.
+
+In production, you need a logging backend that captures these events with a retention policy. In development, they go to the standard log file. You can tail the log and watch auth events as they happen:
+
+```bash
+tail -f storage/logs/laravel.log | grep security.audit
+```
+
+The hashed email identifier is worth understanding. Storing plaintext emails in logs creates a privacy and compliance risk. A hash lets you correlate events across a session (did this email address try to log in before registering?) without storing the plaintext value. The hash is not reversible, but it's consistent within a logging period.
+
+## Endpoint Deprecation with Sunset Middleware
+
+The `Sunset` middleware provides standards-based deprecation support. When you're retiring an endpoint, you attach the middleware with a sunset date and optionally a successor URL:
+
+```php
+Route::middleware('sunset:2030-01-01,https://api.example.com/v2/auth/login,true')
+    ->post('/v1/auth/login', LoginController::class);
+```
+
+This adds three headers to every response from that route:
+
+```
+Deprecation: true
+Sunset: Wed, 01 Jan 2030 00:00:00 GMT
+Link: <https://api.example.com/v2/auth/login>; rel="successor-version"
+```
+
+The third argument controls enforcement. When set to `true` and the sunset date has passed, the middleware returns `410 Gone` instead of passing the request to the controller. The endpoint hard-retires on schedule without requiring a deployment.
+
+This is the right way to evolve an API. Clients get advance notice through headers. API monitoring tools that parse `Sunset` headers can alert teams when endpoints they depend on are approaching retirement. And when the date arrives, the endpoint shuts down automatically.
+
+## Documentation and Contract Testing
+
+Kit uses Scribe for API documentation with PHP attributes on controllers. This means the docs live with the code that implements the behavior, rather than in a separate document that drifts.
+
+```php
+#[Group('Auth')]
+#[Endpoint('Register', 'Register a new user account and receive an access token.')]
+#[BodyParam('name', 'string', required: true, example: 'Jane Doe')]
+#[BodyParam('email', 'string', required: true, example: 'jane@example.com')]
+#[BodyParam('password', 'string', required: true, example: 'Password123!')]
+#[BodyParam('device_name', 'string', required: true, example: 'cli')]
+#[Response(status: 201, description: 'User registered successfully')]
+#[Response(status: 422, description: 'Validation error')]
+final class RegisterController
+{
+    // ...
+}
+```
+
+Generate the docs:
+
+```bash
+php artisan scribe:generate --no-interaction
+```
+
+This produces three artifacts:
+
+- `public/docs/index.html` - a browsable Postman-style docs UI
+- `public/docs/openapi.yaml` - a machine-readable OpenAPI 3.x spec
+- `public/docs/collection.json` - a Postman collection
+
+The OpenAPI spec is what the contract tests use. `tests/Feature/OpenApiContractTest.php` verifies three things on every test run:
+
+1. Every route in `v1/auth` is represented in the spec.
+2. The HTTP status codes returned at runtime are declared in the spec.
+3. The response payload shapes at runtime match the schemas documented in the spec.
+
+If you add an endpoint without adding Scribe attributes, the test fails. If you change a response shape without updating the attributes, the test fails. The docs cannot drift from the implementation because the CI pipeline won't let them.
+
+Run the full test suite:
+
+```bash
+php artisan test
+```
+
+Or via composer:
+
+```bash
+composer test
+```
+
+## Code Quality Tooling
+
+Kit ships with a full quality toolchain configured and ready to use.
+
+```bash
+# Lint and auto-fix code style with Pint
+composer lint
+
+# Static analysis with PHPStan (Larastan)
+composer stan
+```
+
+`phpstan.neon` is configured at a level appropriate for a production API codebase. The Larastan extension adds Laravel-specific type inference, which means PHPStan understands things like `$request->validated()` returning `array<string, mixed>` and model relationships returning `HasMany<Post>`.
+
+`pint.json` enforces a consistent code style across the project. Running `composer lint` before committing means style differences never show up in code review.
+
+## CI and Security Automation
+
+Kit includes three GitHub Actions workflows.
+
+### ci-tests.yml
+
+Runs the full test suite on every push and pull request. No merge without green tests.
+
+### dependency-updates.yml
+
+Runs `composer update` daily at 03:00 UTC and opens or updates a pull request titled `bot: dependency updates`. This keeps your dependencies current without manual effort, and the CI tests on the PR ensure updates don't break anything.
+
+### security-gate.yml
+
+Runs `composer audit` against the PHP Security Advisories database and fails the build on high or critical severity advisories. It also runs Gitleaks to scan for accidentally committed secrets. A committed API key or database password is one of the most common and most severe security incidents in web development. Gitleaks catches these before they reach the remote.
+
+## Adding a New Endpoint
+
+When you start extending kit with your own domain, there's a consistent process to follow. Let's say you're building a simple orders API.
+
+### 1. Define the route
+
+In `routes/api/v1.php`:
+
+```php
+Route::middleware(['auth:sanctum', 'abilities:orders:read', 'throttle:orders'])
+    ->get('/v1/orders', ListOrdersController::class);
+```
+
+### 2. Create the FormRequest
+
+```php
+<?php
+
+declare(strict_types=1);
+
+namespace App\Http\Requests\Orders;
+
+use Illuminate\Foundation\Http\FormRequest;
+
+final class ListOrdersRequest extends FormRequest
+{
+    public function rules(): array
+    {
+        return [
+            'status' => ['sometimes', 'string', 'in:pending,fulfilled,cancelled'],
+            'per_page' => ['sometimes', 'integer', 'min:1', 'max:100'],
+        ];
+    }
+}
+```
+
+### 3. Add a payload object
+
+```php
+<?php
+
+declare(strict_types=1);
+
+namespace App\Http\Payloads\V1\Orders;
+
+use App\Http\Requests\Orders\ListOrdersRequest;
+
+final readonly class ListOrdersPayload
+{
+    public function __construct(
+        public ?string $status,
+        public int $perPage,
+    ) {}
+
+    public static function from(ListOrdersRequest $request): self
+    {
+        return new self(
+            status: $request->string('status')->toString() ?: null,
+            perPage: $request->integer('per_page', 20),
+        );
+    }
+}
+```
+
+### 4. Implement the controller
+
+```php
+<?php
+
+declare(strict_types=1);
+
+namespace App\Http\Controllers\Api\V1\Orders;
+
+use App\Http\Payloads\V1\Orders\ListOrdersPayload;
+use App\Http\Requests\Orders\ListOrdersRequest;
+use App\Http\Resources\OrderResource;
+use App\Models\Order;
+use Illuminate\Http\Resources\Json\AnonymousResourceCollection;
+
+final class ListOrdersController
+{
+    public function __invoke(ListOrdersRequest $request): AnonymousResourceCollection
+    {
+        $payload = ListOrdersPayload::from($request);
+
+        $orders = Order::query()
+            ->where('user_id', $request->user()->id)
+            ->when($payload->status, fn ($query) => $query->where('status', $payload->status))
+            ->paginate($payload->perPage);
+
+        return OrderResource::collection($orders);
+    }
+}
+```
+
+### 5. Define the rate limit
+
+In `AppServiceProvider`:
+
+```php
+RateLimiter::for('orders', function (Request $request) {
+    return Limit::perMinute(60)->by($request->user()?->id ?? $request->ip());
+});
+```
+
+### 6. Update token abilities
+
+When issuing tokens that should include orders access:
+
+```php
+$token = $user->createToken(
+    name: $payload->deviceName,
+    abilities: ['auth:me', 'auth:logout', 'auth:tokens:read', 'orders:read'],
+)->plainTextToken;
+```
+
+### 7. Write the tests
+
+```php
+it('returns orders for authenticated user', function () {
+    $user = User::factory()->create();
+    Order::factory()->count(3)->for($user)->create();
+
+    $token = $user->createToken('test', ['orders:read'])->plainTextToken;
+
+    $this->withToken($token)
+        ->getJson('/v1/orders')
+        ->assertOk()
+        ->assertJsonCount(3, 'data');
+});
+
+it('rejects requests without orders ability', function () {
+    $user = User::factory()->create();
+
+    $token = $user->createToken('test', ['auth:me'])->plainTextToken;
+
+    $this->withToken($token)
+        ->getJson('/v1/orders')
+        ->assertForbidden();
+});
+```
+
+### 8. Regenerate docs and verify
+
+```bash
+php artisan scribe:generate --no-interaction
+php artisan test
+```
+
+## Before You Go to Production
+
+`App\Support\ProductionSecurityChecks` runs at application boot in production and fails immediately if any of these conditions aren't met:
+
+- `APP_DEBUG` must be `false`
+- `SECURITY_FORCE_HTTPS` must be `true`
+- `APP_URL` must start with `https://`
+- CORS origins cannot be `*`
+- `TRUSTED_HOSTS` must be configured
+
+These aren't warnings. The application will not boot if the checks fail. That's intentional. A misconfigured production environment that silently boots is worse than one that refuses to start.
+
+Beyond the automated checks, confirm these before launch:
+
+Token expiration and abilities match your threat model. If you're building a mobile app, shorter token lifetimes with refresh flows are safer than long-lived tokens. Make sure the abilities on issued tokens are the minimum required for each client type.
+
+Throttle limits match your expected client behavior. The defaults are conservative. If your API will serve high-traffic clients, adjust the limits in `AppServiceProvider` before launch.
+
+`security.audit` events are captured with a retention policy. These events are only useful if you can search them. Set up a log aggregation backend (Papertrail, Logtail, CloudWatch Logs) before launch and verify events are being captured.
+
+Your sunset policy is part of your release process. If you're shipping v1 endpoints today, decide now how you'll communicate deprecation to clients. The tooling is there. Use it.
+
+## Who This Is For
+
+Kit is worth adopting if you want a serious API baseline with auth and security already decided, contract-driven docs and testing from day one, and a clear path to versioning and endpoint lifecycle management.
+
+If you want minimal conventions or primarily need a server-rendered UI stack, look elsewhere. This starter makes a lot of decisions on purpose, and fighting those decisions will slow you down.
+
+The whole point is that you shouldn't have to make those decisions again. Clone it, configure the env, and start building the domain that actually matters.

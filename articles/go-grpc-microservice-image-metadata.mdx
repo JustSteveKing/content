@@ -1,0 +1,188 @@
+---
+title: "Building a Go microservice using gRPC for image metadata extraction"
+description: "Learn how to build a production-grade Go microservice that extracts EXIF and image metadata using gRPC, complete with S3/R2 integration."
+category: Go
+pubDate: 2026-02-20
+sponsor:
+  name: Sevalla
+  url: https://juststeveking.link/host
+  logo: https://github.com/sevalla-hosting.png
+author:
+  name: Steve McDougall
+  avatar:
+    src: https://avatars.githubusercontent.com/u/6368379?v=4
+    alt: Steve McDougall
+tags: ["go", "grpc", "microservices", "performance"]
+crossPost:
+  originalUrl: https://sevalla.com/blog/go-grpc-microservice-image-metadata/
+  originalSite: Sevalla
+  publishedDate: 2026-02-20
+  permission: true
+---
+
+Modern media-heavy platforms survive or fail based on their ability to understand the media flowing through them. Whether you are building a stock photo platform, a digital asset manager, or a content automation pipeline, metadata forms the backbone of search, classification, and analytics.
+
+Across modern media pipelines, a metadata service eventually becomes essential. Every system needs a reliable way to answer a fundamental question: "What exactly is this image?" Camera model, dimensions, geolocation, and colour space are not just technical details. They power search, filtering, ranking, and display logic downstream.
+
+This article walks through designing and implementing a production-grade Go microservice that exposes a gRPC API for extracting image metadata. Rather than focusing on a simplified example, the implementation follows a realistic architecture. Clients send object storage references such as S3 keys or Cloudflare R2 paths. The service retrieves the file, extracts EXIF and general image metadata, and returns a structured response.
+
+By the end, you will have a fully runnable service that can integrate directly into a larger media ingestion pipeline.
+
+## The realistic problem
+
+Assume we're building a media ingestion system for a stock-photo platform. Creators upload high-resolution images into a storage bucket. A separate ingestion orchestrator sends a request to the metadata service, saying: "Extract metadata for the file at `images/uploads/2025/11/beach-sunrise.jpg`."
+
+We don't want this micro-service to handle uploads or storage writes. It only performs fetch, extract, and respond. This separation ensures ingestion pipelines stay flexible, the storage layer remains the source of truth, the service is stateless and horizontally scalable, and you can plug in different storage backends later.
+
+The service needs to extract EXIF metadata (camera model, exposure, aperture, geolocation), dimensions, colour profile, orientation, file type, and optionally file size.
+
+We'll build this using Go 1.22+, gRPC with Protocol Buffers, AWS S3 or Cloudflare R2 via the S3 API, and go-exif / imaging libraries.
+
+## Project structure
+
+Before writing any code, it helps to establish the directory structure.
+
+```text
+metadata-service/
+├── cmd/
+│   └── metadata/
+│       └── main.go
+├── internal/
+│   ├── extractor/
+│   │   ├── exif.go
+│   │   └── image.go
+│   ├── service/
+│   │   └── service.go
+│   └── storage/
+│       └── s3.go
+├── proto/
+│   └── metadata/
+│       └── v1/
+│           └── metadata.proto
+├── gen/
+│   └── metadata/
+│       └── v1/
+│           ├── metadata.pb.go
+│           └── metadata_grpc.pb.go
+├── docker-compose.yml
+├── Dockerfile
+├── Makefile
+├── go.mod
+└── go.sum
+```
+
+## Designing the protocol buffer schema
+
+The `.proto` file defines our API contract. It must be explicit, strongly typed, and stable.
+
+**File: `proto/metadata/v1/metadata.proto`**
+
+```proto
+syntax = "proto3";
+
+package metadata.v1;
+
+option go_package = "github.com/juststeveking/metadata-service/gen/metadata/v1;metadatav1";
+
+message ExtractRequest {
+  string bucket = 1;
+  string object_key = 2;
+}
+
+message Exif {
+  string camera_make = 1;
+  string camera_model = 2;
+  string lens_model = 3;
+  string exposure_time = 4;
+  string f_number = 5;
+  string iso = 6;
+  double latitude = 7;
+  double longitude = 8;
+}
+
+message ImageProperties {
+  uint32 width = 1;
+  uint32 height = 2;
+  string format = 3;
+  string color_space = 4;
+  uint64 file_size_bytes = 5;
+}
+
+message ExtractResponse {
+  Exif exif = 1;
+  ImageProperties properties = 2;
+}
+
+service MetadataService {
+  rpc ExtractMetadata(ExtractRequest) returns (ExtractResponse);
+}
+```
+
+The schema focuses on structured data, not blobs. Metadata should be queryable, not opaque.
+
+## Building the extractors
+
+I like to separate extraction logic into focused packages. EXIF parsing and image property extraction are distinct concerns.
+
+**File: `internal/extractor/exif.go`**
+
+```go
+package extractor
+
+import (
+	"bytes"
+	"github.com/rwcarlsen/goexif/exif"
+	pb "github.com/juststeveking/metadata-service/gen/metadata/v1"
+)
+
+func ParseExif(data []byte) *pb.Exif {
+	x, err := exif.Decode(bytes.NewReader(data))
+	if err != nil {
+		return nil
+	}
+
+	out := &pb.Exif{}
+	if cam, err := x.Get(exif.Make); err == nil && cam != nil {
+		out.CameraMake, _ = cam.StringVal()
+	}
+	// ... rest of extraction logic
+	return out
+}
+```
+
+## Building the gRPC service
+
+Now we wire everything together into the actual service implementation.
+
+**File: `internal/service/service.go`**
+
+```go
+package service
+
+import (
+	"context"
+	"log/slog"
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/status"
+	pb "github.com/juststeveking/metadata-service/gen/metadata/v1"
+)
+
+type MetadataService struct {
+	pb.UnimplementedMetadataServiceServer
+	// ... storage and logger
+}
+
+func (s *MetadataService) ExtractMetadata(
+	ctx context.Context,
+	req *pb.ExtractRequest,
+) (*pb.ExtractResponse, error) {
+	// 1. Fetch from storage
+	// 2. Parse EXIF
+	// 3. Parse Image Properties
+	// 4. Return response
+}
+```
+
+## Final thoughts
+
+This design mirrors what production media companies actually deploy: a clean, stateless gRPC micro-service that speaks in storage keys, not bytes, and extracts only what downstream systems need. It's scalable, observable, easy to test, easy to extend, and plays well inside larger ingestion workflows.

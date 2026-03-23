@@ -1,0 +1,1471 @@
+---
+title: Implementing the Saga Pattern in a Laravel Monolith
+description: Learn how to implement the Saga pattern in Laravel to coordinate external APIs, recover from failures, and keep data consistent.
+category: Laravel
+pubDate: 2026-03-09
+minRead: 12
+author:
+  name: Steve McDougall
+  avatar:
+    src: https://avatars.githubusercontent.com/u/6368379?v=4
+    alt: Steve McDougall
+tags: ["laravel", "saga-pattern", "api-integrations", "distributed-transactions"]
+---
+
+There's a moment in almost every Laravel application's life where a single database transaction stops being enough. You've written clean code, your Eloquent models are well-structured, and then a new requirement lands: "When a user books a package, charge their card and reserve the seat with the airline provider."
+
+And just like that, `DB::transaction()` can no longer save you.
+
+This is where the Saga pattern comes in. It's one of those concepts that sounds like distributed systems territory, but it's just as relevant inside a monolith the moment your code starts reaching outside its own database. This article walks through a practical implementation in a Laravel 12 application using an API-focused approach, no fictional UI, no hand-waving, just the actual classes and code you'd write.
+
+## Why a Database Transaction Isn't Enough
+
+In a standard Laravel application, wrapping operations in `DB::transaction()` gives you atomic behaviour across your own tables. If something fails, everything rolls back. It's clean and reliable.
+
+```php
+DB::transaction(function () use ($booking) {
+    $booking->save();
+    $booking->seats()->create([...]);
+    $payment->save();
+});
+```
+
+This works perfectly as long as every operation touches only your database. The moment you add an external HTTP call to that block, you've broken the contract.
+
+```php
+DB::transaction(function () use ($booking, $paymentData) {
+    $booking->save();
+
+    // This does NOT roll back if anything after it fails
+    $this->stripeClient->charge($paymentData);
+
+    $booking->markAsPaid()->save();
+});
+```
+
+If `markAsPaid()` fails after Stripe has already charged the card, your database rolls back but Stripe doesn't. The customer has been charged for a booking that, from your application's perspective, never completed. That's a bad day for everyone involved.
+
+This class of problem is exactly what the Saga pattern is designed to handle.
+
+## What the Saga Pattern Actually Is
+
+A Saga is a sequence of steps where each step has a corresponding compensating action that undoes its effect if a later step fails. Instead of trying to make external systems participate in your database transaction (which isn't possible), you accept that consistency will be eventual and take responsibility for cleaning up explicitly.
+
+There are two styles of Saga coordination. Choreography is where each service reacts to events from the previous step. Services are loosely coupled but the flow becomes hard to follow quickly. Orchestration is where a central coordinator tells each participant what to do and handles failures. It's easier to reason about and a natural fit for a monolith.
+
+In a Laravel monolith, orchestration is almost always the right choice. You have one codebase, and a dedicated orchestrator class is significantly cleaner than scattering compensating logic across multiple event listeners.
+
+## The Scenario: Booking a Travel Package
+
+The example throughout this article is a travel package booking API. When a user books, three things need to happen: save a pending booking record to the database, reserve a seat via an external flight provider API, and charge the user's card via a payment provider.
+
+Any of these can fail. If the payment step fails after the flight reservation has already succeeded, we need to cancel that reservation. That's the compensation.
+
+## The Status Enums
+
+Before writing a single model, it's worth thinking about how status values will be represented throughout the codebase. Raw strings scattered across steps, jobs, and tests are easy to get wrong, hard to refactor, and tell you nothing at the type level.
+
+Both the `Booking` and `SagaLog` models have a status field, and both follow a strict progression of states. PHP enums are the right tool here, and they give us a natural place to encode the state machine logic too. Rather than letting any piece of code write any status string it likes, the enum enforces which transitions are legal and throws if something tries to skip ahead or move backwards.
+
+```php
+// app/Enums/BookingStatus.php
+declare(strict_types=1);
+
+namespace App\Enums;
+
+enum BookingStatus: string
+{
+    case Pending   = 'pending';
+    case Confirmed = 'confirmed';
+    case Cancelled = 'cancelled';
+
+    /**
+     * @return array<BookingStatus>
+     */
+    public function allowedTransitions(): array
+    {
+        return match ($this) {
+            self::Pending   => [self::Confirmed, self::Cancelled],
+            self::Confirmed => [],
+            self::Cancelled => [],
+        };
+    }
+
+    public function canTransitionTo(self $next): bool
+    {
+        return in_array($next, $this->allowedTransitions(), strict: true);
+    }
+
+    public function transitionTo(self $next): self
+    {
+        if (! $this->canTransitionTo($next)) {
+            throw new \LogicException(
+                "Invalid booking status transition from [{$this->value}] to [{$next->value}]."
+            );
+        }
+
+        return $next;
+    }
+}
+```
+
+```php
+// app/Enums/SagaStepStatus.php
+declare(strict_types=1);
+
+namespace App\Enums;
+
+enum SagaStepStatus: string
+{
+    case Pending            = 'pending';
+    case Completed          = 'completed';
+    case Failed             = 'failed';
+    case Compensated        = 'compensated';
+    case CompensationFailed = 'compensation_failed';
+
+    /**
+     * @return array<SagaStepStatus>
+     */
+    public function allowedTransitions(): array
+    {
+        return match ($this) {
+            self::Pending            => [self::Completed, self::Failed],
+            self::Completed          => [self::Compensated, self::CompensationFailed],
+            self::Failed             => [],
+            self::Compensated        => [],
+            self::CompensationFailed => [],
+        };
+    }
+
+    public function canTransitionTo(self $next): bool
+    {
+        return in_array($next, $this->allowedTransitions(), strict: true);
+    }
+
+    public function transitionTo(self $next): self
+    {
+        if (! $this->canTransitionTo($next)) {
+            throw new \LogicException(
+                "Invalid saga step status transition from [{$this->value}] to [{$next->value}]."
+            );
+        }
+
+        return $next;
+    }
+}
+```
+
+The `allowedTransitions()` method is what defines the state machine. A `Pending` booking can move to `Confirmed` or `Cancelled`, but once it reaches either it's done. A `Confirmed` saga step can be compensated, but a `Failed` step cannot: by the time a step has failed, there's nothing to undo because it never completed. These rules live in one place and nowhere else.
+
+The `transitionTo()` method returns the new state rather than mutating anything. This keeps the enum side-effect-free and puts the model in charge of actually persisting the change. When something attempts an illegal transition, you get a `LogicException` immediately, which is significantly more useful than silently writing a nonsense status to the database.
+
+## Setting Up the Models
+
+With the enums defined, the models can be built around them. Start with `php artisan make:model Booking --migration` and `php artisan make:model SagaLog --migration` to generate both.
+
+### The Booking Model
+
+```php
+// app/Models/Booking.php
+declare(strict_types=1);
+
+namespace App\Models;
+
+use App\Enums\BookingStatus;
+use Illuminate\Database\Eloquent\Factories\HasFactory;
+use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\Relations\BelongsTo;
+
+class Booking extends Model
+{
+    use HasFactory;
+
+    protected $fillable = [
+        'user_id',
+        'flight_reference',
+        'payment_reference',
+        'status',
+        'metadata',
+    ];
+
+    protected function casts(): array
+    {
+        return [
+            'status'   => BookingStatus::class,
+            'metadata' => 'array',
+        ];
+    }
+
+    public function user(): BelongsTo
+    {
+        return $this->belongsTo(User::class);
+    }
+
+    public function transitionTo(BookingStatus $next): self
+    {
+        $this->status = $this->status->transitionTo($next);
+        $this->save();
+
+        return $this;
+    }
+
+    public function isPending(): bool
+    {
+        return $this->status === BookingStatus::Pending;
+    }
+
+    public function isConfirmed(): bool
+    {
+        return $this->status === BookingStatus::Confirmed;
+    }
+}
+```
+
+Casting `status` to `BookingStatus::class` means Eloquent automatically hydrates the column into an enum when reading and serialises it back to its string value when writing. You get full type safety throughout the application without any extra ceremony.
+
+The `transitionTo()` method on the model is the only place a booking's status should change. It delegates the legality check to the enum, persists the result, and returns `$this` for chaining. Any step or job that needs to move a booking forward calls this method and gets a `LogicException` if it tries something that doesn't make sense.
+
+The `flight_reference` and `payment_reference` columns are both nullable because they start empty. The saga populates them only once the external steps complete successfully. If you ever look at a booking in production and both of those are null while `status` is `Pending`, you know the saga job hasn't run yet or failed before those steps executed.
+
+The corresponding migration looks like:
+
+```php
+// database/migrations/xxxx_create_bookings_table.php
+return new class extends Migration
+{
+    public function up(): void
+    {
+        Schema::create('bookings', function (Blueprint $table) {
+            $table->id();
+            $table->foreignId('user_id')->constrained()->cascadeOnDelete();
+            $table->string('flight_reference')->nullable();
+            $table->string('payment_reference')->nullable();
+            $table->string('status')->default(BookingStatus::Pending->value);
+            $table->json('metadata')->nullable();
+            $table->timestamps();
+        });
+    }
+
+    public function down(): void
+    {
+        Schema::dropIfExists('bookings');
+    }
+};
+```
+
+Using `BookingStatus::Pending->value` for the default means the migration is tied to the enum rather than a freestanding string. If the value ever changes, it changes in one place.
+
+### The SagaLog Model
+
+```php
+// app/Models/SagaLog.php
+declare(strict_types=1);
+
+namespace App\Models;
+
+use App\Enums\SagaStepStatus;
+use Illuminate\Database\Eloquent\Model;
+
+class SagaLog extends Model
+{
+    protected $fillable = [
+        'saga_id',
+        'step',
+        'status',
+        'payload',
+        'result',
+        'error',
+    ];
+
+    protected function casts(): array
+    {
+        return [
+            'status'  => SagaStepStatus::class,
+            'payload' => 'array',
+            'result'  => 'array',
+        ];
+    }
+
+    public function transitionTo(SagaStepStatus $next): self
+    {
+        $this->status = $this->status->transitionTo($next);
+        $this->save();
+
+        return $this;
+    }
+
+    public function isCompleted(): bool
+    {
+        return $this->status === SagaStepStatus::Completed;
+    }
+}
+```
+
+The same pattern applies here. The `transitionTo()` method is the single path through which a log entry's status changes, and the enum decides whether that's allowed. The `SagaStepStatus` machine is a little more involved than `BookingStatus` because it has terminal states on both the success and failure paths, but the logic stays the same.
+
+The `payload` column stores the context passed into the step at execution time. The `result` column stores what the step returned. That distinction matters: when the job compensates a step, it reads from `result` because that's what the step actually produced, not what it was given.
+
+The corresponding migration adds a composite index on `saga_id` and `step` because the job queries on both columns every time it checks whether a step has already completed:
+
+```php
+// database/migrations/xxxx_create_saga_logs_table.php
+return new class extends Migration
+{
+    public function up(): void
+    {
+        Schema::create('saga_logs', function (Blueprint $table) {
+            $table->id();
+            $table->string('saga_id');
+            $table->string('step');
+            $table->string('status')->default(SagaStepStatus::Pending->value);
+            $table->json('payload');
+            $table->json('result')->nullable();
+            $table->text('error')->nullable();
+            $table->timestamps();
+
+            $table->index(['saga_id', 'step']);
+        });
+    }
+
+    public function down(): void
+    {
+        Schema::dropIfExists('saga_logs');
+    }
+};
+```
+
+## Testing the Enums
+
+The enums carry real logic, so they deserve real tests. These run without touching the database at all, which makes them fast and focused. In Pest, the `uses()` call at the top of the file replaces the `use` trait declarations you'd find on a PHPUnit class. Tests are functions rather than methods, and `it()` reads naturally when you want to describe behaviour.
+
+```php
+// tests/Unit/Enums/BookingStatusTest.php
+declare(strict_types=1);
+
+use App\Enums\BookingStatus;
+
+it('allows pending to transition to confirmed', function () {
+    expect(BookingStatus::Pending->canTransitionTo(BookingStatus::Confirmed))->toBeTrue();
+});
+
+it('allows pending to transition to cancelled', function () {
+    expect(BookingStatus::Pending->canTransitionTo(BookingStatus::Cancelled))->toBeTrue();
+});
+
+it('does not allow confirmed to transition to cancelled', function () {
+    expect(BookingStatus::Confirmed->canTransitionTo(BookingStatus::Cancelled))->toBeFalse();
+});
+
+it('does not allow cancelled to transition to confirmed', function () {
+    expect(BookingStatus::Cancelled->canTransitionTo(BookingStatus::Confirmed))->toBeFalse();
+});
+
+it('returns the new status on a valid transition', function () {
+    expect(BookingStatus::Pending->transitionTo(BookingStatus::Confirmed))
+        ->toBe(BookingStatus::Confirmed);
+});
+
+it('throws a LogicException on an invalid transition', function () {
+    BookingStatus::Confirmed->transitionTo(BookingStatus::Cancelled);
+})->throws(
+    \LogicException::class,
+    'Invalid booking status transition from [confirmed] to [cancelled].'
+);
+```
+
+```php
+// tests/Unit/Enums/SagaStepStatusTest.php
+declare(strict_types=1);
+
+use App\Enums\SagaStepStatus;
+
+it('allows pending to transition to completed', function () {
+    expect(SagaStepStatus::Pending->canTransitionTo(SagaStepStatus::Completed))->toBeTrue();
+});
+
+it('allows pending to transition to failed', function () {
+    expect(SagaStepStatus::Pending->canTransitionTo(SagaStepStatus::Failed))->toBeTrue();
+});
+
+it('allows completed to transition to compensated', function () {
+    expect(SagaStepStatus::Completed->canTransitionTo(SagaStepStatus::Compensated))->toBeTrue();
+});
+
+it('does not allow failed to transition to compensated', function () {
+    expect(SagaStepStatus::Failed->canTransitionTo(SagaStepStatus::Compensated))->toBeFalse();
+});
+
+it('has no allowed transitions from compensated', function () {
+    expect(SagaStepStatus::Compensated->allowedTransitions())->toBeEmpty();
+});
+
+it('throws a LogicException when transitioning from failed to compensated', function () {
+    SagaStepStatus::Failed->transitionTo(SagaStepStatus::Compensated);
+})->throws(
+    \LogicException::class,
+    'Invalid saga step status transition from [failed] to [compensated].'
+);
+```
+
+## The Booking Payload
+
+I prefer to avoid passing raw arrays between the HTTP layer and the rest of the application. Arrays give you no IDE support, no static analysis, and nothing to stop a typo silently passing a wrong key through. A payload DTO solves all of that. It's the typed contract between the form request and the service layer, and it lives in `app/Http/Payloads` alongside anything else that serves the same purpose.
+
+```php
+// app/Http/Payloads/BookingPayload.php
+declare(strict_types=1);
+
+namespace App\Http\Payloads;
+
+readonly class BookingPayload
+{
+    public function __construct(
+        public readonly int    $userId,
+        public readonly string $flightId,
+        public readonly int    $amount,
+        public readonly string $currency,
+        public readonly string $paymentCustomerId,
+        public readonly array  $metadata = [],
+    ) {}
+
+    public function toContext(): array
+    {
+        return [
+            'user_id'             => $this->userId,
+            'flight_id'           => $this->flightId,
+            'amount'              => $this->amount,
+            'currency'            => $this->currency,
+            'payment_customer_id' => $this->paymentCustomerId,
+            'metadata'            => $this->metadata,
+        ];
+    }
+}
+```
+
+The `toContext()` method is the bridge between the typed world and the saga's internal step context. Steps still pass data around as arrays because the `SagaStep` interface is generic: it doesn't know anything about bookings specifically, so it can't be typed to `BookingPayload`. The DTO is the right tool at the HTTP boundary; the array context is the right tool inside the generic step machinery. `toContext()` makes the handoff explicit and keeps both worlds clean.
+
+## Defining the Saga Step Interface
+
+Each step in the saga needs two methods: one to run the action and one to reverse it.
+
+```php
+// app/Sagas/Contracts/SagaStep.php
+declare(strict_types=1);
+
+namespace App\Sagas\Contracts;
+
+interface SagaStep
+{
+    public function run(array $payload): array;
+    public function compensate(array $payload): void;
+    public function name(): string;
+}
+```
+
+The `run` method returns an array because steps often produce data that subsequent steps need. The flight reservation step returns a reference number that the confirm booking step needs to persist. That return value gets merged into the context and passed forward.
+
+## The Saga Result Value Object
+
+```php
+// app/Sagas/SagaResult.php
+declare(strict_types=1);
+
+namespace App\Sagas;
+
+readonly class SagaResult
+{
+    public function __construct(
+        public readonly bool    $succeeded,
+        public readonly array   $data = [],
+        public readonly ?string $failedStep = null,
+        public readonly ?string $error = null,
+    ) {}
+
+    public static function success(array $data = []): self
+    {
+        return new self(succeeded: true, data: $data);
+    }
+
+    public static function failure(string $failedStep, string $error, array $data = []): self
+    {
+        return new self(
+            succeeded: false,
+            data: $data,
+            failedStep: $failedStep,
+            error: $error,
+        );
+    }
+}
+```
+
+## The Individual Steps
+
+### Step 1: Create the Booking Record
+
+```php
+// app/Sagas/Steps/CreateBookingStep.php
+declare(strict_types=1);
+
+namespace App\Sagas\Steps;
+
+use App\Enums\BookingStatus;
+use App\Models\Booking;
+use App\Sagas\Contracts\SagaStep;
+
+class CreateBookingStep implements SagaStep
+{
+    public function run(array $payload): array
+    {
+        $booking = Booking::query()->create([
+            'user_id'  => $payload['user_id'],
+            'status'   => BookingStatus::Pending,
+            'metadata' => $payload['metadata'] ?? [],
+        ]);
+
+        return ['booking_id' => $booking->id];
+    }
+
+    public function compensate(array $payload): void
+    {
+        if (! isset($payload['booking_id'])) {
+            return;
+        }
+
+        Booking::query()->find($payload['booking_id'])
+            ?->transitionTo(BookingStatus::Cancelled);
+    }
+
+    public function name(): string
+    {
+        return 'create_booking';
+    }
+}
+```
+
+Compensation calls `transitionTo()` on the model rather than issuing a raw `update()`. If the booking has somehow already been confirmed by the time compensation runs, the state machine will throw rather than silently overwriting a confirmed booking with a cancelled status. That's the right behaviour: you want to know something has gone wrong rather than corrupt your data.
+
+### Step 2: Reserve the Flight Seat
+
+```php
+// app/Sagas/Steps/ReserveFlightStep.php
+declare(strict_types=1);
+
+namespace App\Sagas\Steps;
+
+use App\Sagas\Contracts\SagaStep;
+use App\Services\FlightProviderClient;
+
+class ReserveFlightStep implements SagaStep
+{
+    public function __construct(
+        private readonly FlightProviderClient $client,
+    ) {}
+
+    public function run(array $payload): array
+    {
+        $reservation = $this->client->reserve(
+            flightId: $payload['flight_id'],
+            passengerId: $payload['user_id'],
+        );
+
+        return ['flight_reference' => $reservation['reference']];
+    }
+
+    public function compensate(array $payload): void
+    {
+        if (isset($payload['flight_reference'])) {
+            $this->client->cancel($payload['flight_reference']);
+        }
+    }
+
+    public function name(): string
+    {
+        return 'reserve_flight';
+    }
+}
+```
+
+### Step 3: Charge the Payment
+
+```php
+// app/Sagas/Steps/ChargePaymentStep.php
+declare(strict_types=1);
+
+namespace App\Sagas\Steps;
+
+use App\Sagas\Contracts\SagaStep;
+use App\Services\PaymentClient;
+
+class ChargePaymentStep implements SagaStep
+{
+    public function __construct(
+        private readonly PaymentClient $client,
+    ) {}
+
+    public function run(array $payload): array
+    {
+        $charge = $this->client->charge(
+            customerId: $payload['payment_customer_id'],
+            amount: $payload['amount'],
+            currency: $payload['currency'],
+            description: "Booking #{$payload['booking_id']}",
+        );
+
+        return ['payment_reference' => $charge['id']];
+    }
+
+    public function compensate(array $payload): void
+    {
+        if (isset($payload['payment_reference'])) {
+            $this->client->refund($payload['payment_reference']);
+        }
+    }
+
+    public function name(): string
+    {
+        return 'charge_payment';
+    }
+}
+```
+
+### Step 4: Confirm the Booking
+
+```php
+// app/Sagas/Steps/ConfirmBookingStep.php
+declare(strict_types=1);
+
+namespace App\Sagas\Steps;
+
+use App\Enums\BookingStatus;
+use App\Models\Booking;
+use App\Sagas\Contracts\SagaStep;
+
+class ConfirmBookingStep implements SagaStep
+{
+    public function run(array $payload): array
+    {
+        $booking = Booking::query()->findOrFail($payload['booking_id']);
+
+        $booking->flight_reference  = $payload['flight_reference'];
+        $booking->payment_reference = $payload['payment_reference'];
+        $booking->save();
+
+        $booking->transitionTo(BookingStatus::Confirmed);
+
+        return [];
+    }
+
+    public function compensate(array $payload): void
+    {
+        // CreateBookingStep handles the status transition on cancellation
+    }
+
+    public function name(): string
+    {
+        return 'confirm_booking';
+    }
+}
+```
+
+The references are set before the status transition. If the save fails for any reason, the booking stays `Pending` rather than becoming `Confirmed` with empty references. The order matters.
+
+## Testing the Steps
+
+The interface keeps each step independently testable. In Pest, shared setup lives in `beforeEach()` rather than a `setUp()` method, and the `uses()` call at the top pulls in `RefreshDatabase` for the tests that need it.
+
+```php
+// tests/Unit/Sagas/Steps/CreateBookingStepTest.php
+declare(strict_types=1);
+
+use App\Enums\BookingStatus;
+use App\Models\Booking;
+use App\Sagas\Steps\CreateBookingStep;
+use Illuminate\Foundation\Testing\RefreshDatabase;
+
+uses(RefreshDatabase::class);
+
+it('creates a pending booking and returns its id', function () {
+    $step   = new CreateBookingStep();
+    $result = $step->run([
+        'user_id'  => 1,
+        'metadata' => ['source' => 'api'],
+    ]);
+
+    $booking = Booking::query()->find($result['booking_id']);
+
+    expect($result)->toHaveKey('booking_id')
+        ->and($booking->status)->toBe(BookingStatus::Pending)
+        ->and($booking->user_id)->toBe(1);
+});
+
+it('transitions the booking to cancelled on compensate', function () {
+    $booking = Booking::factory()->create(['status' => BookingStatus::Pending]);
+
+    (new CreateBookingStep())->compensate(['booking_id' => $booking->id]);
+
+    expect($booking->fresh()->status)->toBe(BookingStatus::Cancelled);
+});
+
+it('does nothing on compensate when booking id is missing', function () {
+    (new CreateBookingStep())->compensate([]);
+
+    expect(Booking::query()->count())->toBe(0);
+});
+```
+
+```php
+// tests/Unit/Sagas/Steps/ReserveFlightStepTest.php
+declare(strict_types=1);
+
+use App\Sagas\Steps\ReserveFlightStep;
+use App\Services\FlightProviderClient;
+
+it('returns a flight reference when the reservation succeeds', function () {
+    $client = Mockery::mock(FlightProviderClient::class);
+    $client->shouldReceive('reserve')
+        ->once()
+        ->with(flightId: 'FL-123', passengerId: 1)
+        ->andReturn(['reference' => 'REF-ABC']);
+
+    $result = (new ReserveFlightStep($client))
+        ->run(['flight_id' => 'FL-123', 'user_id' => 1]);
+
+    expect($result)->toBe(['flight_reference' => 'REF-ABC']);
+});
+
+it('throws when the flight provider returns an error', function () {
+    $client = Mockery::mock(FlightProviderClient::class);
+    $client->shouldReceive('reserve')
+        ->once()
+        ->andThrow(new \RuntimeException('Flight unavailable'));
+
+    (new ReserveFlightStep($client))
+        ->run(['flight_id' => 'FL-123', 'user_id' => 1]);
+})->throws(\RuntimeException::class, 'Flight unavailable');
+
+it('cancels the reservation on compensate', function () {
+    $client = Mockery::mock(FlightProviderClient::class);
+    $client->shouldReceive('cancel')->once()->with('REF-ABC');
+
+    (new ReserveFlightStep($client))
+        ->compensate(['flight_reference' => 'REF-ABC']);
+});
+
+it('skips cancellation on compensate when no reference is present', function () {
+    $client = Mockery::mock(FlightProviderClient::class);
+    $client->shouldNotReceive('cancel');
+
+    (new ReserveFlightStep($client))->compensate([]);
+});
+```
+
+## The Orchestrator
+
+The orchestrator runs each step in order, accumulates context from each step's output, and triggers compensations in reverse order if anything fails.
+
+```php
+// app/Sagas/BookingSagaOrchestrator.php
+declare(strict_types=1);
+
+namespace App\Sagas;
+
+use App\Sagas\Contracts\SagaStep;
+use Illuminate\Support\Facades\Log;
+
+class BookingSagaOrchestrator
+{
+    /** @var SagaStep[] */
+    private array $steps = [];
+
+    private array $executedSteps = [];
+
+    public function addStep(SagaStep $step): self
+    {
+        $this->steps[] = $step;
+
+        return $this;
+    }
+
+    public function run(array $initialPayload): SagaResult
+    {
+        $context = $initialPayload;
+
+        foreach ($this->steps as $step) {
+            try {
+                $result  = $step->run($context);
+                $context = array_merge($context, $result);
+
+                $this->executedSteps[] = [
+                    'step'    => $step,
+                    'context' => $context,
+                ];
+            } catch (\Throwable $e) {
+                Log::error('Saga step failed', [
+                    'step'  => $step->name(),
+                    'error' => $e->getMessage(),
+                ]);
+
+                $this->compensate($context);
+
+                return SagaResult::failure(
+                    failedStep: $step->name(),
+                    error: $e->getMessage(),
+                    data: $context,
+                );
+            }
+        }
+
+        return SagaResult::success($context);
+    }
+
+    private function compensate(array $context): void
+    {
+        foreach (array_reverse($this->executedSteps) as ['step' => $step, 'context' => $stepContext]) {
+            try {
+                $step->compensate(array_merge($stepContext, $context));
+            } catch (\Throwable $e) {
+                Log::critical('Saga compensation failed', [
+                    'step'  => $step->name(),
+                    'error' => $e->getMessage(),
+                ]);
+            }
+        }
+    }
+}
+```
+
+The `executedSteps` array stores both the step reference and the context snapshot at the time it completed. When compensating, you want the context from when that step ran, not just the final accumulated context. The `array_merge` in `compensate()` also folds in any data produced by later steps, so compensation always has everything it might need.
+
+## Could This Be a Job Chain?
+
+Before looking at the full queued implementation, it's worth asking whether Laravel's built-in job chaining could do the work here. A job chain via `Bus::chain()` runs jobs sequentially and stops the chain if any job fails. On the surface that looks like a natural fit.
+
+```php
+Bus::chain([
+    new ReserveFlightJob($sagaId, $payload),
+    new ChargePaymentJob($sagaId, $payload),
+    new ConfirmBookingJob($sagaId, $payload),
+])->catch(function () {
+    // one catch handler for anything that fails
+})->dispatch();
+```
+
+The happy path is genuinely cleaner with a chain. Each step is its own isolated job, the queue worker handles sequencing, and you get Laravel's retry behaviour for free on each individual job.
+
+The problem shows up on the failure path. When a job in the chain fails, the `catch` callback fires but you've lost the context of which steps already succeeded. You can reconstruct that from the `saga_logs` table, but now the compensation logic lives in the catch callback rather than in the steps themselves, and you're querying the database to figure out what happened rather than having the orchestrator already know.
+
+There's also an idempotency concern. If `ChargePaymentJob` fails and the chain retries it, you need to be sure the retry doesn't try to charge the card a second time. With the single-job approach, the recovery check against `saga_logs` sits right at the top of the loop. That's still not a substitute for provider-side idempotency keys, but it does keep the recovery guard in one place. With a chain, each job needs its own idempotency guard, which spreads that responsibility across every step class.
+
+A job chain is a reasonable simplification if your saga steps are truly independent and you're comfortable with simpler compensation logic. For this booking scenario, where the compensation for a failed payment depends on knowing that a flight reservation succeeded, the single job with explicit step tracking is the better fit.
+
+## Making It Reliable with a Queued Job
+
+The orchestrator works synchronously, which is fine for simple flows, but has one problem: if the process crashes mid-saga, you've lost track of where things are. You have a pending booking and no way to know whether the flight reservation happened.
+
+The single queued job approach keeps all the saga logic together. It accepts a `BookingPayload` directly, calls `toContext()` to seed the step context, records progress in `saga_logs`, and compensates immediately if a step fails.
+
+```bash
+php artisan make:job ProcessBookingSaga
+```
+
+```php
+// app/Jobs/ProcessBookingSaga.php
+declare(strict_types=1);
+
+namespace App\Jobs;
+
+use App\Enums\BookingStatus;
+use App\Enums\SagaStepStatus;
+use App\Http\Payloads\BookingPayload;
+use App\Models\Booking;
+use App\Models\SagaLog;
+use App\Sagas\Contracts\SagaStep;
+use App\Sagas\Steps\ChargePaymentStep;
+use App\Sagas\Steps\ConfirmBookingStep;
+use App\Sagas\Steps\ReserveFlightStep;
+use App\Services\FlightProviderClient;
+use App\Services\PaymentClient;
+use Illuminate\Contracts\Queue\ShouldQueue;
+use Illuminate\Foundation\Queue\Queueable;
+use Illuminate\Support\Facades\Log;
+
+class ProcessBookingSaga implements ShouldQueue
+{
+    use Queueable;
+
+    public function __construct(
+        public readonly string         $sagaId,
+        public readonly int            $bookingId,
+        public readonly BookingPayload $payload,
+    ) {}
+
+    public function handle(
+        FlightProviderClient $flightClient,
+        PaymentClient $paymentClient,
+    ): void {
+        $steps = [
+            new ReserveFlightStep($flightClient),
+            new ChargePaymentStep($paymentClient),
+            new ConfirmBookingStep(),
+        ];
+
+        $context = array_merge(
+            $this->payload->toContext(),
+            ['booking_id' => $this->bookingId],
+        );
+
+        foreach ($steps as $step) {
+            $existing = SagaLog::query()
+                ->where('saga_id', $this->sagaId)
+                ->where('step', $step->name())
+                ->where('status', SagaStepStatus::Completed)
+                ->first();
+
+            if ($existing !== null) {
+                $context = array_merge($context, $existing->result ?? []);
+                continue;
+            }
+
+            $log = SagaLog::query()->create([
+                'saga_id' => $this->sagaId,
+                'step'    => $step->name(),
+                'status'  => SagaStepStatus::Pending,
+                'payload' => $context,
+            ]);
+
+            try {
+                $result  = $step->run($context);
+                $context = array_merge($context, $result);
+
+                $log->transitionTo(SagaStepStatus::Completed);
+                $log->update(['result' => $result]);
+            } catch (\Throwable $e) {
+                $log->transitionTo(SagaStepStatus::Failed);
+                $log->update(['error' => $e->getMessage()]);
+
+                Log::error('Saga step failed in job', [
+                    'saga_id' => $this->sagaId,
+                    'step'    => $step->name(),
+                    'error'   => $e->getMessage(),
+                ]);
+
+                $this->compensateCompletedSteps($steps, $context);
+                $this->markBookingAsCancelled();
+
+                $this->fail($e);
+
+                return;
+            }
+        }
+    }
+
+    /**
+     * @param SagaStep[] $steps
+     */
+    private function compensateCompletedSteps(array $steps, array $context): void
+    {
+        $completed = SagaLog::query()
+            ->where('saga_id', $this->sagaId)
+            ->where('status', SagaStepStatus::Completed)
+            ->orderByDesc('id')
+            ->get();
+
+        $stepMap = collect($steps)->keyBy(fn (SagaStep $s) => $s->name());
+
+        foreach ($completed as $log) {
+            $step = $stepMap->get($log->step);
+
+            if ($step === null) {
+                continue;
+            }
+
+            try {
+                $step->compensate(array_merge($log->result ?? [], $context));
+
+                $log->transitionTo(SagaStepStatus::Compensated);
+            } catch (\Throwable $e) {
+                $log->transitionTo(SagaStepStatus::CompensationFailed);
+                $log->update(['error' => $e->getMessage()]);
+
+                Log::critical('Saga compensation failed', [
+                    'saga_id' => $this->sagaId,
+                    'step'    => $log->step,
+                    'error'   => $e->getMessage(),
+                ]);
+            }
+        }
+    }
+
+    private function markBookingAsCancelled(): void
+    {
+        $booking = Booking::query()->find($this->bookingId);
+
+        if ($booking?->isPending()) {
+            $booking->transitionTo(BookingStatus::Cancelled);
+        }
+    }
+}
+```
+
+Notice the `bookingId` is a separate constructor argument rather than being buried inside the payload. The `BookingPayload` represents what came from the HTTP request; the booking ID is produced after the service creates the record, so it lives alongside the payload rather than inside it. That keeps the DTO honest about what it actually represents.
+
+This version compensates as soon as a step fails and then explicitly marks the job as failed with `$this->fail($e)`. That's a deliberate choice: once compensation has started, you generally do not want Laravel to retry the same job automatically. If you do want automatic retries for transient provider errors, keep the external calls idempotent and rethrow before compensating.
+
+Even with the `saga_logs` guard, you should still pass an idempotency key to providers like Stripe. The local log only protects you after a step has been durably recorded as completed in your own database.
+
+## Wiring It Together: The Service
+
+The service accepts a `BookingPayload`, creates the booking, and dispatches the job. No array juggling, no string keys to get wrong.
+
+```php
+// app/Services/BookingService.php
+declare(strict_types=1);
+
+namespace App\Services;
+
+use App\Enums\BookingStatus;
+use App\Http\Payloads\BookingPayload;
+use App\Jobs\ProcessBookingSaga;
+use App\Models\Booking;
+use Illuminate\Support\Str;
+
+class BookingService
+{
+    public function book(BookingPayload $payload): Booking
+    {
+        $booking = Booking::query()->create([
+            'user_id'  => $payload->userId,
+            'status'   => BookingStatus::Pending,
+            'metadata' => $payload->metadata,
+        ]);
+
+        ProcessBookingSaga::dispatch(
+            sagaId:    Str::uuid()->toString(),
+            bookingId: $booking->id,
+            payload:   $payload,
+        );
+
+        return $booking;
+    }
+}
+```
+
+## The Controller and Form Request
+
+The controller becomes very thin. It calls `$request->payload()` and hands the result to the service. That's it.
+
+```php
+// app/Http/Controllers/BookingController.php
+declare(strict_types=1);
+
+namespace App\Http\Controllers;
+
+use App\Http\Requests\StoreBookingRequest;
+use App\Services\BookingService;
+use Illuminate\Http\JsonResponse;
+
+class BookingController extends Controller
+{
+    public function __construct(
+        private readonly BookingService $bookingService,
+    ) {}
+
+    public function store(StoreBookingRequest $request): JsonResponse
+    {
+        $booking = $this->bookingService->book($request->payload());
+
+        return response()->json([
+            'message'    => 'Booking received. Processing payment and flight reservation.',
+            'booking_id' => $booking->id,
+        ], 202);
+    }
+}
+```
+
+The `payload()` method lives on the form request itself, which is where I find it most useful. The request already knows its validated data and has access to the authenticated user, so it's the natural place to assemble the DTO. No manual `array_merge`, no `$request->user()->id` leaking into the controller.
+
+```php
+// app/Http/Requests/StoreBookingRequest.php
+declare(strict_types=1);
+
+namespace App\Http\Requests;
+
+use App\Http\Payloads\BookingPayload;
+use Illuminate\Foundation\Http\FormRequest;
+
+class StoreBookingRequest extends FormRequest
+{
+    public function authorize(): bool
+    {
+        return $this->user() !== null;
+    }
+
+    public function rules(): array
+    {
+        return [
+            'flight_id'           => ['required', 'string'],
+            'amount'              => ['required', 'integer', 'min:1'],
+            'currency'            => ['sometimes', 'string', 'size:3'],
+            'metadata'            => ['sometimes', 'array'],
+            'payment_customer_id' => ['required', 'string'],
+        ];
+    }
+
+    public function payload(): BookingPayload
+    {
+        $validated = $this->validated();
+
+        return new BookingPayload(
+            userId:            $this->user()->id,
+            flightId:          $validated['flight_id'],
+            amount:            $validated['amount'],
+            currency:          $validated['currency'] ?? 'GBP',
+            paymentCustomerId: $validated['payment_customer_id'],
+            metadata:          $validated['metadata'] ?? [],
+        );
+    }
+}
+```
+
+The `currency` default lives here rather than scattered across the steps. One place, obvious, easy to change.
+
+```php
+// routes/api.php
+use App\Http\Controllers\BookingController;
+use Illuminate\Support\Facades\Route;
+
+Route::middleware('auth:sanctum')->group(function () {
+    Route::post('/bookings', [BookingController::class, 'store']);
+});
+```
+
+## Testing the Orchestration
+
+```php
+// tests/Unit/Sagas/BookingSagaOrchestratorTest.php
+declare(strict_types=1);
+
+use App\Sagas\BookingSagaOrchestrator;
+use App\Sagas\Contracts\SagaStep;
+
+function makeSagaStep(string $name, Closure $run, ?Closure $compensate = null): SagaStep
+{
+    return new class($name, $run, $compensate) implements SagaStep {
+        public function __construct(
+            private readonly string   $stepName,
+            private readonly Closure  $runFn,
+            private readonly ?Closure $compensateFn,
+        ) {}
+
+        public function run(array $payload): array
+        {
+            return ($this->runFn)($payload);
+        }
+
+        public function compensate(array $payload): void
+        {
+            if ($this->compensateFn !== null) {
+                ($this->compensateFn)($payload);
+            }
+        }
+
+        public function name(): string
+        {
+            return $this->stepName;
+        }
+    };
+}
+
+it('returns success when all steps pass', function () {
+    $result = (new BookingSagaOrchestrator())
+        ->addStep(makeSagaStep('step_a', fn () => ['a' => 'done']))
+        ->addStep(makeSagaStep('step_b', fn () => ['b' => 'done']))
+        ->run(['initial' => true]);
+
+    expect($result->succeeded)->toBeTrue()
+        ->and($result->data['a'])->toBe('done')
+        ->and($result->data['b'])->toBe('done');
+});
+
+it('returns failure with the failed step name when a step throws', function () {
+    $result = (new BookingSagaOrchestrator())
+        ->addStep(makeSagaStep('step_a', fn () => []))
+        ->addStep(makeSagaStep('step_b', fn () => throw new \RuntimeException('Payment declined')))
+        ->run([]);
+
+    expect($result->succeeded)->toBeFalse()
+        ->and($result->failedStep)->toBe('step_b')
+        ->and($result->error)->toBe('Payment declined');
+});
+
+it('runs compensations in reverse order when a step fails', function () {
+    $compensated = [];
+
+    (new BookingSagaOrchestrator())
+        ->addStep(makeSagaStep('step_a', fn () => [], function () use (&$compensated) {
+            $compensated[] = 'step_a';
+        }))
+        ->addStep(makeSagaStep('step_b', fn () => [], function () use (&$compensated) {
+            $compensated[] = 'step_b';
+        }))
+        ->addStep(makeSagaStep('step_c', fn () => throw new \RuntimeException('fail')))
+        ->run([]);
+
+    expect($compensated)->toBe(['step_b', 'step_a']);
+});
+
+it('does not compensate the failed step itself', function () {
+    $compensated = [];
+
+    (new BookingSagaOrchestrator())
+        ->addStep(makeSagaStep('step_a', fn () => []))
+        ->addStep(makeSagaStep('step_b', fn () => throw new \RuntimeException('fail'), function () use (&$compensated) {
+            $compensated[] = 'step_b';
+        }))
+        ->run([]);
+
+    expect($compensated)->toBeEmpty();
+});
+
+it('accumulates context across steps', function () {
+    $result = (new BookingSagaOrchestrator())
+        ->addStep(makeSagaStep('step_a', fn () => ['from_a' => 'value_a']))
+        ->addStep(makeSagaStep('step_b', function (array $payload) {
+            expect($payload['from_a'])->toBe('value_a');
+
+            return ['from_b' => 'value_b'];
+        }))
+        ->run([]);
+
+    expect($result->data['from_a'])->toBe('value_a')
+        ->and($result->data['from_b'])->toBe('value_b');
+});
+```
+
+## Testing the Queued Job
+
+The `beforeEach` block constructs a real `BookingPayload` rather than an array, which is what the job will actually receive in production.
+
+```php
+// tests/Feature/Jobs/ProcessBookingSagaTest.php
+declare(strict_types=1);
+
+use App\Enums\BookingStatus;
+use App\Enums\SagaStepStatus;
+use App\Http\Payloads\BookingPayload;
+use App\Jobs\ProcessBookingSaga;
+use App\Models\Booking;
+use App\Models\SagaLog;
+use App\Models\User;
+use App\Services\FlightProviderClient;
+use App\Services\PaymentClient;
+use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Str;
+
+uses(RefreshDatabase::class);
+
+beforeEach(function () {
+    $this->user    = User::factory()->create();
+    $this->booking = Booking::factory()->create([
+        'user_id' => $this->user->id,
+        'status'  => BookingStatus::Pending,
+    ]);
+    $this->sagaId = Str::uuid()->toString();
+
+    $this->payload = new BookingPayload(
+        userId:            $this->user->id,
+        flightId:          'FL-123',
+        amount:            10000,
+        currency:          'GBP',
+        paymentCustomerId: 'cus_abc123',
+    );
+
+    $this->flightClient  = Mockery::mock(FlightProviderClient::class);
+    $this->paymentClient = Mockery::mock(PaymentClient::class);
+
+    app()->instance(FlightProviderClient::class, $this->flightClient);
+    app()->instance(PaymentClient::class, $this->paymentClient);
+});
+
+it('confirms the booking and persists references when all steps pass', function () {
+    $this->flightClient->shouldReceive('reserve')->once()->andReturn(['reference' => 'FL-REF-001']);
+    $this->paymentClient->shouldReceive('charge')->once()->andReturn(['id' => 'PAY-001']);
+
+    (new ProcessBookingSaga($this->sagaId, $this->booking->id, $this->payload))
+        ->handle($this->flightClient, $this->paymentClient);
+
+    $fresh = $this->booking->fresh();
+
+    expect($fresh->status)->toBe(BookingStatus::Confirmed)
+        ->and($fresh->flight_reference)->toBe('FL-REF-001')
+        ->and($fresh->payment_reference)->toBe('PAY-001');
+});
+
+it('compensates the flight reservation when the payment step fails', function () {
+    $this->flightClient->shouldReceive('reserve')->once()->andReturn(['reference' => 'FL-REF-001']);
+    $this->flightClient->shouldReceive('cancel')->once()->with('FL-REF-001');
+    $this->paymentClient->shouldReceive('charge')->once()->andThrow(new \RuntimeException('Card declined'));
+
+    (new ProcessBookingSaga($this->sagaId, $this->booking->id, $this->payload))
+        ->handle($this->flightClient, $this->paymentClient);
+
+    expect(
+        SagaLog::query()
+            ->where('saga_id', $this->sagaId)
+            ->where('step', 'reserve_flight')
+            ->value('status')
+    )->toBe(SagaStepStatus::Compensated)
+        ->and($this->booking->fresh()->status)->toBe(BookingStatus::Cancelled);
+});
+
+it('marks the failed step as failed in the log', function () {
+    $this->flightClient->shouldReceive('reserve')->once()->andReturn(['reference' => 'FL-REF-001']);
+    $this->flightClient->shouldReceive('cancel')->once();
+    $this->paymentClient->shouldReceive('charge')->once()->andThrow(new \RuntimeException('Card declined'));
+
+    (new ProcessBookingSaga($this->sagaId, $this->booking->id, $this->payload))
+        ->handle($this->flightClient, $this->paymentClient);
+
+    expect(
+        SagaLog::query()
+            ->where('saga_id', $this->sagaId)
+            ->where('step', 'charge_payment')
+            ->value('status')
+    )->toBe(SagaStepStatus::Failed);
+});
+
+it('skips already completed steps when the saga is re-run', function () {
+    SagaLog::query()->create([
+        'saga_id' => $this->sagaId,
+        'step'    => 'reserve_flight',
+        'status'  => SagaStepStatus::Completed,
+        'payload' => [],
+        'result'  => ['flight_reference' => 'FL-REF-001'],
+    ]);
+
+    $this->flightClient->shouldNotReceive('reserve');
+    $this->paymentClient->shouldReceive('charge')->once()->andReturn(['id' => 'PAY-001']);
+
+    (new ProcessBookingSaga($this->sagaId, $this->booking->id, $this->payload))
+        ->handle($this->flightClient, $this->paymentClient);
+
+    expect($this->booking->fresh()->status)->toBe(BookingStatus::Confirmed);
+});
+```
+
+## Testing the API Endpoint
+
+```php
+// tests/Feature/Http/Controllers/BookingControllerTest.php
+declare(strict_types=1);
+
+use App\Enums\BookingStatus;
+use App\Jobs\ProcessBookingSaga;
+use App\Models\Booking;
+use App\Models\User;
+use Illuminate\Foundation\Testing\RefreshDatabase;
+use Laravel\Sanctum\Sanctum;
+use Illuminate\Support\Facades\Queue;
+
+uses(RefreshDatabase::class);
+
+beforeEach(function () {
+    $this->user = User::factory()->create();
+});
+
+it('creates a pending booking and dispatches the saga job', function () {
+    Queue::fake();
+
+    Sanctum::actingAs($this->user);
+
+    $this->postJson('/api/bookings', [
+            'flight_id'           => 'FL-123',
+            'amount'              => 10000,
+            'currency'            => 'GBP',
+            'payment_customer_id' => 'cus_abc123',
+        ])
+        ->assertStatus(202)
+        ->assertJsonStructure(['message', 'booking_id']);
+
+    expect(Booking::query()->count())->toBe(1)
+        ->and(Booking::query()->first()->status)->toBe(BookingStatus::Pending);
+
+    Queue::assertDispatched(ProcessBookingSaga::class);
+});
+
+it('returns a 422 when required fields are missing', function () {
+    Sanctum::actingAs($this->user);
+
+    $this->postJson('/api/bookings', [])
+        ->assertStatus(422)
+        ->assertJsonValidationErrors(['flight_id', 'amount', 'payment_customer_id']);
+});
+
+it('returns a 401 when the request is unauthenticated', function () {
+    $this->postJson('/api/bookings', [
+        'flight_id'           => 'FL-123',
+        'amount'              => 10000,
+        'payment_customer_id' => 'cus_abc123',
+    ])->assertStatus(401);
+});
+```
+
+## Testing the Payload
+
+The payload itself is worth a quick test, specifically that `payload()` on the request assembles it correctly and that `toContext()` produces the expected keys.
+
+```php
+// tests/Unit/Http/Payloads/BookingPayloadTest.php
+declare(strict_types=1);
+
+use App\Http\Payloads\BookingPayload;
+
+it('toContext returns the expected array shape', function () {
+    $payload = new BookingPayload(
+        userId:            42,
+        flightId:          'FL-999',
+        amount:            5000,
+        currency:          'USD',
+        paymentCustomerId: 'cus_xyz',
+        metadata:          ['source' => 'mobile'],
+    );
+
+    expect($payload->toContext())->toBe([
+        'user_id'             => 42,
+        'flight_id'           => 'FL-999',
+        'amount'              => 5000,
+        'currency'            => 'USD',
+        'payment_customer_id' => 'cus_xyz',
+        'metadata'            => ['source' => 'mobile'],
+    ]);
+});
+
+it('defaults metadata to an empty array', function () {
+    $payload = new BookingPayload(
+        userId:            1,
+        flightId:          'FL-001',
+        amount:            1000,
+        currency:          'GBP',
+        paymentCustomerId: 'cus_abc',
+    );
+
+    expect($payload->metadata)->toBe([])
+        ->and($payload->toContext()['metadata'])->toBe([]);
+});
+```
+
+## What This Gets You
+
+Stepping back, what does this architecture actually give you over a naive `try/catch` approach?
+
+The DTO pattern means that from the moment a request is validated, every piece of code downstream is working with a typed object. There are no string key lookups, no silent `null` from a typo in an array key, and no need to grep through the codebase to find where `payment_customer_id` is actually set. The IDE knows the shape, static analysis tools can verify it, and the `payload()` method on the form request is the one place that owns the assembly.
+
+Each saga step is a small, focused class with a clear `run` and `compensate` contract. You can test either method in isolation, mock only what that specific step touches, and assert only what it should produce. When something breaks in production, the `saga_logs` table tells you exactly which step failed, what it was given, and what error came back, all represented as proper enum values your IDE understands.
+
+The state machine is arguably the most underrated part. Without it, nothing stops a bug from writing `confirmed` directly onto a booking that's already `cancelled`, or marking a failed saga step as compensated when it never completed. The enums make those scenarios impossible at the application level, and the enum tests confirm the rules are exactly what you intended.
+
+The queued job approach keeps external HTTP calls out of the request lifecycle entirely. The API responds quickly because it only writes a database row, the heavy lifting happens in the background, and the `saga_logs` table gives you a durable record of what completed before a failure. If you re-run the same saga, those completed steps can be skipped safely.
+
+That said, `saga_logs` is not enough on its own to guarantee exactly-once behaviour with third-party providers. For payment or reservation APIs, you should still send provider-specific idempotency keys so a network timeout or worker crash cannot create duplicate side effects.
+
+The tradeoff is complexity. This is more code than a service method that does everything inline, and the eventual consistency model means there's a window where a booking sits in `Pending`. For most applications that's completely fine, and the audit trail in `saga_logs` means you always know exactly where in that window any given booking sits.

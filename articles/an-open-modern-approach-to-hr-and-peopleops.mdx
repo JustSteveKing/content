@@ -1,0 +1,159 @@
+---
+title: "An open, modern approach to HR & PeopleOps"
+description: "Discover how modern companies are rethinking HR to attract, retain, and empower top developer talent."
+category: Laravel
+pubDate: 2025-10-08
+tags: ["HR", "PeopleOps", "Laravel", "Livewire", "Open Source", "Software Development", "Peopley", "Sevalla", "Management"]
+draft: false
+sponsor:
+  name: Sevalla
+  url: https://juststeveking.link/host
+  logo: https://github.com/sevalla-hosting.png
+featured: true
+readingTime: 13
+canonical: "https://sevalla.com/blog/rethinking-hr-for-developers/"
+crossPost:
+  originalUrl: "https://sevalla.com/blog/rethinking-hr-for-developers/"
+  originalSite: "Sevalla Blog"
+  publishedDate: 2025-10-08
+  permission: true
+---
+
+## An open, modern approach to HR & PeopleOps
+
+Picture this: you're a growing startup, finally ready to graduate from managing your team in a messy combination of spreadsheets and Slack messages. You research HR platforms, sit through countless demos, and eventually pick what seems like the best option.
+
+Fast forward six months, and you're paying per-seat pricing that scales faster than your revenue, wrestling with workflows that make simple tasks feel like navigating a bureaucratic maze, and your team is constantly asking, "Why can't we just do this the simple way?"
+
+Sound familiar? Because I've lived this exact scenario more times than I'd like to admit.
+
+## The problem nobody talks about
+
+Let me walk you through what I discovered during my last deep dive into the HR tech landscape. I was consulting for a mid-sized tech company that was drowning in their current HR platform.
+
+They were paying close to $8,000 monthly for software that their team actively avoided using. The onboarding process required seventeen different steps across three different systems. Leave requests took four days to approve because of a convoluted approval chain that nobody could figure out how to modify.
+
+But here's the kicker: when I looked under the hood, 80% of the features they were paying for went completely unused. The platform had modules for everything from talent acquisition to succession planning, but the core workflows - the stuff teams actually need daily - felt like afterthoughts.
+
+This isn't an edge case. I've seen this pattern everywhere:
+
+• **Feature bloat over function**: HR platforms try to be everything to everyone, resulting in interfaces that look like mission control panels for NASA launches. Want to approve a simple vacation request? Great, just navigate through five menu levels and ignore the seventeen other options you'll never use.
+
+• **Rigid, one-size-fits-all workflows**: These systems assume every company operates exactly the same way. Got a unique approval process? Tough luck. Your flat startup structure doesn't fit their enterprise hierarchy model? Deal with it. The software dictates how you work, not the other way around.
+
+• **Integration nightmares**: I've spent countless hours trying to connect HR platforms with payroll systems, communication tools, and project management software. These integrations often feel like they were bolted on as an afterthought-because they were. APIs that timeout randomly, data that doesn't sync properly, and webhooks that fail silently.
+
+• **Pricing that punishes growth**: The per-seat model is fundamentally misaligned with how companies actually grow. Your costs shouldn't skyrocket every time you hire someone. It creates this weird incentive structure where scaling your team becomes a financial penalty.
+
+## The technical reality check
+
+As developers, we've solved similar problems in other domains. We build simple and predictable APIs, create user interfaces that prioritize user experience over feature count, and design systems that integrate seamlessly with existing workflows. So why do we accept such poor technical standards when it comes to HR software?
+
+I started asking myself: what would an HR platform look like if it was built by developers, for developers, using the same principles we apply to our own applications?
+
+The answer led me to [Laravel](https://laravel.com/) and [Livewire](https://laravel-livewire.com/) - technologies I've been working with for years and trust to build maintainable, scalable applications. Laravel's elegant syntax and robust ecosystem provide the perfect foundation for complex business logic, while Livewire bridges the gap between server-side rendering and modern, reactive user interfaces without the complexity of a separate frontend framework.
+
+Here's a simple example of what I mean. In a traditional HR platform, updating an employee's information might require a full page reload, multiple form submissions, and complex JavaScript to handle state management. With Livewire, the same interaction becomes incredibly straightforward:
+
+```php
+class EmployeeProfile extends Component
+{
+  public Employee $employee;
+  public $editing = false;
+
+  public function edit()
+  {
+    $this->editing = true;
+  }
+
+  public function save()
+  {
+    $this->validate([
+      'employee.name' => 'required',
+      'employee.email' => 'required|email',
+    ]);
+
+    $this->employee->save();
+    $this->editing = false;
+
+    session()->flash('message', 'Profile updated successfully!');
+  }
+
+  public function render()
+  {
+    return view('livewire.employee-profile');
+  }
+}
+```
+
+This kind of simplicity extends throughout the entire application. There is no complex state management, no API endpoints to maintain for every small interaction, just clean, readable code that does exactly what it needs to do.
+
+## Enter Peopley: A different approach
+
+That's how [Peopley](https://www.peopley.co.uk/) was born - not as another attempt to build the "ultimate HR platform," but as a focused solution to the specific problems I kept encountering. I wanted to create something that felt more like the internal tools we build for ourselves - lightweight, purposeful, and adaptable.
+
+The core philosophy is simple: start with the workflows that actually matter, build them really well, and make everything else optional. Instead of trying to handle every possible HR scenario out of the box, Peopley focuses on the essential employee lifecycle: recruitment, onboarding, leave management, and offboarding. The stuff every company needs, executed with the kind of attention to detail usually reserved for customer-facing applications.
+
+But here's what makes Peopley fundamentally different from existing solutions:
+
+• **Open source architecture**: This isn't just about avoiding vendor lock-in (though that's important). It's about building software the way we build everything else - transparently, collaboratively, with the ability to understand and modify every aspect of the system. When you need to add a custom field or modify a workflow, you're not filing support tickets or waiting for vendor roadmaps. You're editing code.
+
+• **API-first design**: Every feature in Peopley is built around a comprehensive REST API. This means integrations aren't afterthoughts - they're the foundation. Want to sync with your payroll system? There's an endpoint for that. Need to trigger Slack notifications? The webhook system has you covered. Building a custom dashboard? The REST API gives you exactly the data you need, nothing more.
+
+• **Self-hosting as a feature**: I know this might sound old-school in an age of SaaS everything, but hear me out. When you're dealing with sensitive employee data, there's something powerful about keeping everything in-house. There's no wondering about compliance, no worrying about third-party data breaches, and no surprise price increases. Deploy it on your own infrastructure and manage it with the same care you give your production applications.
+
+## The technical stack deep dive
+
+Let me walk you through some of the technical decisions that make Peopley work. The foundation is [Laravel 12](https://laravel.com/docs/12.x/documentation), which gives us a mature, well-documented framework with an incredible ecosystem.
+
+For the frontend, Livewire 3 (4 as soon as it's released) provides reactive components without the complexity of managing a separate JavaScript framework. The API layer also means you can absolutely build a React or Vue frontend if that's your preference.
+
+The database design prioritizes flexibility without sacrificing performance. Instead of rigid table structures that break when you need to add custom fields, we use a hybrid approach: core data in traditional relational tables for performance, with a flexible JSON schema for organization-specific customizations.
+
+Here's how a typical leave request might flow through the system:
+
+```php
+// Create a leave request
+$request = LeaveRequest::create([
+  'employee_id' => auth()->id(),
+  'type' => LeaveType::Vacation,
+  'start_date' => '2024-08-15',
+  'end_date' => '2024-08-19',
+  'notes' => 'Family vacation',
+]);
+
+// Trigger the approval workflow
+$request->submitForApproval();
+```
+
+Behind the scenes, this fires off a series of events that can trigger notifications, update calendars, and integrate with external systems - all configurable through the admin interface or direct code modification.
+
+## Building for the community
+
+The most exciting part about making Peopley open source isn't just the technical benefits. It's the potential for community-driven development. I've seen what happens when developers and PeopleOps professionals collaborate on tools they actually use. The feedback is immediate, the feature requests are grounded in real problems, and the solutions are tested in actual production environments.
+
+I'm already working with a small group of early adopters who are shaping the roadmap: a Laravel consultancy that needs better project-to-employee time tracking, a design agency that wants creative approval workflows built into its people management, and a remote-first startup that needs flexible time-off policies for team members across different countries.
+
+These aren't edge cases - they're the reality of how modern companies operate. And they're exactly the kinds of problems that are impossible to solve with one-size-fits-all SaaS platforms.
+
+## The roadmap ahead
+
+The initial release focuses on the core employee lifecycle, but the modular architecture means we can expand thoughtfully. Payroll integrations are next on the list, followed by employee self-service portals and performance tracking. But instead of building features in isolation, each addition will be driven by community needs and contributions.
+
+I'm particularly excited about the integration possibilities. Imagine leave requests that automatically update your project management tools, onboarding workflows that provision development environment access, or performance reviews that pull data from your code review systems. These kinds of deep integrations are only possible when you control the entire stack.
+
+## Why this matters
+
+Look, I'm not trying to take down the HR software giants overnight. They serve a purpose for large enterprises with complex compliance requirements and unlimited budgets. But for the rest of us - the startups, the growing companies, the teams that value flexibility and control - there should be a better option.
+
+Peopley represents something bigger than just another HR platform. It's a shift toward building business tools the same way we build everything else: openly, collaboratively, with user experience and technical excellence as primary concerns.
+
+If you've ever found yourself thinking "I could build a better version of this" while using your company's HR software, you're exactly who I'm building Peopley for. Because honestly? You probably could build something better. And now, you don't have to start from scratch.
+
+The future of PeopleOps shouldn't be locked away behind vendor paywalls and rigid workflows. It should be open, adaptable, and built by the people who actually understand how modern teams work.
+
+Want to help build that future? The code is on GitHub, the community is just getting started, and there's plenty of work to do. Let's build something better, together.
+
+---
+
+*This article was originally published on [Sevalla Blog](https://sevalla.com/blog/rethinking-hr-for-developers/). Follow me on [Twitter](https://twitter.com/juststeveking) for more insights on modern software development and team management.*

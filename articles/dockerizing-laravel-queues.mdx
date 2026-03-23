@@ -1,0 +1,945 @@
+---
+title: "Dockerizing Laravel queues, workers, and schedulers"
+description: "Learn to containerize Laravel queues, workers, and schedulers for production with isolation and scalability."
+category: Laravel
+pubDate: 2025-10-08
+tags: ["Laravel", "Docker", "Queues", "DevOps", "Containers", "Sevalla", "Workers", "Scaling"]
+draft: false
+sponsor:
+  name: Sevalla
+  url: https://juststeveking.link/host
+  logo: https://github.com/sevalla-hosting.png
+featured: true
+readingTime: 12
+canonical: "https://sevalla.com/blog/dockerizing-laravel-queues/"
+crossPost:
+  originalUrl: "https://sevalla.com/blog/dockerizing-laravel-queues/"
+  originalSite: "Sevalla Blog"
+  publishedDate: 2025-10-07
+  permission: true
+---
+
+# Dockerizing Laravel queues, workers, and schedulers
+
+Picture this: your Laravel app is running smoothly, handling user requests, processing payments, and sending emails. Everything looks great from the outside. Then you check your logs and discover your queues have been backed up for three days, your scheduled tasks haven't run since last Tuesday, and nobody noticed because everything was "working fine" on the frontend.
+
+Sound familiar? I've been there. Early in my career, I treated background tasks as an afterthought. "Just run `php artisan queue:work` in a screen session," I thought. "What could go wrong?"
+
+Everything could go wrong!
+
+The thing about queues and scheduled tasks is that they're critical infrastructure that operates in the shadows. When they fail, they fail silently. Users don't immediately complain because the UI still loads, but your app is slowly dying in the background.
+
+This is why dedicated containers for background tasks are essential for any serious production setup. When you containerize your workers and schedulers properly, you get visibility, reliability, and the ability to scale these critical processes independently from your web tier.
+
+## Laravel queues, workers, and schedulers: A quick primer
+
+Before we dive into Docker, let's align on what we're actually containerizing.
+
+**Queues** are your application's way of saying, "I'll handle this later." When a user uploads a large file, requests a report, or triggers an email notification, the job can be placed in a queue. This allows your app to respond quickly to users while deferring time-consuming tasks for background processing.
+
+**Workers** are the background processes that handle those queued jobs. They continuously listen for new tasks from your queue driver (such as Redis) and execute them as they come in.
+
+**Schedulers** handle time-based tasks. Whether you're cleaning up old data nightly, generating reports monthly, or sending weekly reminders, the scheduler ensures that these jobs run automatically at defined intervals. It's essentially Laravel's smarter version of a cron job, offering improved error handling and better visibility.
+
+Here's what a typical Laravel setup might look like:
+
+```php
+// A queued job
+class ProcessVideoUpload implements ShouldQueue
+{
+    use Dispatchable, InteractsWithQueue, Queueable, SerializesModels;
+
+    public function __construct(
+        public UploadedFile $video,
+        public User $user
+    ) {}
+
+    public function handle()
+    {
+        // Heavy lifting happens here
+        $this->convertVideo();
+        $this->generateThumbnails();
+        $this->notifyUser();
+    }
+}
+
+// Dispatching the job
+ProcessVideoUpload::dispatch($video, auth()->user());
+
+// Scheduled task in app/Console/Kernel.php
+protected function schedule(Schedule $schedule)
+{
+    $schedule->command('cache:prune-stale-tags')
+             ->daily()
+             ->at('01:00');
+
+    $schedule->job(new GenerateMonthlyReports)
+             ->monthlyOn(1, '02:00');
+}
+```
+
+In development, you might run these manually: `php artisan queue:work` for workers and `php artisan schedule:work` for the scheduler. But in production? You need something more robust.
+
+## Why Docker? The case for containerization
+
+Before containerization became the norm, managing background processes in Laravel often meant juggling systemd services, Supervisor configs, and a bit of luck.
+
+It worked until it didn't. One failed deployment, one unmonitored queue worker, and suddenly support inboxes are full of "Why haven't I received my receipt?" messages.
+
+Docker changes that story. Containerization brings structure, visibility, and reliability to background processes. Here's why it matters for modern Laravel applications - especially in scalable, production environments.
+
+### Isolation and reliability
+
+Each container runs independently. If your worker crashes, it doesn't take down your scheduler. If you need to restart the web tier, your background tasks will continue to run.
+
+### Scalability
+
+When your queues start backing up during a traffic spike, you can simply scale your worker containers horizontally - no manual provisioning or new infrastructure required.
+
+```bash
+# Scale workers independently
+docker-compose up --scale worker=5
+```
+
+This enables easy and dynamic response to workload changes while maintaining predictable performance.
+
+### Reproducibility
+
+The same container image that runs locally runs in production. No configuration drift, no "it works on my machine" debugging at 2 AM. Containerization guarantees consistency across every environment - from development to staging to production.
+
+### Visibility
+
+With Docker, logs, health checks, and metrics are all part of the ecosystem. You can quickly identify failed jobs or stalled processes and act before users even notice. Monitoring becomes proactive, not reactive.
+
+### Resource management
+
+Containers let you define CPU and memory limits per process type. For instance, video processing workers can use more resources, while lightweight email workers stay lean. This granular control ensures efficiency and stability without over-provisioning.
+
+## Setting up Docker for Laravel: The foundation
+
+Before running Laravel queues and schedulers in containers, you need a solid foundation. A well-structured Docker setup ensures that your application, background workers, and supporting services operate consistently across environments.
+
+Let's start with a base Dockerfile optimized for Laravel applications running both web and background processes:
+
+```dockerfile
+# Dockerfile
+FROM php:8.4-fpm-alpine
+
+# Install system dependencies
+RUN apk add --no-cache \
+    git \
+    curl \
+    libpng-dev \
+    libxml2-dev \
+    zip \
+    unzip \
+    nodejs \
+    npm \
+    supervisor
+
+# Install PHP extensions
+RUN docker-php-ext-install pdo pdo_mysql mbstring exif pcntl bcmath gd
+
+# Install Composer
+COPY --from=composer:latest /usr/bin/composer /usr/bin/composer
+
+# Set working directory
+WORKDIR /var/www
+
+# Copy composer files
+COPY composer.json composer.lock ./
+
+# Install PHP dependencies
+RUN composer install --no-dev --optimize-autoloader --no-scripts
+
+# Copy application code
+COPY . .
+
+# Set permissions
+RUN chown -R www-data:www-data /var/www \
+    && chmod -R 755 /var/www/storage
+
+# Generate application key and cache config
+RUN php artisan key:generate --force \
+    && php artisan config:cache \
+    && php artisan route:cache \
+    && php artisan view:cache
+
+# Create supervisor config directory
+RUN mkdir -p /etc/supervisor/conf.d
+
+EXPOSE 9000
+
+CMD ["php-fpm"]
+```
+
+This image installs everything a Laravel app needs - PHP extensions, Composer, Node.js (for front-end builds), and Supervisor (for process management). It's lightweight, production-ready, and forms the foundation for both your web container and background workers.
+
+Next, let's define the services in a `docker-compose.yml` file that brings the application stack together:
+
+```yaml
+# docker-compose.yml
+version: "3.8"
+
+services:
+  app:
+    build: .
+    container_name: laravel-app
+    restart: unless-stopped
+    working_dir: /var/www
+    volumes:
+      - ./:/var/www
+      - ./docker/php/local.ini:/usr/local/etc/php/conf.d/local.ini
+    networks:
+      - laravel
+
+  nginx:
+    image: nginx:alpine
+    container_name: laravel-nginx
+    restart: unless-stopped
+    ports:
+      - "80:80"
+    volumes:
+      - ./:/var/www
+      - ./docker/nginx/default.conf:/etc/nginx/conf.d/default.conf
+    networks:
+      - laravel
+
+  mysql:
+    image: mysql:8.0
+    container_name: laravel-mysql
+    restart: unless-stopped
+    environment:
+      MYSQL_DATABASE: ${DB_DATABASE}
+      MYSQL_ROOT_PASSWORD: ${DB_PASSWORD}
+      MYSQL_PASSWORD: ${DB_PASSWORD}
+      MYSQL_USER: ${DB_USERNAME}
+      SERVICE_TAGS: dev
+      SERVICE_NAME: mysql
+    volumes:
+      - mysql_data:/var/lib/mysql
+    networks:
+      - laravel
+
+  redis:
+    image: redis:alpine
+    container_name: laravel-redis
+    restart: unless-stopped
+    networks:
+      - laravel
+
+networks:
+  laravel:
+    driver: bridge
+
+volumes:
+  mysql_data:
+    driver: local
+```
+
+This setup defines a complete Laravel environment, comprising PHP-FPM for application logic, Nginx for serving requests, MySQL for persistent data storage, and Redis for queues and caching.
+
+## Building dedicated containers
+
+Here's where most tutorials stop, and where the real world begins. You could add `php artisan queue:work` to your main app container, but that's like putting your entire team in one office - when one person gets sick, everyone suffers.
+
+### Worker container
+
+Your worker container is responsible for handling queued jobs - sending emails, generating reports, processing uploads, and more.
+
+Here's a production-ready setup optimized for reliability and observability:
+
+```dockerfile
+# docker/worker/Dockerfile
+FROM php:8.4-cli-alpine
+
+# Install dependencies (same as main app)
+RUN apk add --no-cache \
+    git \
+    curl \
+    libpng-dev \
+    libxml2-dev \
+    zip \
+    unzip \
+    supervisor
+
+RUN docker-php-ext-install pdo pdo_mysql mbstring exif pcntl bcmath gd
+
+COPY --from=composer:latest /usr/bin/composer /usr/bin/composer
+
+WORKDIR /var/www
+
+# Copy application code
+COPY . .
+
+# Install dependencies
+RUN composer install --no-dev --optimize-autoloader
+
+# Create supervisor configuration for queue workers
+COPY docker/worker/supervisord.conf /etc/supervisor/conf.d/supervisord.conf
+
+# Make sure we can write logs
+RUN mkdir -p /var/log/supervisor
+
+EXPOSE 9001
+
+CMD ["/usr/bin/supervisord", "-c", "/etc/supervisor/conf.d/supervisord.conf"]
+```
+
+Supervisor keeps the worker process running, automatically restarts it if it fails, and provides simple visibility through logs.
+
+Here's the configuration that makes it robust:
+
+```ini
+# docker/worker/supervisord.conf
+[supervisord]
+nodaemon=true
+user=root
+logfile=/var/log/supervisor/supervisord.log
+pidfile=/var/run/supervisord.pid
+
+[program:laravel-worker]
+process_name=%(program_name)s_%(process_num)02d
+command=php /var/www/artisan queue:work redis --sleep=3 --tries=3 --max-time=3600
+autostart=true
+autorestart=true
+stopasgroup=true
+killasgroup=true
+user=www-data
+numprocs=2
+redirect_stderr=true
+stdout_logfile=/var/log/supervisor/worker.log
+stopwaitsecs=3600
+
+[inet_http_server]
+port=9001
+```
+
+This setup ensures multiple worker processes run concurrently, restart automatically, and remain visible through Supervisor's HTTP interface - perfect for debugging or lightweight monitoring in development.
+
+### Scheduler container
+
+The scheduler container is simpler but equally essential. It ensures Laravel's scheduled tasks - from cleanup jobs to reports - run consistently without relying on shared cron configurations.
+
+```dockerfile
+# docker/scheduler/Dockerfile
+FROM php:8.2-cli-alpine
+
+# Same dependencies as worker
+RUN apk add --no-cache \
+    git \
+    curl \
+    libpng-dev \
+    libxml2-dev \
+    zip \
+    unzip \
+    dcron
+
+RUN docker-php-ext-install pdo pdo_mysql mbstring exif pcntl bcmath gd
+
+COPY --from=composer:latest /usr/bin/composer /usr/bin/composer
+
+WORKDIR /var/www
+
+COPY . .
+
+RUN composer install --no-dev --optimize-autoloader
+
+# Set up cron for Laravel scheduler
+RUN echo "* * * * * cd /var/www && php artisan schedule:run >> /dev/null 2>&1" | crontab -
+
+# Create a startup script
+COPY docker/scheduler/start.sh /usr/local/bin/start.sh
+RUN chmod +x /usr/local/bin/start.sh
+
+CMD ["/usr/local/bin/start.sh"]
+```
+
+Startup script (`start.sh`):
+
+```bash
+#!/bin/sh
+# docker/scheduler/start.sh
+
+# Start cron daemon
+crond -f -d 8 &
+
+# Keep container alive and show logs
+tail -f /var/log/cron.log
+```
+
+This container runs Laravel's scheduler every minute, just like a cron job - but isolated in its own environment.
+
+### Updated Docker Compose
+
+Now that you have dedicated containers for workers and schedulers, the next step is to bring everything together in your Docker Compose configuration.
+
+The updated setup defines separate services for your web app, background workers, and scheduler - each isolated, restartable, and independently scalable. This structure not only mirrors best production practices but also makes local development and testing significantly easier.
+
+Here's the complete `docker-compose.yml`:
+
+```yaml
+# docker-compose.yml (updated)
+version: "3.8"
+
+services:
+  app:
+    build: .
+    container_name: laravel-app
+    restart: unless-stopped
+    working_dir: /var/www
+    volumes:
+      - ./:/var/www
+    depends_on:
+      - mysql
+      - redis
+    networks:
+      - laravel
+
+  nginx:
+    image: nginx:alpine
+    container_name: laravel-nginx
+    restart: unless-stopped
+    ports:
+      - "80:80"
+    volumes:
+      - ./:/var/www
+      - ./docker/nginx/default.conf:/etc/nginx/conf.d/default.conf
+    depends_on:
+      - app
+    networks:
+      - laravel
+
+  # Dedicated worker container
+  worker:
+    build:
+      context: .
+      dockerfile: docker/worker/Dockerfile
+    container_name: laravel-worker
+    restart: unless-stopped
+    working_dir: /var/www
+    volumes:
+      - ./:/var/www
+    depends_on:
+      - mysql
+      - redis
+    environment:
+      - CONTAINER_ROLE=worker
+    networks:
+      - laravel
+
+  # Dedicated scheduler container
+  scheduler:
+    build:
+      context: .
+      dockerfile: docker/scheduler/Dockerfile
+    container_name: laravel-scheduler
+    restart: unless-stopped
+    working_dir: /var/www
+    volumes:
+      - ./:/var/www
+    depends_on:
+      - mysql
+      - redis
+    environment:
+      - CONTAINER_ROLE=scheduler
+    networks:
+      - laravel
+
+  mysql:
+    image: mysql:8.0
+    container_name: laravel-mysql
+    restart: unless-stopped
+    environment:
+      MYSQL_DATABASE: ${DB_DATABASE}
+      MYSQL_ROOT_PASSWORD: ${DB_PASSWORD}
+      MYSQL_PASSWORD: ${DB_PASSWORD}
+      MYSQL_USER: ${DB_USERNAME}
+    volumes:
+      - mysql_data:/var/lib/mysql
+    networks:
+      - laravel
+
+  redis:
+    image: redis:alpine
+    container_name: laravel-redis
+    restart: unless-stopped
+    volumes:
+      - redis_data:/data
+    networks:
+      - laravel
+
+networks:
+  laravel:
+    driver: bridge
+
+volumes:
+  mysql_data:
+    driver: local
+  redis_data:
+    driver: local
+```
+
+With this structure, you now have a fully containerized Laravel environment - one that separates the concerns of web requests, background jobs, and scheduled tasks while remaining lightweight and maintainable.
+
+## Scaling and managing containers
+
+Success changes the shape of your workload. As usage grows, queued jobs pile up first, such as image processing, report generation, and notifications, and a single worker quickly becomes the bottleneck.
+
+The advantage of containerized workers is that scaling is operational, not architectural:
+
+```bash
+# Scale workers horizontally
+docker-compose up --scale worker=5 -d
+
+# Or use Docker Swarm for production
+docker service scale myapp_worker=10
+```
+
+Scaling isn't only about "more." It's also about resilience, limits, and health, so your system stays predictable under pressure. Here's an example worker definition with resource constraints and health checks:
+
+```yaml
+# Enhanced worker service with health checks
+worker:
+  build:
+    context: .
+    dockerfile: docker/worker/Dockerfile
+  restart: unless-stopped
+  deploy:
+    replicas: 3
+    resources:
+      limits:
+        cpus: "0.5"
+        memory: 512M
+      reservations:
+        memory: 256M
+  healthcheck:
+    test: ["CMD", "supervisorctl", "status"]
+    interval: 30s
+    timeout: 10s
+    retries: 3
+    start_period: 40s
+  volumes:
+    - ./:/var/www
+  depends_on:
+    - mysql
+    - redis
+  networks:
+    - laravel
+```
+
+### Advanced worker management with different queues
+
+Real applications rarely have a single "type" of work. You want priority lanes so critical jobs never wait behind slow, heavy tasks. Defining distinct worker pools per queue lets you tune retries, sleep intervals, and resources per class of work:
+
+```yaml
+# docker-compose.yml - Multiple worker types
+services:
+  # High-priority workers for critical tasks
+  worker-critical:
+    build:
+      context: .
+      dockerfile: docker/worker/Dockerfile
+    environment:
+      - QUEUE_CONNECTION=redis
+      - WORKER_QUEUES=critical,emails
+      - WORKER_SLEEP=1
+      - WORKER_TRIES=5
+    deploy:
+      replicas: 2
+    networks:
+      - laravel
+
+  # Standard workers for general tasks
+  worker-default:
+    build:
+      context: .
+      dockerfile: docker/worker/Dockerfile
+    environment:
+      - QUEUE_CONNECTION=redis
+      - WORKER_QUEUES=default
+      - WORKER_SLEEP=3
+      - WORKER_TRIES=3
+    deploy:
+      replicas: 3
+    networks:
+      - laravel
+
+  # Heavy workers for resource-intensive tasks
+  worker-heavy:
+    build:
+      context: .
+      dockerfile: docker/worker/Dockerfile
+    environment:
+      - QUEUE_CONNECTION=redis
+      - WORKER_QUEUES=heavy
+      - WORKER_SLEEP=5
+      - WORKER_TRIES=1
+    deploy:
+      replicas: 1
+      resources:
+        limits:
+          cpus: "2.0"
+          memory: 2G
+    networks:
+      - laravel
+```
+
+Pair that with a Supervisor config that reads from environment variables:
+
+```ini
+# docker/worker/supervisord-configurable.conf
+[supervisord]
+nodaemon=true
+user=root
+logfile=/var/log/supervisor/supervisord.log
+pidfile=/var/run/supervisord.pid
+
+[program:laravel-worker]
+process_name=%(program_name)s_%(process_num)02d
+command=php /var/www/artisan queue:work %(ENV_QUEUE_CONNECTION)s --queue=%(ENV_WORKER_QUEUES)s --sleep=%(ENV_WORKER_SLEEP)s --tries=%(ENV_WORKER_TRIES)s --max-time=3600
+autostart=true
+autorestart=true
+stopasgroup=true
+killasgroup=true
+user=www-data
+numprocs=2
+redirect_stderr=true
+stdout_logfile=/var/log/supervisor/worker.log
+stopwaitsecs=3600
+```
+
+### Monitoring and Observability
+
+You can't manage what you can't measure. Add lightweight health endpoints and job metrics so your orchestrator and dashboards know when to intervene.
+
+A simple approach is a custom Artisan command that checks critical dependencies and exits non-zero on failure:
+
+```php
+// Create a custom Artisan command for health checks
+// app/Console/Commands/HealthCheck.php
+class HealthCheck extends Command
+{
+    protected $signature = 'health:check {--component=all}';
+
+    public function handle()
+    {
+        $component = $this->option('component');
+        $health = [];
+
+        if ($component === 'all' || $component === 'queue') {
+            $health['queue'] = $this->checkQueue();
+        }
+
+        if ($component === 'all' || $component === 'database') {
+            $health['database'] = $this->checkDatabase();
+        }
+
+        if ($component === 'all' || $component === 'redis') {
+            $health['redis'] = $this->checkRedis();
+        }
+
+        $this->info(json_encode($health, JSON_PRETTY_PRINT));
+
+        // Exit with error code if any component is unhealthy
+        $allHealthy = collect($health)->every(fn($status) => $status['healthy']);
+        return $allHealthy ? 0 : 1;
+    }
+
+    private function checkQueue(): array
+    {
+        try {
+            $size = Queue::size();
+            $failedJobs = DB::table('failed_jobs')->count();
+
+            return [
+                'healthy' => true,
+                'queue_size' => $size,
+                'failed_jobs' => $failedJobs,
+                'timestamp' => now()->toISOString()
+            ];
+        } catch (Exception $e) {
+            return [
+                'healthy' => false,
+                'error' => $e->getMessage(),
+                'timestamp' => now()->toISOString()
+            ];
+        }
+    }
+
+    private function checkDatabase(): array
+    {
+        try {
+            DB::connection()->getPdo();
+            return ['healthy' => true, 'timestamp' => now()->toISOString()];
+        } catch (Exception $e) {
+            return [
+                'healthy' => false,
+                'error' => $e->getMessage(),
+                'timestamp' => now()->toISOString()
+            ];
+        }
+    }
+
+    private function checkRedis(): array
+    {
+        try {
+            Redis::ping();
+            return ['healthy' => true, 'timestamp' => now()->toISOString()];
+        } catch (Exception $e) {
+            return [
+                'healthy' => false,
+                'error' => $e->getMessage(),
+                'timestamp' => now()->toISOString()
+            ];
+        }
+    }
+}
+```
+
+Add this to your health check configuration:
+
+```yaml
+# Enhanced health checks in docker-compose.yml
+worker:
+  # ... other configuration
+  healthcheck:
+    test: ["CMD", "php", "artisan", "health:check", "--component=queue"]
+    interval: 30s
+    timeout: 10s
+    retries: 3
+    start_period: 40s
+
+scheduler:
+  # ... other configuration
+  healthcheck:
+    test: ["CMD", "php", "artisan", "health:check", "--component=database"]
+    interval: 60s
+    timeout: 10s
+    retries: 3
+    start_period: 40s
+```
+
+## Best practices and common pitfalls
+
+Here are some hard-earned lessons from running Laravel workers and schedulers in containers, plus the fixes that keep them stable in production.
+
+### Pitfall #1: Ignoring graceful shutdowns
+
+Killing a container mid-job can corrupt state and strand records as "processing." Laravel workers do handle `SIGTERM`, but only if you give them time to finish the current job and exit cleanly.
+
+What to do:
+
+• Send `SIGTERM`, not `SIGKILL`.  
+• Match Docker's stop grace period with Supervisor's `stopwaitsecs`.  
+• Use worker runtime limits so processes recycle and pick up new config/images.
+
+```ini
+# supervisor configuration with proper shutdown handling
+[program:laravel-worker]
+command=php /var/www/artisan queue:work redis --sleep=3 --tries=3 --max-time=3600
+# ... other settings
+stopwaitsecs=60  # Give jobs time to finish
+stopsignal=TERM  # Send SIGTERM for graceful shutdown
+```
+
+```yaml
+# docker-compose.yml with proper stop grace period
+worker:
+  # ... other configuration
+  stop_grace_period: 60s # Match supervisor stopwaitsecs
+```
+
+Also consider `--max-jobs=500` (or similar) so workers exit periodically on their own and get restarted by Supervisor with a fresh process.
+
+### Pitfall #2: Shared file storage issues
+
+Picture this: your web container processes an upload, stores it locally, and then queues a job to process it. The worker container attempts to access the file, but it's not there. Different containers, different filesystems.
+
+The solution: shared volumes and external storage:
+
+```yaml
+# Shared storage for file processing
+services:
+  app:
+    volumes:
+      - ./storage/app:/var/www/storage/app
+      - uploads:/var/www/storage/uploads
+
+  worker:
+    volumes:
+      - ./storage/app:/var/www/storage/app
+      - uploads:/var/www/storage/uploads
+
+volumes:
+  uploads:
+    driver: local
+```
+
+Better yet, use external storage like S3:
+
+```php
+// config/filesystems.php
+'default' => env('FILESYSTEM_DISK', 's3'),
+
+// Jobs that work regardless of container
+class ProcessUploadedImage implements ShouldQueue
+{
+    public function handle()
+    {
+        // Files are in S3, accessible from any container
+        $file = Storage::disk('s3')->get($this->filePath);
+        // Process the file...
+    }
+}
+```
+
+### Pitfall #3: Memory leaks in long-running processes
+
+Workers run forever, and PHP wasn't originally designed for long-running processes. Memory leaks are real, and they'll slowly kill your containers.
+
+The solution: regular restarts and memory monitoring:
+
+```ini
+# supervisor with memory limits
+[program:laravel-worker]
+command=php /var/www/artisan queue:work redis --sleep=3 --tries=3 --max-time=3600 --memory=512
+# Restart worker every hour to prevent memory leaks
+autorestart=true
+startretries=3
+```
+
+```yaml
+# Docker with memory limits
+worker:
+  deploy:
+    resources:
+      limits:
+        memory: 1G # Hard limit to prevent runaway processes
+      reservations:
+        memory: 512M
+```
+
+### Best practice: Comprehensive logging strategy
+
+Containers shine when logs go to stdout/stderr (so your platform can ship them), but you may still want local files for dev or batch analysis. Use structured JSON so logs are queryable.
+
+```php
+// config/logging.php - Enhanced for containers
+'channels' => [
+    'stack' => [
+        'driver' => 'stack',
+        'channels' => ['stderr', 'daily'],
+        'ignore_exceptions' => false,
+    ],
+
+    'stderr' => [
+        'driver' => 'monolog',
+        'handler' => StreamHandler::class,
+        'formatter' => env('LOG_STDERR_FORMATTER'),
+        'with' => [
+            'stream' => 'php://stderr',
+        ],
+        'level' => 'debug',
+    ],
+
+    'daily' => [
+        'driver' => 'daily',
+        'path' => storage_path('logs/laravel.log'),
+        'level' => env('LOG_LEVEL', 'debug'),
+        'days' => 14,
+    ],
+
+    // Separate channel for worker logs
+    'worker' => [
+        'driver' => 'daily',
+        'path' => storage_path('logs/worker.log'),
+        'level' => 'info',
+        'days' => 30,
+    ],
+
+    // Separate channel for scheduler logs
+    'scheduler' => [
+        'driver' => 'daily',
+        'path' => storage_path('logs/scheduler.log'),
+        'level' => 'info',
+        'days' => 30,
+    ],
+],
+
+// Use structured logging
+'tap' => [
+    \App\Logging\CustomizeFormatter::class,
+],
+```
+
+```php
+// app/Logging/CustomizeFormatter.php
+class CustomizeFormatter
+{
+    public function __invoke($logger)
+    {
+        foreach ($logger->getHandlers() as $handler) {
+            $handler->setFormatter(new JsonFormatter());
+        }
+    }
+}
+```
+
+### Best practice: Environment variable management
+
+Never hardcode configuration in containers. Use environment variables for everything:
+
+```bash
+# .env.example for containers
+# Application
+APP_NAME="My Laravel App"
+APP_ENV=production
+APP_DEBUG=false
+
+# Database
+DB_CONNECTION=mysql
+DB_HOST=mysql  # Container name
+DB_PORT=3306
+DB_DATABASE=laravel
+DB_USERNAME=laravel
+DB_PASSWORD=secret
+
+# Redis
+REDIS_HOST=redis  # Container name
+REDIS_PORT=6379
+
+# Queue Configuration
+QUEUE_CONNECTION=redis
+WORKER_SLEEP=3
+WORKER_TRIES=3
+WORKER_TIMEOUT=3600
+
+# Scaling Configuration
+WORKER_PROCESSES=2
+WORKER_MEMORY_LIMIT=512
+```
+
+```yaml
+# docker-compose.yml using environment variables
+worker:
+  environment:
+    - APP_ENV=${APP_ENV}
+    - DB_HOST=mysql
+    - REDIS_HOST=redis
+    - QUEUE_CONNECTION=${QUEUE_CONNECTION}
+    - WORKER_SLEEP=${WORKER_SLEEP:-3}
+    - WORKER_TRIES=${WORKER_TRIES:-3}
+```
+
+## Summary
+
+Containerizing Laravel queues, workers, and schedulers is about building systems that scale cleanly and fail gracefully.
+
+By running workers and the scheduler in dedicated containers, you gain independent scaling, fault isolation, and clear visibility into the health of each component. When you pair that with sensible resource limits, structured logging, and actionable health checks, your background processing becomes predictable instead of fragile.
+
+On Sevalla, this maps cleanly to separate Processes (web, background workers, and scheduled tasks) with CPU-based autoscaling, environment-driven configuration and secrets, and health checks for zero-downtime rollouts, so you can grow confidently as load spikes.
+
+---
+
+*This article was originally published on [Sevalla Blog](https://sevalla.com/blog/dockerizing-laravel-queues/). Follow me on [Twitter](https://twitter.com/juststeveking) for more Laravel and DevOps insights.*

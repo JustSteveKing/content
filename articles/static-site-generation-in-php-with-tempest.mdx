@@ -1,0 +1,347 @@
+---
+title: "Static site generation in PHP with Tempest"
+description: "Learn how Tempest brings static site generation to PHP, making it easy to build fast, secure, and scalable sites with familiar patterns."
+category: PHP
+pubDate: 2025-10-08
+tags: ["PHP", "Static Sites", "Tempest", "SSG", "Performance", "Web Development", "Sevalla", "JAMstack"]
+draft: false
+sponsor:
+  name: Sevalla
+  url: https://juststeveking.link/host
+  logo: https://github.com/sevalla-hosting.png
+featured: true
+readingTime: 16
+canonical: "https://sevalla.com/blog/static-site-generation-php/"
+crossPost:
+  originalUrl: "https://sevalla.com/blog/static-site-generation-php/"
+  originalSite: "Sevalla Blog"
+  publishedDate: 2025-08-29
+  permission: true
+---
+
+# Static site generation in PHP with Tempest
+
+I'll be honest with you, when someone first told me they were using PHP to generate static sites, I thought they'd lost their mind.
+
+After years of reaching for Nuxt.js, Astro, or Hugo whenever I needed to build a static site, the idea of using PHP seemed backward. But here I am, several months later, writing this article after falling in love with [Tempest's](https://sevalla.com/blog/tempest-php) approach to static site generation.
+
+Let me tell you why this matters, and more importantly, how you can leverage PHP's familiar patterns to build blazing-fast static sites that deploy anywhere.
+
+## The static site renaissance: Why speed still wins
+
+Before we dive into the PHP magic, let's discuss why static sites have made such a comeback. You've probably heard buzzwords like "JAMstack," "edge computing," "zero cold starts," etc., but let me break down what this actually means for your projects.
+
+I remember working on a client project last year where we had a marketing site that was getting hammered during product launches. Every time they announced something new, the server would buckle under the load, MySQL would throw errors, and our monitoring dashboard would flood with alerts. Sound familiar?
+
+The traditional approach would be to throw more servers at the problem, set up load balancers, optimize database queries, and pray it holds together during the next traffic spike. But there's a simpler solution: what if there were no server to crash in the first place?
+
+Static Site Generation (SSG) solves this by moving all the heavy lifting to build time. Instead of generating pages on demand when users request them, you pre-render everything during deployment. The result is pure HTML, CSS, and JavaScript files that can be served from a CDN or simple file server.
+
+Here's what this actually means in practice:
+
+• **Performance**: When I migrated that client's marketing site to a static approach, our Time to First Byte (TTFB) dropped from 800ms to under 50ms. There were no database queries, PHP execution, or server-side logic - just files being served directly from memory.
+
+• **Security**: Think about all the times you've worried about patching servers or chasing down new exploits. With static sites, there's no PHP runtime to exploit, no database to inject into, no session management to hijack. The attack surface shrinks to almost nothing.
+
+• **Cost Efficiency**: Your bills also get lighter. Without a server and database running 24/7, your site costs almost nothing to operate - and on Sevalla, [static site hosting](https://sevalla.com/static-site-hosting/) is completely free.
+
+• **Reliability**: Traffic spikes that used to bring down their site are now absorbed by the CDN infrastructure designed to handle millions of requests.
+
+But here's what really sold me: you get all these benefits without sacrificing the developer experience you're used to.
+
+## Why PHP makes sense for static sites (no, really)
+
+I know what you're thinking. "PHP for static sites? Isn't that like using a hammer to paint a wall?" I had the same reaction. The static site generation landscape is dominated by JavaScript frameworks and Go-based tools because they're fast, they have great tooling, and they fit naturally into modern development workflows.
+
+But after spending months jumping between different static site generators depending on the project, I started noticing a pattern. Every time I needed to build something more complex than a simple blog, I'd run into limitations:
+
+• Hugo's templating system is powerful, but debugging complex logic can feel unnecessarily difficult.
+• Next.js is fantastic, but not every project needs a full React setup
+• Jekyll works great until you need custom functionality beyond what Ruby gems provide
+
+Meanwhile, I'm already fluent in PHP. I understand its patterns, its ecosystem, and its quirks. So when I discovered Tempest's approach to static generation, something clicked.
+
+Here's why sticking with PHP for static sites actually makes sense:
+
+• **Leverage Existing Knowledge**: You already know PHP's syntax, patterns, and best practices. Why context-switch to a different language just to generate some HTML?
+
+• **Reuse Code and Patterns**: That validation logic you wrote for your API? That data processing pipeline? That custom content management system? You can reuse all of it in your static site build process.
+
+• **Type Safety and IDE Support**: Modern PHP with strict types gives you excellent IDE support, refactoring capabilities, and compile-time error catching that many JavaScript-based generators lack.
+
+• **Dependency Injection and Architecture**: You can build your static site using the same architectural patterns you use for your applications - services, repositories, dependency injection, and all of them.
+
+The key insight here is that static site generation doesn't have to mean abandoning everything you know. It's just changing when the code runs from request time to build time.
+
+## Enter Tempest: PHP static sites done right
+
+Tempest is a modern PHP framework that caught my attention because of how elegantly it handles this build-time vs. runtime distinction. Instead of forcing you to learn a completely different paradigm, it extends familiar MVC patterns with static generation capabilities.
+
+Here's what makes Tempest special: you write controllers and views just like you would for any PHP application, but you can mark specific routes as "static" using attributes. During the build process, Tempest executes these routes, captures their output, and saves the results as HTML files.
+
+Let me show you exactly how this works in practice.
+
+## Step-by-step: Building your first static site with Tempest
+
+Let's start with a practical example, a technical blog. I chose this because it's complex enough to demonstrate Tempest's capabilities but simple enough to understand the concepts.
+
+First, here's our basic blog controller:
+
+```php
+final readonly class BlogController
+{
+  #[Get('/blog')]
+  public function index(BlogRepository $repository): View
+  {
+    $posts = $repository->all();
+    return view(__DIR__ . '/blog_index.view.php', posts: $posts);
+  }
+
+  #[Get('/blog/{slug}')]
+  public function show(string $slug, BlogRepository $repository): Response|View
+  {
+    $post = $repository->find($slug);
+
+    if (!$post) {
+      return response()->notFound();
+    }
+
+    return view(__DIR__ . '/blog_show.view.php', post: $post);
+  }
+}
+```
+
+This looks like any modern PHP controller. We're using dependency injection to get our repository, handling route parameters, and returning views. Nothing unusual here - which is exactly the point.
+
+### Making it static
+
+Now here's where the magic happens. To mark a controller action for static generation, you simply add the `#[StaticPage]` attribute:
+
+```php
+use Tempest\Router\StaticPage;
+
+final readonly class BlogController
+{
+  #[StaticPage]
+  #[Get('/blog')]
+  public function index(BlogRepository $repository): View
+  {
+    $posts = $repository->all();
+    return view(__DIR__ . '/blog_index.view.php', posts: $posts);
+  }
+
+  // Individual post routes will need special handling...
+}
+```
+
+That's all it takes - no configuration files, no build scripts, no complex setup. With one attribute, this route becomes statically generatable.
+
+When you run `tempest static:generate`, Tempest will:
+
+1. Bootstrap your application
+2. Execute the controller action
+3. Capture the HTML output
+4. Save it as `/public/blog/index.html`
+
+The beauty here is that your repository can pull data from your database, API, filesystem, whatever. At build time, it executes once and captures the result.
+
+### Handling dynamic routes
+
+The blog index is straightforward, but what about individual post routes like `/blog/{slug}`? This is where things get interesting, and where Tempest's approach really shines.
+
+For dynamic routes, you need to tell Tempest what values the route parameters can take. You do this with a DataProvider:
+
+```php
+use Tempest\Router\DataProvider;
+
+final readonly class BlogDataProvider implements DataProvider
+{
+  public function __construct(
+    private BlogRepository $repository,
+  ) {}
+
+  public function provide(): Generator
+  {
+    foreach ($this->repository->all() as $post) {
+      yield ['slug' => $post->slug];
+    }
+  }
+}
+```
+
+This is essentially saying: "For every blog post in the repository, generate a static page using its slug as the route parameter."
+
+Then you connect the DataProvider to your controller action:
+
+```php
+#[StaticPage(BlogDataProvider::class)]
+#[Get('/blog/{slug}')]
+public function show(string $slug, BlogRepository $repository): Response|View
+{
+  $post = $repository->find($slug);
+  return view(__DIR__ . '/blog_show.view.php', post: $post);
+}
+```
+
+When you run the build command, Tempest will:
+
+1. Call `BlogDataProvider::provide()` to get all possible slug values
+2. For each slug, execute the `show()` method
+3. Generate static files like `/public/blog/my-first-post/index.html`
+
+I love this approach because it's explicit and predictable. You don't rely on filesystem scanning or magic conventions - you explicitly define what should be generated.
+
+### Advanced data providers
+
+Let's make this more interesting. Say you want to generate static pages for multiple categories and years:
+
+```php
+final readonly class BlogArchiveDataProvider implements DataProvider
+{
+  public function __construct(
+    private BlogRepository $repository,
+  ) {}
+
+  public function provide(): Generator
+  {
+    // Generate pages for each year
+    $years = $this->repository->getAvailableYears();
+    foreach ($years as $year) {
+      yield ['year' => $year];
+
+      // Also generate year/month combinations
+      $months = $this->repository->getMonthsForYear($year);
+      foreach ($months as $month) {
+        yield ['year' => $year, 'month' => $month];
+      }
+    }
+
+    // Generate category pages
+    $categories = $this->repository->getCategories();
+    foreach ($categories as $category) {
+      yield ['category' => $category->slug];
+    }
+  }
+}
+```
+
+This would work with routes like:
+
+```php
+#[StaticPage(BlogArchiveDataProvider::class)]
+#[Get('/blog/archive/{year}')]
+public function byYear(int $year, BlogRepository $repository): View
+{
+  $posts = $repository->getByYear($year);
+  return view(__DIR__ . '/archive_year.view.php', posts: $posts, year: $year);
+}
+
+#[StaticPage(BlogArchiveDataProvider::class)]
+#[Get('/blog/archive/{year}/{month}')]
+public function byMonth(int $year, int $month, BlogRepository $repository): View
+{
+  $posts = $repository->getByYearMonth($year, $month);
+  return view(__DIR__ . '/archive_month.view.php', posts: $posts, year: $year, month: $month);
+}
+
+#[StaticPage(BlogArchiveDataProvider::class)]
+#[Get('/blog/category/{category}')]
+public function byCategory(string $category, BlogRepository $repository): View
+{
+  $posts = $repository->getByCategory($category);
+  return view(__DIR__ . '/category.view.php', posts: $posts, category: $category);
+}
+```
+
+The same DataProvider can fuel multiple routes, each generating its own set of static files based on the parameters it yields.
+
+## Real-world considerations
+
+### Managing build performance
+
+One thing I learned the hard way is that as your site grows, build times can become significant. If you have thousands of blog posts, generating thousands of static pages takes time.
+
+Here are some strategies I've used to keep builds fast:
+
+• **Incremental Building**: Only regenerate pages when their source data changes. Tempest doesn't have this built-in yet, but you can implement it by tracking modification times or content hashes.
+
+• **Parallel Generation**: For large sites, consider generating pages in parallel. You can split your DataProvider output and run multiple build processes.
+
+• **Smart Caching**: Cache expensive operations in your repositories. Since builds run in isolation, you can be aggressive about caching without worrying about stale data.
+
+### Content management integration
+
+One common question I get is: "How do non-technical users manage content?" The answer depends on your setup, but here are approaches that have worked well:
+
+• **Markdown Files**: Store content as Markdown files in your repository. Non-technical users can edit them through GitHub's web interface or tools like [TinaCMS](https://tina.io/) or [Decap CMS](https://decapcms.org/).
+
+• **Headless CMS**: Use something like [Strapi](https://strapi.io/), [Contentful](https://www.contentful.com/), or [Sanity](https://www.sanity.io/) as your content source. Your repository pulls from the CMS API during build time.
+
+• **Database-Driven**: Keep using your existing database setup. The build process just happens to export everything to static files instead of serving dynamically.
+
+### SEO and metadata
+
+Static sites are fantastic for SEO because they're fast and crawlable, but you need to handle metadata properly:
+
+```php
+#[StaticPage(BlogDataProvider::class)]
+#[Get('/blog/{slug}')]
+public function show(string $slug, BlogRepository $repository): Response|View
+{
+  $post = $repository->find($slug);
+
+  // Generate SEO metadata
+  $metadata = [
+    'title' => $post->title . ' | My Blog',
+    'description' => $post->excerpt,
+    'canonical' => "https://myblog.com/blog/{$slug}",
+    'og_image' => $post->featured_image,
+    'published_time' => $post->published_at->toISOString(),
+  ];
+
+  return view(__DIR__ . '/blog_show.view.php',
+    post: $post,
+    metadata: $metadata
+  );
+}
+```
+
+Your view templates can then use this metadata to generate proper `<meta>` tags, Open Graph properties, and structured data.
+
+## Deploying your static site
+
+One of the best parts about static site generation is deployment. At the end of the day, your site is just HTML, CSS, and JavaScript files, which means there's no server to configure or database to maintain.
+
+With [Sevalla's free static site hosting](https://sevalla.com/static-site-hosting/), deployment is straightforward. All you have to do is connect your Git repository once, and every push to your main branch triggers a build.
+
+The output is deployed across Cloudflare's global edge network, giving you instant scalability and low latency worldwide.
+
+## When static isn't the answer
+
+Let me be clear about something: static sites aren't a silver bullet. There are definitely times when you shouldn't use this approach:
+
+• **User-Specific Content**: If your site needs to show different content based on who's logged in, static generation won't work without additional complexity.
+
+• **Real-Time Data**: Stock prices, live chat, real-time analytics - these need dynamic rendering.
+
+• **Complex Forms**: While simple contact forms can be handled with services like Formspree, complex multi-step forms with validation are better served dynamically.
+
+• **Search**: Static sites can handle search with client-side solutions like Algolia, but complex search functionality often needs server-side processing.
+
+The key is recognizing what parts of your application can be static and what parts need to remain dynamic. For example, you might have a static marketing site with a dynamic user dashboard.
+
+## What's next?
+
+Static site generation with PHP is still evolving. Tempest is relatively young, and there are features I'd love to see added, like incremental builds, better asset optimization, and built-in form handling.
+
+But the foundation is solid, and the approach is sound. As someone who's spent years wrestling with complex deployment pipelines and server maintenance, there's something refreshing about typing `tempest static:generate` and getting a folder full of files that will work anywhere.
+
+If you're curious about trying this approach, start small. Take a simple marketing site or blog that you're currently running on WordPress or a traditional framework, and try rebuilding it with Tempest. You might be surprised by how natural it feels, and how fast the results are.
+
+The future of web development isn't about choosing between static and dynamic. It's about choosing the right approach for each piece of your application. And for content-heavy sites that don't need real-time interactivity, static generation - whether powered by PHP, JavaScript, or anything else - is often the right choice.
+
+Have you tried building static sites with PHP? Share your thoughts with us on [X](https://x.com/sevalla_hosting) - we'd love to hear how you're approaching the static vs dynamic balance.
+
+---
+
+*This article was originally published on [Sevalla Blog](https://sevalla.com/blog/static-site-generation-php/). Follow me on [Twitter](https://twitter.com/juststeveking) for more PHP and web development insights.*

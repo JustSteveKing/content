@@ -1,0 +1,437 @@
+---
+title: "An educational look into the Tempest PHP framework"
+pubDate: 2025-07-15
+description: "Discover how Tempest, a modern PHP framework, uses code discovery and the latest PHP features to simplify app development and boost productivity."
+category: PHP
+sponsor:
+  name: Sevalla
+  url: https://juststeveking.link/host
+  logo: https://github.com/sevalla-hosting.png
+cover:
+  src: "/images/articles/tempest-php-framework.jpg"
+  alt: "Tempest PHP Framework - Modern PHP Development"
+tags: ["PHP", "Framework", "Tempest", "Modern PHP", "Web Development", "Backend", "Architecture"]
+seo: {}
+crossPost:
+  originalUrl: "https://sevalla.com/blog/tempest-php/"
+  originalSite: "Sevalla Blog"
+  publishedDate: 2025-07-15
+  permission: true
+---
+
+If you've been following PHP's evolution over the years, you've probably noticed the language becoming increasingly expressive. Property hooks, [attributes](https://www.php.net/manual/en/language.attributes.overview.php), `readonly` classes - these aren't just syntactic sugar. They're reshaping how we think about building applications.
+
+Enter [Tempest](https://tempestphp.com/), a PHP framework that takes these modern features seriously and builds something genuinely different around them.
+
+I've spent the last few weeks exploring Tempest, and what struck me isn't just its technical capabilities, but its philosophy. Where most frameworks impose structure through configuration and convention, Tempest discovers structure through intelligent code scanning.
+
+Let me walk you through what this means and why it matters.
+
+## The discovery approach: Convention through code
+
+Traditional PHP frameworks require explicit registration of almost everything. Routes go in route files, commands get registered in console kernels, and services need providers. Tempest flips this model entirely with what it calls "discovery."
+
+Here's a simple example that illustrates the difference:
+
+```php
+<?php
+
+namespace App\Controllers;
+
+use Tempest\Http\Get;
+use Tempest\Http\Response;
+
+final readonly class BookController
+{
+  #[Get('/books/{id}')]
+  public function show(string $id): Response
+  {
+    $book = Book::find($id);
+    return new Response($book->toJson());
+  }
+
+  #[Get('/books')]
+  public function index(): Response
+  {
+    $books = Book::all();
+    return new Response($books->toJson());
+  }
+}
+```
+
+That's it. No route files, no explicit registration. Tempest scans your codebase during boot, finds classes with routing attributes, and automatically wires everything together. The same pattern applies to console commands, event listeners, and view components.
+
+This might seem like magic, but it's actually quite straightforward. Tempest uses PHP's reflection capabilities to scan your codebase for specific attributes, then builds its internal routing table, command registry, and service container based on what it finds.
+
+## Intelligent data mapping
+
+One area where Tempest really shines is data transformation. If you've worked with APIs or complex data imports, you know how tedious mapping between different formats can be. Tempest's mapper component addresses this with an elegant functional approach:
+
+```php
+use function Tempest\map;
+
+// Basic object mapping
+$user = map($userData)->to(User::class);
+
+// Collection mapping
+$users = map($usersArray)->collection()->to(User::class);
+
+// Custom transformation
+$product = map($apiData)->to(Product::class, function($data) {
+  return new Product(
+    name: $data['product_name'],
+    price: Money::fromCents($data['price_cents']),
+    category: Category::fromId($data['category_id'])
+  );
+});
+```
+
+But here's where it gets interesting. Real-world data rarely matches your internal structures perfectly. External APIs might use `first_name` and `last_name` while your domain model expects a single `name` field. Tempest handles this through mapping attributes:
+
+```php
+final readonly class Customer
+{
+  public function __construct(
+    #[MapFrom('customer_name')]
+    public string $name,
+
+    #[MapFrom('email_address')]
+    public string $email,
+
+    #[MapFrom('registration_date')]
+    public DateTime $registeredAt
+  ) {}
+}
+```
+
+When you map data to this class, Tempest automatically handles the field name translations. I've found this particularly useful when integrating with third-party services where you have no control over the data structure they provide.
+
+The mapper also supports strict mode, which ensures that every property gets initialized. You can also build custom mappers for complex scenarios. Everything integrates seamlessly with the framework's discovery system.
+
+## Architectural flexibility
+
+Here's something that differentiates Tempest from more opinionated frameworks: it doesn't force architectural decisions on you. Want to use traditional MVC? Great. Prefer Domain-Driven Design with hexagonal architecture? Also great. The framework adapts to your choices rather than imposing its own.
+
+Let me show you what this looks like with a simple order processing example:
+
+```php
+// Domain layer - pure business logic
+namespace App\Domain;
+
+final readonly class Order
+{
+  public function __construct(
+    private OrderId $id,
+    private CustomerId $customerId,
+    private array $items
+  ) {}
+
+  public function calculateTotal(): Money
+  {
+    return array_reduce(
+      $this->items,
+      fn(Money $total, OrderItem $item) => $total->add($item->getSubtotal()),
+      Money::zero()
+    );
+  }
+}
+
+// Application layer - use cases
+namespace App\Application;
+
+final readonly class OrderService
+{
+  public function __construct(
+    private OrderRepository $orders,
+    private PaymentService $payments
+  ) {}
+
+  public function processOrder(ProcessOrderCommand $command): Order
+  {
+    $order = Order::create($command->customerId, $command->items);
+
+    $this->payments->charge($command->paymentMethod, $order->calculateTotal());
+    $this->orders->save($order);
+
+    return $order;
+  }
+}
+
+// Infrastructure layer - framework concerns
+namespace App\Http;
+
+final readonly class OrderController
+{
+  public function __construct(private OrderService $orderService) {}
+
+  #[Post('/orders')]
+  public function create(CreateOrderRequest $request): Response
+  {
+    $order = $this->orderService->processOrder($request->toCommand());
+    return new Response($order->toArray());
+  }
+}
+```
+
+Notice how the framework concerns stay in the infrastructure layer while your business logic remains pure. Tempest discovers and wires everything together without requiring you to compromise your architectural vision.
+
+## Command bus for complex workflows
+
+For applications with intricate business logic, Tempest includes a command bus that promotes clean separation of concerns. Commands are simple, immutable data structures representing intentions:
+
+```php
+final readonly class SendWelcomeEmail
+{
+  public function __construct(
+    public string $userId,
+    public string $emailTemplate
+  ) {}
+}
+
+final readonly class UpdateUserPreferences
+{
+  public function __construct(
+    public string $userId,
+    public array $preferences
+  ) {}
+}
+```
+
+Handlers process these commands and are automatically discovered through attributes:
+
+```php
+final readonly class EmailHandler
+{
+  public function __construct(
+    private MailService $mailer,
+    private UserRepository $users
+  ) {}
+
+  #[CommandHandler]
+  public function sendWelcome(SendWelcomeEmail $command): void
+  {
+    $user = $this->users->find($command->userId);
+    $this->mailer->send($command->emailTemplate, $user->email);
+  }
+}
+```
+
+Dispatching commands is straightforward:
+
+```php
+$this->commandBus->dispatch(new SendWelcomeEmail($user->id, 'welcome'));
+```
+
+The framework includes experimental async support for background processing, which is particularly useful for time-consuming operations like image processing or email sending.
+
+## Console commands as first-class citizens
+
+One thing I appreciate about Tempest is how it treats console commands. Instead of feeling like an afterthought bolted onto web controllers, console commands are first-class citizens with their own clean syntax:
+
+```php
+final readonly class ImportUsers
+{
+  public function __construct(
+    private UserService $userService,
+    private FileProcessor $fileProcessor
+  ) {}
+
+  #[ConsoleCommand('import:users {filename} {--format=csv}')]
+  public function __invoke(string $filename, string $format = 'csv'): void
+  {
+    $data = $this->fileProcessor->parse($filename, $format);
+
+    foreach ($data as $userData) {
+        $this->userService->createUser($userData);
+    }
+
+    echo "Imported " . count($data) . " users\n";
+  }
+}
+```
+
+The command definition includes argument and option parsing built-in, and like everything else in Tempest, it's discovered automatically.
+
+## Database handling: A fresh take on data persistence
+
+Now, let's talk about one of the most critical aspects of any framework: how it handles database interactions. Having worked with Active Record patterns, Data Mappers, and various ORMs over the years, I was curious to see how Tempest approached this fundamental challenge.
+
+Tempest takes what I'd call a "decoupled model" approach. Unlike frameworks that tie your domain objects directly to database concerns, Tempest encourages you to keep your models clean and focused on business logic:
+
+```php
+final readonly class User
+{
+  public function __construct(
+    public UserId $id,
+    public string $name,
+    public EmailAddress $email,
+    public DateTime $createdAt
+  ) {}
+
+  public function isActive(): bool
+  {
+    return $this->email->isVerified() &&
+            $this->createdAt->diffInDays(now()) > 0;
+  }
+
+  public function getDisplayName(): string
+  {
+    return $this->name ?: $this->email->getLocalPart();
+  }
+}
+```
+
+Notice what's missing here? No database-specific methods, no magic properties, no inheritance from base model classes. This is a pure domain object that focuses entirely on business logic.
+
+So, how do you actually persist and retrieve these objects? That's where repositories come in:
+
+```php
+interface UserRepository
+{
+  public function find(UserId $id): ?User;
+  public function findByEmail(EmailAddress $email): ?User;
+  public function save(User $user): void;
+  public function delete(UserId $id): void;
+}
+
+final readonly class DatabaseUserRepository implements UserRepository
+{
+  public function __construct(private Database $db) {}
+
+  public function find(UserId $id): ?User
+  {
+    $userData = $this->db
+        ->table('users')
+        ->where('id', $id->toString())
+        ->first();
+
+    return $userData ? map($userData)->to(User::class) : null;
+  }
+
+  public function save(User $user): void
+  {
+    $data = map($user)->to('array');
+
+    $this->db->table('users')->upsert($data, ['id']);
+  }
+}
+```
+
+This separation means your business logic stays clean while your persistence logic remains flexible. Want to switch from MySQL to PostgreSQL? Change the repository implementation. Need to add caching? Wrap your repository in a caching decorator. Your domain models remain untouched.
+
+The database query builder itself feels familiar if you've used Laravel's Eloquent, but with some nice touches:
+
+```php
+// Simple queries
+$users = $this->db->table('users')
+  ->where('active', true)
+  ->orderBy('created_at', 'desc')
+  ->limit(10)
+  ->get();
+
+// More complex queries with joins
+$orders = $this->db->table('orders')
+  ->join('users', 'orders.user_id', '=', 'users.id')
+  ->join('products', 'orders.product_id', '=', 'products.id')
+  ->where('orders.status', 'completed')
+  ->select('orders.*', 'users.name as user_name', 'products.title as product_title')
+  ->get();
+```
+
+For migrations, Tempest uses a discovery-based approach (surprise!). Migration classes get automatically discovered by implementing the `DatabaseMigration` interface.
+
+```php
+final readonly class CreateBookTable implements DatabaseMigration
+{
+  public string $name = '2024-08-12_create_book_table';
+
+  public function up(): QueryStatement|null
+  {
+    return new CreateTableStatement('books')
+      ->primary()
+      ->text('title')
+      ->datetime('created_at')
+      ->datetime('published_at', nullable: true)
+      ->integer('author_id', unsigned: true)
+      ->belongsTo('books.author_id', 'authors.id');
+  }
+
+  public function down(): QueryStatement|null
+  {
+    return new DropTableStatement('books');
+  }
+}
+```
+
+What I find refreshing about this approach is how it encourages good architectural practices without being preachy about it. The framework makes it easy to separate concerns, but doesn't force you into rigid patterns if they don't fit your use case.
+
+## Modern PHP features throughout
+
+What sets Tempest apart is how thoroughly it embraces modern PHP. This isn't just about using the latest syntax - it's about designing APIs that feel natural with contemporary PHP patterns.
+
+Take view components, for example:
+
+```php
+final readonly class UserProfile implements ViewComponent
+{
+	public function __construct(
+		private ViteConfig $viteConfig,
+	) {}
+
+	public static function getName(): string
+	{
+		return 'x-user-profile';
+	}
+
+    public function compile(ViewComponentElement $element): string
+    {
+	    $entrypoints = match(true) {
+		    $element->hasAttributes('entrypoints') => 'entrypoints',
+		    default => var_export($this->viteConfig->entrypoints, return: true),
+	    };
+	return <<<HTML
+		<?= \Tempest\\vite_tags({$entrypoints}) ?>
+	HTML;
+    }
+}
+```
+
+The framework includes built-in upgraders that help your codebase evolve alongside PHP itself. As new language features become available, Tempest provides tooling to help you adopt them systematically.
+
+## Extensibility without configuration overhead
+
+Despite its opinionated approach to discovery, Tempest remains highly extensible. Need a custom view renderer? Install and tweak the configuration.
+
+```php
+// view.config.php
+return new ViewConfig(
+	rendererClass: \Tempest\View\Renderers\TwigViewRenderer::class,
+);
+```
+
+Updating the configuration will load the twig renderer as the default renderer, and the same can be done with Blade or others. The documentation is pretty thorough on this.
+
+## Performance and developer experience
+
+In practical terms, Tempest performs well. The discovery system adds minimal overhead since everything gets cached after the initial scan. Boot times in production are comparable to other modern frameworks, typically in the 15-25ms range for moderately complex applications.
+
+More importantly, the development experience feels streamlined. When I need to add a new feature, I focus on the business logic first, then add the minimal framework integration required. I don't have to stop to update configuration files or remember registration steps.
+
+## When Tempest makes sense
+
+Tempest works particularly well for:
+
+• API-heavy applications with complex data transformations
+• Projects where development speed is crucial
+• Teams wanting to leverage modern PHP features
+• Applications requiring architectural flexibility
+
+It might be less suitable for large teams preferring highly opinionated frameworks or projects requiring extensive integration with existing Laravel/Symfony ecosystems.
+
+## Getting started
+
+The framework is still evolving, which means you're joining a community actively shaping its development. The [Discord community](https://tempestphp.com/discord) provides excellent support, and the [documentation](https://tempestphp.com/1.x/getting-started/introduction) covers most practical scenarios well.
+
+If you're curious about modern PHP development or feeling constrained by existing framework choices, Tempest offers a compelling alternative. It represents a thoughtful approach to framework design that respects both the language's evolution and your intelligence as a developer.
+
+The key insight behind Tempest is simple: modern PHP is expressive enough that frameworks can discover structure rather than impose it. You'll only know whether this resonates with your development style by trying it yourself.

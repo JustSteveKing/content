@@ -1,0 +1,719 @@
+---
+title: "Kubernetes for Laravel developers"
+description: "Learn how Laravel developers can leverage Kubernetes for scalable and efficient application deployment."
+pubDate: "2026-01-19"
+canonical: "https://sevalla.com/blog/kubernetes-laravel-developers/"
+crossPost:
+    originalUrl: "https://sevalla.com/blog/kubernetes-laravel-developers/"
+    originalSite: "Sevalla"
+    publishedDate: "2026-01-19"
+    permission: true
+author:
+    name: "Steve McDougall"
+---
+
+You've deployed Laravel apps to shared hosting, spun up Forge servers, maybe even configured your own VPS. But every time someone mentions Kubernetes, your eyes glaze over. Pods? Clusters? Manifests? It sounds like an alien language designed to make simple deployments unnecessarily complicated.
+
+I get it. When I first looked at Kubernetes, I thought the same thing. Why would I need container orchestration when I can simply SSH into a server and run php artisan serve ?
+
+But here's the thing: once Kubernetes clicks, you'll understand why companies like Spotify, Airbnb, and even Laravel-focused teams use it. The concepts are straightforward once you strip away the jargon.
+
+By the end of this tutorial, you'll have a Laravel 12 application running on PHP 8.5 with FrankenPHP in a Kubernetes cluster on your local machine. More importantly, you'll understand what every piece does and why it exists.
+
+What Kubernetes actually is (no jargon)
+
+Forget everything you've heard about "container orchestration platforms" and "declarative infrastructure." Let me explain Kubernetes the way I wish someone had explained it to me.
+
+Imagine you're running a Laravel app that suddenly goes viral. Traffic spikes from 100 requests per minute to 10,000 requests per minute. With a traditional server setup, you'd scramble to spin up more servers, configure load balancers, and pray nothing breaks.
+
+Kubernetes handles this automatically. You tell it, "I want 5 copies of my app running at all times," and it makes it happen. If one copy crashes, Kubernetes spins up a replacement. If traffic spikes, you can scale to 50 copies with a single command.
+
+That's it. Kubernetes is a system that keeps your applications running as you specified, regardless of what happens.
+
+The four concepts you need to know
+
+Before we write any code, let's define four key terms. Once you understand these, everything else is just details.
+
+1. Container
+
+You probably already know this one. A container is your application packaged with everything it needs to run: PHP, extensions, your Laravel code, dependencies. Docker creates containers. Nothing new here.
+
+2. Pod
+
+A Pod is Kubernetes' smallest deployable unit. Think of it as a wrapper around one or more containers. In most cases, one Pod equals one container.
+
+Why the extra layer? Kubernetes doesn't manage containers directly. It manages Pods, which can share storage, networking, and lifecycle. For a Laravel app, your Pod contains one container running your application.
+
+┌─────────────────────────┐
+│ Pod │
+│ ┌───────────────────┐ │
+│ │ Container │ │
+│ │ (Laravel App) │ │
+│ └───────────────────┘ │
+└─────────────────────────┘
+
+3. Deployment
+
+A Deployment tells Kubernetes: "I want X copies of this Pod running at all times."
+
+When you create a Deployment, Kubernetes ensures the specified number of Pods exist. If a Pod crashes, the Deployment creates a new one. If you update your container image, the Deployment rolls out the change gracefully.
+
+┌─────────────────────────────────────────────┐
+│ Deployment │
+│ "Keep 3 copies of my Laravel app running" │
+│ │
+│ ┌─────┐ ┌─────┐ ┌─────┐ │
+│ │ Pod │ │ Pod │ │ Pod │ │
+│ └─────┘ └─────┘ └─────┘ │
+└─────────────────────────────────────────────┘
+
+4. Service
+
+Pods are ephemeral. They get IP addresses, but those addresses change every time a Pod restarts. A Service provides a stable endpoint that routes traffic to your Pods.
+
+Think of a Service like a load balancer with a permanent address. Traffic hits the Service, and the Service forwards it to healthy Pods.
+
+┌─────────────┐
+Traffic ───────► │ Service │
+│ (stable IP) │
+└──────┬──────┘
+│
+┌────────────────┼────────────────┐
+▼ ▼ ▼
+┌─────┐ ┌─────┐ ┌─────┐
+│ Pod │ │ Pod │ │ Pod │
+└─────┘ └─────┘ └─────┘
+
+5. Cluster
+
+A Cluster is simply the collection of machines (called Nodes) that Kubernetes manages. For local development, your laptop is a single-node cluster. In production, you might have dozens of Nodes spread across data centers.
+
+Setting up your local Kubernetes cluster
+
+Let's get our hands dirty. We'll use k3d, which runs a lightweight Kubernetes distribution (k3s) inside Docker. It's fast to set up and tears down cleanly.
+
+Prerequisites
+
+Make sure you have Docker installed and running. That's it. On macOS:
+
+brew install k3d
+
+On Linux:
+
+curl -s https://raw.githubusercontent.com/k3d-io/k3d/main/install.sh | bash
+
+On Windows (PowerShell):
+
+choco install k3d
+
+Create Your Cluster
+
+k3d cluster create laravel-cluster
+
+That's it. You now have a working Kubernetes cluster. Let's verify:
+
+kubectl get nodes
+
+You should see output like:
+
+```
+NAME STATUS ROLES AGE VERSION k3d-laravel-cluster-server-0 Ready control-plane,master 30s v1.28.8+k3s1
+```
+
+If you don't have kubectl installed, k3d bundles it, or install it separately:
+
+# macOS
+brew install kubectl
+# Linux
+curl -LO "https://dl.k8s.io/release/$(curl -L -s https://dl.k8s.io/release/stable.txt)/bin/linux/amd64/kubectl"
+chmod +x kubectl
+sudo mv kubectl /usr/local/bin/
+
+Creating a Laravel 12 application
+
+Let's create a fresh Laravel 12 application. If you have an existing app, you can adapt these steps.
+
+laravel new k8s-demo
+cd k8s-demo
+
+We'll use Laravel Octane with FrankenPHP for exceptional performance. Octane keeps your application in memory between requests, eliminating the bootstrap overhead that traditional PHP-FPM setups suffer from.
+
+composer require laravel/octane
+php artisan octane:install --server=frankenphp
+
+Add a simple health check route to routes/web.php :
+
+```php
+Route::get('/health', function () {
+    return response()->json([
+        'status' => 'healthy',
+        'timestamp' => now()->toISOString(),
+    ]);
+});
+```
+
+This gives Kubernetes a way to check if our application is running correctly.
+
+Containerizing with FrankenPHP
+
+Here's where things get interesting. Traditional PHP deployments require nginx (or Apache) plus PHP-FPM, with supervisord babysitting both processes. That's three moving parts in your container.
+
+FrankenPHP changes everything. It's a modern PHP application server built on top of Caddy, compiling PHP directly into a single binary. One process handles HTTP/HTTPS, PHP execution, and even HTTP/3 support. Combined with Laravel Octane's worker mode, your application boots once and stays in memory, serving requests with sub-millisecond overhead.
+
+Create a Dockerfile in your project root:
+
+FROM dunglas/frankenphp:latest-php8.5-alpine
+
+# Install PHP extensions Laravel needs
+RUN install-php-extensions \
+    pcntl \
+    pdo_mysql \
+    redis \
+    gd \
+    intl \
+    zip \
+    opcache \
+    bcmath
+
+# Install Composer
+COPY --from=composer:latest /usr/bin/composer /usr/bin/composer
+
+# Set working directory
+WORKDIR /app
+
+# Copy composer files first for better layer caching
+COPY composer.json composer.lock ./
+
+# Install dependencies
+RUN composer install --no-dev --no-scripts --no-autoloader --prefer-dist
+
+# Copy application code
+COPY . .
+
+# Generate optimized autoloader
+RUN composer dump-autoload --optimize
+
+# Set permissions for Laravel
+RUN chown -R www-data:www-data /app/storage /app/bootstrap/cache \
+    && chmod -R 775 /app/storage /app/bootstrap/cache
+
+# Expose port 8000 (Octane default)
+EXPOSE 8000
+
+# Start Octane with FrankenPHP
+CMD ["php", "artisan", "octane:start", "--server=frankenphp", "--host=0.0.0.0", "--port=8000"]
+
+That's it. No nginx config. No supervisord. No php-fpm tuning. FrankenPHP handles everything.
+
+Let's break down what makes this special:
+
+dunglas/frankenphp:latest-php8.5-alpine : The official FrankenPHP image with PHP 8.5 on Alpine Linux. Small footprint, production-ready.
+install-php-extensions : A helper script bundled with the image. It handles all the complexity of installing PHP extensions correctly.
+pcntl : Required for Octane's worker management. This lets PHP handle process signals for graceful shutdowns.
+The Octane command: php artisan octane:start --server=frankenphp boots your Laravel app once, then serves requests from memory. Traditional PHP-FPM rebuilds your entire application on every request (50-100ms overhead). Octane eliminates that entirely.
+
+Build and load the Image
+
+Since we're using k3d, we can load images directly into the cluster without pushing to a registry:
+
+# Build the image
+docker build -t laravel-k8s:v1 .
+# Load it into k3d
+k3d image import laravel-k8s:v1 -c laravel-cluster
+
+Let's verify the image works locally first:
+
+docker run -p 8000:8000 laravel-k8s:v1
+
+Visit http://localhost:8000, and you should see the Laravel welcome page. Hit http://localhost:8000/health to confirm the health endpoint works. Press Ctrl+C to stop the container.
+
+Writing Kubernetes manifests
+
+Now for the Kubernetes-specific part. We define our desired state in YAML files, known as manifests. Kubernetes reads these files and makes reality match your description.
+
+Create a k8s directory in your project:
+
+mkdir k8s
+
+The deployment manifest
+
+Create k8s/deployment.yaml :
+
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: laravel-app
+  labels:
+    app: laravel
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: laravel
+  template:
+    metadata:
+      labels:
+        app: laravel
+    spec:
+      containers:
+        - name: laravel
+          image: laravel-k8s:v1
+          ports:
+            - containerPort: 8000
+          env:
+            - name: APP_KEY
+              value: "base64:your-app-key-here"
+            - name: APP_ENV
+              value: "production"
+            - name: APP_DEBUG
+              value: "false"
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: 8000
+            initialDelaySeconds: 10
+            periodSeconds: 5
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: 8000
+            initialDelaySeconds: 5
+            periodSeconds: 3
+          resources:
+            requests:
+              memory: "128Mi"
+              cpu: "100m"
+            limits:
+              memory: "256Mi"
+              cpu: "500m"
+
+Let's break this down section by section.
+
+apiVersion and kind: These tell Kubernetes what type of resource you're creating. apps/v1 is the API version, and Deployment is the resource type.
+metadata: Names and labels for identifying this resource. Labels are key-value pairs used for selection and organization.
+spec.replicas: How many Pods to run. We're starting with 2, so if one crashes, traffic still flows to the other.
+spec.selector: How the Deployment finds its Pods. It looks for Pods with the label app: laravel .
+spec.template: The Pod template. This defines what each Pod looks like.
+containers: The container(s) in each Pod. We have one container running our Laravel image on port 80.
+env: Environment variables passed to the container. In production, you'd use Secrets for sensitive values like APP_KEY .
+livenessProbe: Kubernetes periodically hits /health . If it fails, Kubernetes restarts the container. This catches scenarios where your app is running but broken.
+readinessProbe: Similar to liveness, but determines if a Pod should receive traffic. A Pod that isn't ready gets removed from the Service's rotation.
+resources: CPU and memory limits. requests is what the Pod needs to be scheduled. limits is the maximum it can use. These prevent a single Pod from starving others.
+
+The Service manifest
+
+Create k8s/service.yaml :
+
+apiVersion: v1
+kind: Service
+metadata:
+  name: laravel-service
+spec:
+  type: LoadBalancer
+  selector:
+    app: laravel
+  ports:
+    - protocol: TCP
+      port: 80
+      targetPort: 8000
+
+Much simpler than the Deployment. Let's break it down:
+
+kind: Service: We're creating a Service resource.
+spec.type: LoadBalancer: The Service type. LoadBalancer exposes the service externally. Other types include ClusterIP (internal only) and NodePort (exposes on a specific port on each node).
+spec.selector: The Service routes traffic to Pods matching this label. It matches our Deployment's Pod labels.
+ports: Maps the Service's port (80) to the container's port (8000). External traffic hits port 80, the Service forwards it to FrankenPHP on port 8000.
+
+Deploying to Kubernetes
+
+Apply the manifests:
+
+kubectl apply -f k8s/deployment.yaml
+kubectl apply -f k8s/service.yaml
+
+Watch the Pods come up:
+
+```bash
+kubectl get pods -w
+```
+
+You'll see something like:
+
+```
+NAME                               READY   STATUS              RESTARTS   AGE
+laravel-app-7d9f8b6c4-abc12        0/1     ContainerCreating   0          5s
+laravel-app-7d9f8b6c4-def34        0/1     ContainerCreating   0          5s
+laravel-app-7d9f8b6c4-abc12        1/1     Running             0          15s
+laravel-app-7d9f8b6c4-def34        1/1     Running             0          18s
+```
+
+Press Ctrl+C to stop watching.
+
+Check the Service:
+
+```bash
+kubectl get services
+```
+
+```
+NAME             TYPE           CLUSTER-IP      EXTERNAL-IP   PORT(S)        AGE
+kubernetes       ClusterIP      10.43.0.1       <none>        443/TCP        10m
+laravel-service  LoadBalancer   10.43.45.123    <pending>     80:31234/TCP   30s
+```
+
+With k3d, access your app via port forwarding:
+
+```bash
+kubectl port-forward service/laravel-service 8000:80
+```
+
+Now visit http://localhost:8000 . Your Laravel app is running on Kubernetes.
+
+Understanding what just happened
+
+Let's trace the flow:
+
+You applied a Deployment manifest
+Kubernetes created a Deployment resource
+The Deployment created two Pods
+Each Pod pulled the container image and started the container
+The liveness and readiness probes confirmed the app was healthy
+You applied a Service manifest
+Kubernetes created a Service that routes traffic to Pods with app: laravel
+Port forwarding connected your local port 8080 to the Service
+
+If a Pod crashes, watch Kubernetes recover:
+
+# Get Pod names
+kubectl get pods
+# Delete a Pod (simulate a crash)
+kubectl delete pod laravel-app-7d9f8b6c4-abc12
+# Watch the Deployment create a replacement
+kubectl get pods -w
+
+Within seconds, a new Pod appears. The Deployment ensures two replicas always exist.
+
+Scaling your application
+
+Need more capacity? Scale up:
+
+```bash
+kubectl scale deployment laravel-app --replicas=5
+```
+
+Watch three new Pods appear:
+
+```bash
+kubectl get pods
+```
+
+Scale back down:
+
+```bash
+kubectl scale deployment laravel-app --replicas=2
+```
+
+The extra Pods terminate gracefully.
+
+Updating your application
+
+Make a change to your Laravel app. Maybe update the welcome page or add a new route. Rebuild the image with a new tag:
+
+```bash
+docker build -t laravel-k8s:v2 .
+k3d image import laravel-k8s:v2 -c laravel-cluster
+```
+
+Update the Deployment to use the new image:
+
+```bash
+kubectl set image deployment/laravel-app laravel=laravel-k8s:v2
+```
+
+Watch the rolling update:
+
+```bash
+kubectl rollout status deployment/laravel-app
+```
+
+Kubernetes creates new Pods with v2, waits for them to be healthy, then terminates the old v1 Pods. Zero downtime.
+
+Need to rollback?
+
+```bash
+kubectl rollout undo deployment/laravel-app
+```
+
+## Viewing logs
+
+Check logs from a specific Pod:
+
+```bash
+kubectl logs laravel-app-7d9f8b6c4-abc12
+```
+
+Follow logs in real-time:
+
+```bash
+kubectl logs -f laravel-app-7d9f8b6c4-abc12
+```
+
+View logs from all Pods in the Deployment:
+
+```bash
+kubectl logs -l app=laravel
+```
+
+## Executing commands in Pods
+
+Need to run an Artisan command?
+
+```bash
+kubectl exec -it laravel-app-7d9f8b6c4-abc12 -- php artisan migrate
+```
+
+Open a shell in the container:
+
+```bash
+kubectl exec -it laravel-app-7d9f8b6c4-abc12 -- sh
+```
+
+## Managing configuration with ConfigMaps and Secrets
+
+Hardcoding environment variables in your Deployment isn't ideal. Let's use ConfigMaps for non-sensitive config and Secrets for sensitive values.
+
+Create k8s/configmap.yaml :
+
+```yaml
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: laravel-config
+data:
+  APP_ENV: "production"
+  APP_DEBUG: "false"
+  LOG_CHANNEL: "stderr"
+  DB_CONNECTION: "mysql"
+```
+
+Create k8s/secret.yaml :
+
+```yaml
+apiVersion: v1
+kind: Secret
+metadata:
+  name: laravel-secrets
+type: Opaque
+stringData:
+  APP_KEY: "base64:your-actual-app-key-here"
+  DB_PASSWORD: "your-database-password"
+```
+
+Note: In production, you'd generate Secrets differently (from files, external secret managers, etc.), not commit them to version control.
+
+Update your Deployment to use these:
+
+```yaml
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: laravel-app
+  labels:
+    app: laravel
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: laravel
+  template:
+    metadata:
+      labels:
+        app: laravel
+    spec:
+      containers:
+        - name: laravel
+          image: laravel-k8s:v1
+          ports:
+            - containerPort: 8000
+          envFrom:
+            - configMapRef:
+                name: laravel-config
+            - secretRef:
+                name: laravel-secrets
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: 8000
+            initialDelaySeconds: 10
+            periodSeconds: 5
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: 8000
+            initialDelaySeconds: 5
+            periodSeconds: 3
+          resources:
+            requests:
+              memory: "128Mi"
+              cpu: "100m"
+            limits:
+              memory: "256Mi"
+              cpu: "500m"
+```
+
+Apply everything:
+
+```bash
+kubectl apply -f k8s/configmap.yaml
+kubectl apply -f k8s/secret.yaml
+kubectl apply -f k8s/deployment.yaml
+```
+
+## Kubernetes for Laravel cheat sheet
+
+Here's your quick reference for common operations:
+
+### Cluster management
+
+```bash
+# Create a cluster
+k3d cluster create my-cluster
+# Delete a cluster
+k3d cluster delete my-cluster
+# List clusters
+k3d cluster list
+```
+
+### Working with Pods
+
+```bash
+# List all Pods
+kubectl get pods
+# Watch Pods in real-time
+kubectl get pods -w
+# Get detailed Pod info
+kubectl describe pod <pod-name>
+# View Pod logs
+kubectl logs <pod-name>
+# Follow logs
+kubectl logs -f <pod-name>
+# Execute command in Pod
+kubectl exec -it <pod-name> -- <command>
+# Open shell in Pod
+kubectl exec -it <pod-name> -- sh
+```
+
+### Deployments
+
+```bash
+# Apply a manifest
+kubectl apply -f deployment.yaml
+# List Deployments
+kubectl get deployments
+# Scale a Deployment
+kubectl scale deployment <name> --replicas=5
+# Update image
+kubectl set image deployment/<name> <container>=<image>:<tag>
+# View rollout status
+kubectl rollout status deployment/<name>
+# Rollback
+kubectl rollout undo deployment/<name>
+# Delete a Deployment
+kubectl delete deployment <name>
+```
+
+### Services
+
+```bash
+# List Services
+kubectl get services
+# Port forward to a Service
+kubectl port-forward service/<name> <local-port>:<service-port>
+# Get Service details
+kubectl describe service <name>
+```
+
+### Debugging
+
+```bash
+# Get all resources
+kubectl get all
+# Describe any resource
+kubectl describe <resource-type> <name>
+# View events
+kubectl get events --sort-by='.lastTimestamp'
+# Check resource usage
+kubectl top pods
+kubectl top nodes
+```
+
+### ConfigMaps and Secrets
+
+```bash
+# Create ConfigMap from literal
+kubectl create configmap my-config --from-literal=KEY=value
+# Create Secret from literal
+kubectl create secret generic my-secret --from-literal=PASSWORD=secret
+# View ConfigMap
+kubectl get configmap <name> -o yaml
+# View Secret (base64 encoded)
+kubectl get secret <name> -o yaml
+```
+
+### Cleaning up
+
+When you're done experimenting:
+
+```bash
+# Delete all resources we created
+kubectl delete -f k8s/
+# Delete the cluster entirely
+k3d cluster delete laravel-cluster
+```
+
+## The reality of production Kubernetes
+
+What we've built is a solid foundation, but production Kubernetes involves more:
+
+Ingress Controllers: Route external traffic with path-based routing, SSL termination, and virtual hosts.
+Persistent Storage: StatefulSets and PersistentVolumeClaims for databases and file storage.
+Namespaces: Logical separation between environments (staging, production) or teams.
+RBAC: Role-based access control for who can do what in your cluster.
+Helm: Package manager for Kubernetes, making deployments repeatable.
+GitOps: Tools like ArgoCD or Flux that sync your cluster state with Git repositories.
+Monitoring: Prometheus for metrics, Grafana for dashboards, Loki for logs.
+Service Mesh: Istio or Linkerd for advanced traffic management, security, and observability.
+
+Each of these adds complexity. A production-grade Kubernetes setup requires dedicated expertise to manage, secure, and maintain.
+
+When Kubernetes is overkill
+
+Here's the honest truth: most Laravel applications don't need Kubernetes.
+
+If you're a solo developer or small team, the operational overhead of managing Kubernetes, handling upgrades, debugging network policies, and dealing with storage classes, will consume time better spent building features.
+
+Kubernetes makes sense when you need:
+
+Automatic scaling based on traffic
+Zero-downtime deployments across multiple services
+Multi-region or multi-cloud deployments
+Microservices architecture with complex networking
+
+For a standard Laravel application, even one handling significant traffic, managed platforms offer the scaling benefits without the operational burden.
+
+Skip the complexity with Platform as a Service
+
+Platforms like Sevalla provide the benefits of containerized, scalable deployments without requiring you to manage Kubernetes yourself.
+
+With a PaaS, you get:
+
+Automatic scaling: Handle traffic spikes without manual intervention
+Zero-downtime deployments: Push code and watch it roll out safely
+Managed databases: No more provisioning and patching database servers
+Built-in monitoring: See what's happening without setting up Prometheus
+Preview environments: Automatically spin up isolated environments for pull requests
+Global CDN: Content delivered from the edge automatically
+
+You focus on your Laravel application. They handle the infrastructure.
+
+The Kubernetes knowledge you gained in this tutorial isn't wasted. Understanding how containers, orchestration, and services work helps you make better architectural decisions. However, unless your specific requirements necessitate full Kubernetes control, a managed platform is often the more pragmatic choice.

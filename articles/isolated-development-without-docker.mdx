@@ -1,0 +1,203 @@
+---
+title: "Isolated local development without Docker"
+description: "Learn how to use Devbox to create isolated local development environments for Laravel projects without the overhead of Docker."
+pubDate: "2026-01-07"
+canonical: "https://sevalla.com/blog/isolated-development-without-docker/"
+crossPost:
+    originalUrl: "https://sevalla.com/blog/isolated-development-without-docker/"
+    originalSite: "Sevalla"
+    publishedDate: "2026-01-07"
+    permission: true
+author:
+    name: "Steve McDougall"
+---
+
+Laravel has no shortage of local development options. Valet, Herd, Sail, and Homestead all solve the problem in different ways, and each comes with trade-offs.
+Valet and Herd are lightweight and easy to use, but they work at the system level. When one project needs PHP 8.4 and another needs PHP 8.2, managing versions quickly becomes frustrating. Sail provides isolation through Docker, but that also means managing containers and dealing with the performance overhead that often comes with them, especially on macOS.
+Devbox offers a different approach. It provides project-level isolation without using containers. Each Laravel project gets its own PHP version, its own extensions, and its own Node.js environment. Everything is separate from your system and from other projects. The configuration lives in a single JSON file that you commit to your repository.
+
+## What Devbox does
+Devbox creates isolated shell environments powered by the Nix package manager. When you run `devbox shell` inside a project, you drop into an environment where only the packages you've defined are available. When you exit the shell, your system returns to its normal state.
+This means you can have one Laravel project running PHP 8.4 with the Imagick extension, another running PHP 8.2 with GD, and they never interfere with each other. No Docker containers, no VMs, no global PHP version switchers.
+The configuration lives in a JSON file called `devbox.json`. Here is a minimal example for a Laravel project:
+```json
+{
+  "packages": ["php@8.4", "composer"]
+}
+```
+Run `devbox shell`, and you're in an environment with PHP 8.4 and Composer. That's it. However, Laravel projects typically require more than that, so let's establish a comprehensive setup.
+
+## Setting up Devbox for a Laravel project
+First, install Devbox. On macOS or Linux:
+```shell
+curl -fsSL https://get.jetify.com/devbox | bash
+```
+Next, navigate to your Laravel project and initialize Devbox:
+```shell
+cd your-laravel-project
+devbox init
+```
+This creates a `devbox.json` file. Now let's configure it for Laravel development.
+
+### A complete Laravel configuration
+A typical Laravel project needs PHP with several extensions, Composer for dependency management, and Node.js for Vite and frontend assets. The configuration below covers those requirements:
+```json
+{
+  "packages": [
+    "php@8.4",
+    "php84Packages.composer",
+    "php84Extensions.pdo_mysql",
+    "php84Extensions.redis",
+    "php84Extensions.gd",
+    "php84Extensions.intl",
+    "php84Extensions.bcmath",
+    "php84Extensions.zip",
+    "nodejs@22"
+  ],
+  "shell": {
+    "init_hook": ["composer install --quiet", "npm install --silent"],
+    "scripts": {
+      "serve": "php artisan serve",
+      "test": "php artisan test",
+      "dev": "npm run dev",
+      "migrate": "php artisan migrate",
+      "fresh": "php artisan migrate:fresh --seed",
+      "queue": "php artisan queue:work"
+    }
+  }
+}
+```
+Let's break down what's happening here.
+
+### Packages
+The `packages` array defines everything the environment needs. Devbox pulls these packages from the Nix package repository, which includes tens of thousands of available packages.
+For PHP, you specify the version directly using `php@8.4`. Extensions follow a consistent naming pattern. For example, `php84Extensions.pdo_mysql` installs the PDO MySQL extension for PHP 8.4. If you were using PHP 8.3, the name would be `php83Extensions.pdo_mysql`.
+The extensions listed here cover the needs of most Laravel applications:
+* `pdo_mysql` for database connections
+* `redis` for cache and queue drivers
+* `gd` for image manipulation
+* `intl` for internationalization
+* `bcmath` for precise numeric operations
+* `zip` for working with archives
+You can add or remove extensions based on what your application actually uses. If you use PostgreSQL instead of MySQL, replace `pdo_mysql` with `pdo_pgsql`.
+
+### Init hooks
+The `init_hook` array contains commands that run automatically when you enter the Devbox shell. This is a good place for setup tasks that should happen whenever someone starts working on the project.
+Running `composer install` and `npm install` here ensures dependencies are installed and up to date. The `--quiet` and `--silent` flags reduce unnecessary output when everything is already installed.
+
+### Scripts
+The `scripts` section defines shortcuts for common commands. Instead of typing `php artisan test`, you can run:
+```shell
+devbox run test
+```
+This might seem like a small convenience, but it has a practical advantage. Scripts always run inside the Devbox environment, even if you are not currently inside a Devbox shell.
+As a result, you can run `devbox run test` from a regular terminal and still use the correct PHP version and extensions for the project.
+
+## Running your Laravel project
+With the configuration in place, enter the Devbox shell:
+```shell
+devbox shell
+```
+The first time you run this, Devbox downloads and caches the required packages. Subsequent runs are much faster since everything is cached locally.
+Once inside the shell, Laravel's artisan commands work exactly as you'd expect:
+```shell
+php artisan serve
+php artisan tinker
+php artisan make:model Post -mfc
+```
+Or use the scripts you defined:
+```shell
+devbox run serve
+devbox run test
+devbox run migrate
+```
+For frontend development, open a second terminal, enter the Devbox shell there, and run the Vite dev server:
+```shell
+devbox shell
+npm run dev
+```
+Or simply:
+```shell
+devbox run dev
+```
+
+## What about databases?
+Devbox focuses on managing your application runtime, including PHP, Node.js, and related tools. For databases, you have a few options.
+The simplest approach is to run MySQL or PostgreSQL in a standalone Docker container. This keeps your database separate from your application environment, which is often what you want anyway:
+```shell
+docker run -d \
+ --name mysql \
+ -p 3306:3306 \
+ -e MYSQL_ROOT_PASSWORD=secret \
+ -e MYSQL_DATABASE=laravel \
+ -v mysql_data:/var/lib/mysql \
+ mysql:8
+```
+This setup provides a persistent database that survives restarts and can be shared across multiple projects. Your Laravel `.env` file connects to it as usual:
+```
+DB_CONNECTION=mysql
+DB_HOST=127.0.0.1
+DB_PORT=3306
+DB_DATABASE=laravel
+DB_USERNAME=root
+DB_PASSWORD=secret
+```
+If you already use tools like DBngin or Laravel Herd Pro to manage databases, those work just as well alongside Devbox. The PHP environment remains isolated per project, while the database connection happens over a standard TCP connection.
+
+## Working with multiple PHP versions
+One of the practical benefits of Devbox is running different PHP versions per project. Say you're maintaining a legacy application on PHP 8.2 while building a new project on PHP 8.4. Each project has its own `devbox.json`:
+**Legacy project:**
+```json
+{
+  "packages": ["php@8.2", "php82Packages.composer", "php82Extensions.pdo_mysql"]
+}
+```
+**New project:**
+```json
+{
+  "packages": ["php@8.4", "php84Packages.composer", "php84Extensions.pdo_mysql"]
+}
+```
+Enter the shell in either project directory, and you get the correct PHP version. No global version switching, no need to remember to toggle settings.
+You can verify this works as expected:
+```shell
+cd legacy-project
+devbox shell
+php -v # PHP 8.2.x
+exit
+
+cd ../new-project
+devbox shell
+php -v # PHP 8.4.x
+```
+
+## Onboarding and team consistency
+The `devbox.json` file goes into version control. When a new developer clones the repository, they install Devbox once, then run:
+```shell
+devbox shell
+```
+That is the entire setup process. They get the same PHP version, the same extensions, and the same Node.js version as everyone else on the team. There is no need to follow a setup guide that was written months or years ago, and no time spent debugging missing PHP extensions like `intl`.
+This consistency also applies to the scripts defined in the configuration. Everyone runs tests the same way and starts the development server the same way. The commands are documented directly in the project, not in a separate README.
+
+## Comparing to other Laravel tools
+Devbox occupies a specific niche in the Laravel ecosystem.
+**Laravel Herd** is excellent for quick local development, but it's system-wide. Your PHP version applies to all projects, and switching versions requires manual toggling. Herd is simpler if all your projects use the same stack.
+**Laravel Sail** provides Docker-based isolation, giving you per-project environments. The trade-off is running containers, which adds overhead and complexity. Sail makes sense when you need to closely mirror a production environment or run complex service stacks.
+**Devbox** sits between these options. You get per-project isolation like Sail but without Docker. The environment is lighter than containers, and on macOS you avoid the filesystem performance issues that plague Docker volumes.
+The decision depends on what you're optimizing for. If you want the lightest possible setup and don't need project isolation, use Herd. If you need Docker specifically or want production parity, use Sail. If you want isolation without containers, Devbox is worth considering.
+
+## Practical considerations
+A few things to keep in mind when using Devbox with Laravel.
+1. **Extension availability**: Most common PHP extensions are available, but check the Nix package repository if you need something unusual. You can search available packages with `devbox search php84Extensions`.
+2. **First-run speed**: The initial `devbox shell` downloads packages, which takes a few minutes. After that, shells start in seconds because everything is cached.
+3. **Path handling**: Inside a Devbox shell, your PATH is modified to prioritize the Devbox-provided binaries. This is usually what you want, but be aware that commands like `php` and `node` resolve to the Devbox versions, not any system installations.
+4. **IDE integration**: Your IDE needs to know about the Devbox PHP installation for features like autocompletion and linting. You can find the path with `which php` inside a Devbox shell, then configure your IDE to use that interpreter.
+
+## Getting started
+If you want to try Devbox on an existing Laravel project:
+1. Install Devbox: `curl -fsSL https://get.jetify.com/devbox | bash`
+2. Initialize in your project: `devbox init`
+3. Add your packages to `devbox.json`
+4. Run `devbox shell`
+Start with a minimal configuration of just PHP and Composer, and add extensions as you discover what your application needs. The error messages are usually clear about missing extensions, allowing you to build the configuration incrementally.
+The `devbox.json` format is simple enough that you can read other projects' configurations and adapt them to your needs. Once you have a setup that works, commit it to your repository, and your team has a reproducible environment with no additional documentation required.

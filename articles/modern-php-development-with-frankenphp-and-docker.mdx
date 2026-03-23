@@ -1,0 +1,399 @@
+---
+title: "Modern PHP development with FrankenPHP and Docker"
+description: "A hands-on guide to deploying PHP applications with FrankenPHP and Docker, from simple containers to standalone binaries."
+category: PHP
+pubDate: 2025-10-08
+tags: ["PHP", "FrankenPHP", "Docker", "Containers", "Performance", "DevOps", "Deployment", "Sevalla", "HTTP/2", "HTTPS"]
+draft: false
+sponsor:
+  name: Sevalla
+  url: https://juststeveking.link/host
+  logo: https://github.com/sevalla-hosting.png
+featured: true
+readingTime: 15
+canonical: "https://sevalla.com/blog/modern-php-with-frankenphp-and-docker/"
+crossPost:
+  originalUrl: "https://sevalla.com/blog/modern-php-with-frankenphp-and-docker/"
+  originalSite: "Sevalla Blog"
+  publishedDate: 2025-08-05
+  permission: true
+---
+
+## Modern PHP development with FrankenPHP and Docker
+
+I'll be honest - when I first heard about [FrankenPHP](https://frankenphp.dev/), I thought it was just another trendy name in the PHP ecosystem. Boy, was I wrong.
+
+After spending years working with traditional PHP setups, fighting with Apache configurations, and wrestling with performance bottlenecks, discovering FrankenPHP felt like finding a hidden shortcut that no one had told me about.
+
+FrankenPHP isn't just another application server. It's a complete paradigm shift that brings PHP into the modern era of web development. Built on top of the battle-tested Caddy web server, it offers something that traditional PHP setups can only dream of: native HTTP/2 and HTTP/3 support, automatic HTTPS, real-time capabilities, and, the ability to compile your entire PHP application into a standalone binary.
+
+Let me walk you through everything I've learned about containerizing PHP applications with FrankenPHP, and why this approach might just change how you think about PHP deployment forever.
+
+## Why FrankenPHP changes everything
+
+Before we dive into the technical details, let's talk about why this matters. Traditional PHP deployment has always been a bit of a headache.
+
+To get a simple application running, you need a web server (Apache or Nginx), PHP-FPM, proper configuration files, SSL certificates, and a whole orchestra of moving parts. I've spent countless hours debugging configuration issues that stemmed from the complexity of this setup.
+
+FrankenPHP eliminates most of this complexity by providing a single binary that handles everything. But it goes further by supporting modern web standards out of the box, offering performance features that traditional setups struggle with, and providing deployment options that range from containers to standalone executables.
+
+## Setting up your development environment
+
+Before we begin, you need Docker installed on your machine. If you haven't already, grab it from [Docker's website](https://www.docker.com/products/docker-desktop). You also want a basic understanding of PHP and Docker concepts, though I'll explain everything as we go.
+
+### Creating Your First FrankenPHP Application
+
+I always like to start simple, so let's create a basic PHP application to work with:
+
+```bash
+mkdir my-frankenphp-app && cd my-frankenphp-app
+```
+
+Now, create a simple `index.php` file:
+
+```php
+<?php
+// index.php
+?>
+<!DOCTYPE html>
+<html>
+<head>
+  <title>FrankenPHP Demo</title>
+  <style>
+    body { font-family: Arial, sans-serif; margin: 40px; }
+    .container { max-width: 800px; margin: 0 auto; }
+    .feature { background: #f4f4f4; padding: 20px; margin: 10px 0; border-radius: 5px; }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <h1>Hello from FrankenPHP!</h1>
+    <div class="feature">
+      <h3>Server Information</h3>
+      <p><strong>PHP Version:</strong> <?= PHP_VERSION ?></p>
+      <p><strong>Server Software:</strong> <?= $_SERVER['SERVER_SOFTWARE'] ?? 'Unknown' ?></p>
+      <p><strong>Request Time:</strong> <?= date('Y-m-d H:i:s') ?></p>
+    </div>
+
+    <div class="feature">
+      <h3>HTTP Protocol</h3>
+      <p><strong>Protocol:</strong> <?= $_SERVER['SERVER_PROTOCOL'] ?? 'Unknown' ?></p>
+      <p><strong>HTTPS:</strong> <?= isset($_SERVER['HTTPS']) ? 'Yes' : 'No' ?></p>
+    </div>
+  </div>
+</body>
+</html>
+```
+
+This gives us a more interesting starting point that actually shows off some of FrankenPHP's capabilities.
+
+### Containerizing with FrankenPHP
+
+Now comes the exciting part. Create a `Dockerfile` in your project root:
+
+```dockerfile
+FROM dunglas/frankenphp:latest
+
+# Copy our application to the container
+COPY . /app
+
+# Set the working directory
+WORKDIR /app
+
+# Expose port 80
+EXPOSE 80
+
+# Start FrankenPHP
+CMD ["frankenphp", "php-server", "--root=/app", "--listen=:80"]
+```
+
+What I love about this setup is its simplicity. Compare this to a traditional LAMP stack Dockerfile, and you immediately see the difference.
+
+No need to configure Apache virtual hosts, no PHP-FPM configuration files, no complex nginx setups - just copy your files and go.
+
+Build and run your container:
+
+```bash
+docker build -t my-frankenphp-app .
+docker run -p 8080:80 my-frankenphp-app
+```
+
+Navigate to `http://localhost:8080`, and you should see your application running. But here's what's happening under the hood that makes this special: FrankenPHP is already serving your application with HTTP/2 support, automatic compression, and optimized performance characteristics that you'd typically need to configure manually.
+
+## Adding real-world dependencies
+
+Most applications need dependencies, so let's make our setup more realistic. If your project uses [Composer](https://getcomposer.org/) (and it probably should), update your Dockerfile:
+
+```dockerfile
+FROM dunglas/frankenphp:latest
+
+# Install Composer
+RUN curl -sS https://getcomposer.org/installer | php -- --install-dir=/usr/local/bin --filename=composer
+
+# Copy composer files first for better Docker layer caching
+COPY composer.json composer.lock* /app/
+
+# Set working directory
+WORKDIR /app
+
+# Install dependencies
+RUN composer install --no-dev --optimize-autoloader --no-interaction
+
+# Copy the rest of the application
+COPY . /app
+
+# Expose port
+EXPOSE 80
+
+# Start the server
+CMD ["frankenphp", "php-server", "--root=/app", "--listen=:80"]
+```
+
+This approach leverages Docker's layer caching. By copying `composer.json` first and running `composer install` before copying the rest of your application, you ensure that dependency installation only happens when your dependencies actually change, not every time you modify your source code.
+
+## Unlocking advanced features
+
+Here's where FrankenPHP really shines. Let's explore some features that would be complex or impossible with traditional PHP setups.
+
+### HTTPS and HTTP/2/3 support
+
+One of my favorite aspects of FrankenPHP is how it handles HTTPS. In traditional setups, configuring SSL certificates is often a multi-step process involving certificate generation, web server configuration, and renewal automation. FrankenPHP can handle this automatically, or you can provide your own certificates.
+
+For development with self-signed certificates:
+
+```dockerfile
+FROM dunglas/frankenphp:latest
+
+COPY . /app
+WORKDIR /app
+
+# Copy your certificates (you'd generate these first)
+COPY certs/cert.pem certs/key.pem /certs/
+
+EXPOSE 443
+
+CMD ["frankenphp", "php-server", "--root=/app", "--listen=:443", "--tls-cert=/certs/cert.pem", "--tls-key=/certs/key.pem"]
+```
+
+Run with:
+
+```bash
+docker run -p 8443:443 my-frankenphp-app
+```
+
+For automatic HTTPS in production (this is genuinely magical):
+
+```bash
+frankenphp php-server --domain yourdomain.com
+```
+
+That's it. FrankenPHP automatically obtains and renews [Let's Encrypt](https://letsencrypt.org/) certificates. I remember the first time I saw this work - it felt like cheating.
+
+### Worker mode: Persistent application state
+
+This is where things get really interesting. Traditional PHP follows a request-response cycle where everything gets torn down after each request. FrankenPHP's worker mode keeps your application in memory between requests, which can dramatically improve performance for frameworks like Symfony and Laravel.
+
+Create a worker script (`worker.php`):
+
+```php
+<?php
+// worker.php
+
+require_once 'vendor/autoload.php';
+
+use Symfony\Component\HttpFoundation\Request;
+use Symfony\Component\HttpFoundation\Response;
+
+// This code runs once when the worker starts
+$app = new MyApplication();
+$cache = new SomeExpensiveCache();
+
+// Handle requests in a loop
+while ($request = \FrankenPHP\workerRequest()) {
+    try {
+        // This runs for each request, but $app and $cache persist
+        $response = $app->handle($request);
+        \FrankenPHP\workerResponse($response);
+    } catch (\Throwable $e) {
+        \FrankenPHP\workerResponse(new Response('Error: ' . $e->getMessage(), 500));
+    }
+}
+```
+
+Update your Dockerfile:
+
+```dockerfile
+CMD ["frankenphp", "php-server", "--root=/app", "--worker=/app/worker.php", "--listen=:80"]
+```
+
+The performance implications here are significant. In my testing, applications using worker mode often see 2-3x performance improvements because expensive initialization code only runs once.
+
+### Async PHP with Fibers
+
+FrankenPHP also supports [PHP Fibers](https://www.php.net/manual/en/language.fibers.php) for asynchronous programming. While PHP isn't traditionally known for async capabilities, FrankenPHP makes it possible:
+
+```php
+<?php
+// async-example.php
+
+function asyncOperation($id) {
+  return \FrankenPHP\async(function() use ($id) {
+    // Simulate some async work
+    sleep(2);
+    return "Result for operation $id";
+  });
+}
+
+// Start multiple async operations
+$operations = [];
+for ($i = 1; $i <= 5; $i++) {
+  $operations[] = asyncOperation($i);
+}
+
+// Wait for all to complete
+foreach ($operations as $operation) {
+  echo $operation() . "\n";
+}
+```
+
+This opens up possibilities for PHP applications that were previously difficult or impossible to achieve.
+
+## The standalone binary: Deployment revolution
+
+Now we get to what I consider FrankenPHP's most revolutionary feature: the ability to compile your entire PHP application, including the PHP runtime and all dependencies, into a single static binary.
+
+Think about the implications - no more "but it works on my machine" problems, no runtime dependencies, no complex deployment scripts.
+
+### Preparing your application
+
+Before building a binary, you need to prepare your application for production:
+
+```bash
+# Create a clean copy of your app
+mkdir build-app
+cp -r . build-app/
+cd build-app
+
+# Set production environment
+echo "APP_ENV=prod" > .env.local
+echo "APP_DEBUG=false" >> .env.local
+
+# Install production dependencies
+composer install --no-dev --optimize-autoloader --ignore-platform-reqs
+
+# Remove unnecessary files
+rm -rf tests/ .git/ node_modules/ *.md
+
+# For Symfony apps, warm up the cache
+php bin/console cache:warmup --env=prod
+```
+
+### Building the Binary
+
+Create a `static-build.Dockerfile`:
+
+```dockerfile
+FROM dunglas/frankenphp:static-builder
+
+# Copy your prepared application
+COPY . /go/src/app/dist/app
+
+# Set working directory
+WORKDIR /go/src/app/
+
+# Build the static binary with your app embedded
+RUN EMBED=dist/app/ ./build-static.sh
+```
+
+Build and extract:
+
+```bash
+docker build -t my-static-app -f static-build.Dockerfile .
+docker create --name temp-container my-static-app
+docker cp temp-container:/go/src/app/dist/frankenphp-linux-x86_64 ./my-app
+docker rm temp-container
+```
+
+### Running your standalone application
+
+Now you have a single binary that contains everything:
+
+```bash
+# Make it executable
+chmod +x my-app
+
+# Start your web server
+./my-app php-server
+
+# Or with automatic HTTPS
+./my-app php-server --domain localhost
+
+# Run CLI commands
+./my-app php-cli bin/console list
+```
+
+The first time I deployed an application this way, I was amazed. A single 50MB file replaced what was previously a complex deployment involving multiple services, configuration files, and dependency management.
+
+## Real-world performance considerations
+
+In my experience, FrankenPHP applications typically show:
+
+• 50-70% reduction in memory usage compared to traditional PHP-FPM setups
+• 2-3x improvement in throughput when using worker mode
+• Significantly faster cold starts due to the optimized runtime
+• Better resource utilization in containerized environments
+
+However, worker mode does require careful consideration of memory leaks and proper cleanup between requests. Not all PHP applications are written with persistent state in mind.
+
+## Production deployment strategies
+
+For production deployments, I typically use this Docker Compose setup:
+
+```yaml
+version: '3.8'
+
+services:
+  app:
+    build: .
+    ports:
+      - "80:80"
+      - "443:443"
+    environment:
+      - FRANKENPHP_CONFIG=
+        {
+          "apps": {
+            "http": {
+              "servers": {
+                "srv0": {
+                  "listen": [":80", ":443"],
+                  "routes": [{
+                    "handle": [{
+                      "handler": "php_server",
+                      "root": "/app"
+                    }]
+                  }]
+                }
+              }
+            }
+          }
+        }
+    volumes:
+      - ./certs:/certs
+    restart: unless-stopped
+```
+
+For Kubernetes deployments, the single binary approach is particularly compelling because it eliminates the need for init containers or complex volume mounting for dependencies.
+
+## Looking forward
+
+FrankenPHP represents a fundamental shift in how we think about PHP deployment and performance. It brings PHP into the modern era of web development while maintaining the simplicity and accessibility that made PHP popular in the first place.
+
+Whether you choose the containerized approach for flexibility or the standalone binary for simplicity, FrankenPHP offers deployment options that traditional PHP setups simply can't match. The combination of modern web standards, performance optimizations, and deployment flexibility makes it a compelling choice for both new projects and modernizing existing applications.
+
+As someone who's spent years working with traditional PHP deployments, I can confidently say that FrankenPHP isn't just an incremental improvement - it's a reimagining of what PHP development can be.
+
+Give it a try, and I think you'll find, like I did, that there's no going back to the old way of doing things.
+
+---
+
+*This article was originally published on [Sevalla Blog](https://sevalla.com/blog/modern-php-with-frankenphp-and-docker/). Follow me on [Twitter](https://twitter.com/juststeveking) for more PHP and modern development insights.*

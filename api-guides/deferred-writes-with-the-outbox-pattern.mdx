@@ -1,0 +1,128 @@
+---
+title: "Deferred writes with the Outbox Pattern"
+slug: "deferred-writes-with-the-outbox-pattern"
+description: "Write events to your database inside the same transaction as your state changes, then publish them reliably with a background worker."
+category: "writing-data"
+complexity: "intermediate"
+apiStyles: ["rest", "event-driven"]
+useWhen: "You need reliable event emission to external systems and a missed event means real data loss or inconsistency downstream."
+avoidWhen: "Events are low-stakes, occasional loss is acceptable, or your system doesn't emit events to external consumers."
+tags: ["outbox-pattern", "events", "reliability", "transactions", "queues"]
+related: ["cursor-based-pagination-for-stable-lists", "bulk-updates-via-async-jobs"]
+---
+
+# Deferred Writes with the Outbox Pattern
+
+There's a bug hiding in a lot of backend systems, and most developers don't find it until something important goes missing in production. It looks like this:
+
+```php
+$order->status = 'completed';
+$order->save();
+
+$queue->publish('order.completed', ['orderId' => $order->id]);
+```
+
+See the problem? Those two operations are not atomic. If your app crashes, gets killed, or loses its connection between the `save()` and the `publish()`, the database has the updated record but your queue never got the message. Downstream services never heard about it. The order is completed, but nothing reacted to it.
+
+This is exactly the kind of failure that's hard to reproduce locally and painful to debug in production. The Outbox Pattern fixes it.
+
+## The Core Idea
+
+The insight is simple: stop trying to write to two systems at once. Instead, write everything to your database first, in a single transaction, and let a background worker handle the actual publishing.
+
+You create an `event_outbox` table that lives alongside your business data. When your application processes a transaction, it writes both the state change and the outgoing event record in one atomic operation. Either both happen, or neither does. The event can't get lost in the gap.
+
+```sql
+CREATE TABLE event_outbox (
+  id          BIGSERIAL PRIMARY KEY,
+  aggregate_id TEXT NOT NULL,
+  type        TEXT NOT NULL,
+  payload     JSONB NOT NULL,
+  created_at  TIMESTAMPTZ DEFAULT now(),
+  published_at TIMESTAMPTZ
+);
+```
+
+`published_at` being `NULL` means the event hasn't been sent yet. That's your worker's job.
+
+## Writing Events Transactionally
+
+Here's what the updated order completion looks like:
+
+```php
+DB::transaction(function () use ($order) {
+    $order->status = 'completed';
+    $order->save();
+
+    DB::table('event_outbox')->insert([
+        'aggregate_id' => (string) $order->id,
+        'type'         => 'order.completed',
+        'payload'      => json_encode([
+            'orderId' => $order->id,
+            'total'   => $order->total,
+        ]),
+    ]);
+});
+```
+
+Both writes are inside the same transaction. If anything fails, the whole thing rolls back. There's no in-between state where the order is completed but the event is missing.
+
+## The Background Worker
+
+The worker is straightforward. It polls for unpublished events, sends them to wherever they need to go, then marks them as done.
+
+```php
+$events = DB::table('event_outbox')
+    ->whereNull('published_at')
+    ->orderBy('id')
+    ->limit(100)
+    ->get();
+
+foreach ($events as $event) {
+    $queue->publish($event->type, json_decode($event->payload, true));
+
+    DB::table('event_outbox')
+        ->where('id', $event->id)
+        ->update(['published_at' => now()]);
+}
+```
+
+A few things worth noting here. You publish first, then mark as published. That means if the publish succeeds but the update fails, you'll publish the event twice on the next run. That's intentional. You want at-least-once delivery, which means your consumers need to handle duplicates gracefully. That's a much easier problem to solve than lost messages.
+
+## Retries and Failure Handling
+
+If publishing fails, you just don't mark the row as published. The worker will pick it up again on the next pass. For most use cases that's enough, but if you want more control you can add an `attempts` column and implement backoff logic or route poison messages somewhere for inspection.
+
+```sql
+ALTER TABLE event_outbox ADD COLUMN attempts INT NOT NULL DEFAULT 0;
+```
+
+Then in your worker, increment `attempts` on each run and skip rows that have exceeded a threshold. This prevents a single bad message from blocking everything behind it.
+
+## Keeping the Table Clean
+
+Once events are published you don't need them forever. A simple cleanup job that deletes rows where `published_at` is older than a few days keeps the table from growing unbounded:
+
+```sql
+DELETE FROM event_outbox
+WHERE published_at < now() - INTERVAL '7 days';
+```
+
+Run that on a schedule and you won't have to think about it again.
+
+## What You Actually Get
+
+The pattern gives you a few concrete guarantees that are worth spelling out:
+
+- **Atomicity.** Your state change and your event record happen together or not at all.
+- **Durability.** The event is sitting in your database until it's confirmed delivered.
+- **Reliable delivery.** The worker retries until it succeeds, so events don't silently disappear.
+- **Ordering.** Publishing by `id` means events go out in the order they were written.
+
+## When to Reach for This
+
+The Outbox Pattern is particularly valuable when you're emitting events to systems you don't control, or when a missed event means real data loss downstream. Microservices architectures, webhook delivery, and any integration where two systems need to stay in sync are all good candidates.
+
+It's not the right tool for every situation. If you're just publishing analytics events where the occasional loss is acceptable, the added complexity probably isn't worth it. But if a missing event means a customer doesn't get notified, an invoice doesn't get generated, or a downstream service ends up in an inconsistent state, this pattern is worth the setup.
+
+The implementation is not complicated. A table, a transaction wrapper, and a worker. What you get in return is confidence that your events will be delivered, even when things go wrong.

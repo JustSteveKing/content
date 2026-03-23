@@ -1,0 +1,89 @@
+---
+title: "Webhook event delivery with signed payloads"
+slug: "webhook-event-delivery-with-signed-payloads"
+description: "Push events to third-party systems in near-real-time with signed payloads, retry logic, and event replay capabilities."
+category: "integration"
+complexity: "intermediate"
+apiStyles: ["rest"]
+useWhen: "Your API needs to push events to third-party systems in near-real-time."
+avoidWhen: "Consumers can easily poll, latency requirements are low, or you don't want webhook operational overhead."
+tags: ["webhooks", "events", "signing", "security"]
+related: ["idempotency-keys-for-safe-retries"]
+---
+
+Webhooks let your system notify others when something happens, instead of making them constantly poll. A robust pattern includes:
+
+- Registering endpoints as resources (`/webhook-endpoints`).  
+- Signing payloads so consumers can verify authenticity.  
+- Retries with exponential backoff on non‑2xx responses.  
+- A way to replay events safely.
+
+Example: webhook endpoint registration.
+
+```http
+POST /webhook-endpoints
+Content-Type: application/json
+
+{
+  "url": "https://api.example-client.test/webhooks/invoices",
+  "events": ["invoice.created", "invoice.paid"]
+}
+
+HTTP/1.1 201 Created
+Content-Type: application/json
+
+{
+  "id": "wh_123",
+  "url": "https://api.example-client.test/webhooks/invoices",
+  "events": ["invoice.created", "invoice.paid"],
+  "secret": "whsec_6d9e2ab4..." 
+}
+```
+
+Delivery example.
+
+```
+POST /webhooks/invoices
+User-Agent: YourAPI-Webhooks/1.0
+Content-Type: application/json
+X-Webhook-Event: invoice.created
+X-Webhook-Signature: t=1736771700,v1=5fe46f5f3b...
+
+{
+  "id": "evt_9d3",
+  "type": "invoice.created",
+  "data": {
+    "id": "inv_123",
+    "customer_id": "cus_123",
+    "amount_due": 4900,
+    "currency": "GBP"
+  }
+}
+
+```
+
+The signature header includes a timestamp and HMAC over the payload using the shared secret, so consumers can verify and guard against replay attacks.
+
+Trade-offs and notes ￼
+
+Pros
+
+- Efficient and timely updates; great for integrations.
+
+- Fits well with event‑driven architecture.
+
+- Lets you decouple internal systems from external consumers.
+
+Cons
+
+- Operationally heavier: you must handle retries, dead‑lettering, and monitoring.
+
+- Consumers need to get security right (verification and time windows).
+
+DX tips
+
+- Provide test endpoints or a CLI to simulate deliveries.
+
+- Offer a web UI or API to inspect recent webhook attempts and responses.
+
+- Clearly document retry schedule and when you consider an endpoint “dead”.

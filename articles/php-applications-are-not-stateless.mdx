@@ -1,0 +1,547 @@
+---
+title: "Your PHP application is not stateless"
+description: "Understanding statelessness in PHP: filesystem assumptions, session state, and building truly stateless applications with Zero Trust principles."
+category: PHP
+pubDate: 2026-02-05
+image: "/images/social/articles/php-applications-are-not-stateless.png"
+minRead: 15
+canonical: https://sevalla.com/blog/php-applications-are-not-stateless/
+sponsor:
+  name: Sevalla
+  url: https://juststeveking.link/host
+  logo: https://github.com/sevalla-hosting.png
+author:
+  name: Steve McDougall
+  avatar:
+    src: https://avatars.githubusercontent.com/u/6368379?v=4
+    alt: Steve McDougall
+tags: ["php", "architecture", "stateless", "sessions", "zero-trust", "jwt", "security"]
+---
+
+It doesn't matter if your PHP application runs in containers. It doesn't matter if it runs on Kubernetes. It doesn't matter if it scaled to zero last night.
+
+If restarting an instance can change behavior, the application depends on state. The only uncertainty is where that state lives.
+
+Most PHP applications do not fail because of bad code. They fail because of state that was never acknowledged. Files written "temporarily." Sessions loaded "automatically." Configuration assumed to be immutable. These assumptions are not defined anywhere explicitly. Not in configuration. Not in job contracts. Not in tests. They exist as shared assumptions between the application and the framework.
+
+This article is about removing those assumptions so your application can survive being terminated at any moment. Because in production, it will be.
+
+## A simple test
+
+Here is a straightforward way to check whether an application is actually stateless.
+
+1. Send a request to the application.
+2. Terminate the container while the request is in progress.
+3. Send the same request again.
+
+If the outcome changes, even occasionally, the application depends on state.
+
+Statelessness is not about performance. It is about understanding what the application depends on, what it assumes will exist, and what fails when the platform behaves as designed.
+
+Stateless PHP does not mean avoiding databases or caches. It means avoiding filesystem assumptions, ambient session state, and hidden dependencies that outlive a single request. Most importantly, it means being honest about the things the application relies on.
+
+## The lie the filesystem tells
+
+A certain app didn't fail during a deploy. It wasn't under excessive load. It failed on a Tuesday afternoon, under normal traffic, with no code changes whatsoever.
+
+The app accepted file uploads. PDFs, images, nothing exotic. The flow was simple:
+
+```php
+class DocumentController extends Controller
+{
+    public function store(Request $request)
+    {
+        $file = $request->file('document');
+
+        // Store "temporarily" on local disk
+        $path = $file->store('uploads/pending');
+
+        // Queue a job to process it
+        ProcessDocument::dispatch($path);
+
+        return response()->json(['status' => 'processing']);
+    }
+}
+```
+
+The upload was written to local disk and a background job was queued with the file path.
+
+```php
+class ProcessDocument implements ShouldQueue
+{
+    public function __construct(
+        private string $path
+    ) {}
+
+    public function handle()
+    {
+        // This assumes the file still exists
+        $contents = Storage::get($this->path);
+
+        // Process the document...
+    }
+}
+```
+
+It worked for months. Then the support tickets started.
+
+"My upload succeeded but nothing happened." "It worked yesterday." "Retrying sometimes fixes it."
+
+No errors. No failed jobs. No obvious pattern.
+
+What was happening was simple. The queue workers ran in separate containers. Uploads were written to the local disk on the web container. Jobs ran elsewhere and assumed the file would still exist. Most of the time, it did.
+
+Until the platform did what it always does. A container was rescheduled. A pod was restarted. A node was reclaimed. The file vanished.
+
+The job didn't crash. It handled the missing file quietly:
+
+```php
+public function handle()
+{
+    if (!Storage::exists($this->path)) {
+        Log::warning("File not found: {$this->path}");
+        return; // Graceful exit, job marked as successful
+    }
+
+    // Never reaches here...
+}
+```
+
+The system reported success. Nothing strictly "broke." No alerts fired, no dashboards lit up, no deploys rolled back. The system was just lying, quite politely. Upload succeeded. Job ran. No errors reported. But user data was gone, the system had no way to recover, and retried jobs could never succeed.
+
+The assumption that caused this was simple: "It's fine, the file is only temporary." Temporary for who, though? Not for the queue. Not for the user. Not for the business. Only for the code that wrote it.
+
+### The fix
+
+The fix is straightforward. Stream uploads directly to object storage, pass references instead of filesystem paths, and make file existence a guarantee rather than a hope.
+
+```php
+class DocumentController extends Controller
+{
+    public function store(Request $request)
+    {
+        $file = $request->file('document');
+
+        // Stream directly to S3/object storage
+        $path = $file->store('documents', 's3');
+
+        // Create a database record as the source of truth
+        $document = Document::create([
+            'storage_path' => $path,
+            'storage_disk' => 's3',
+            'status' => 'pending',
+        ]);
+
+        // Pass the ID, not the path
+        ProcessDocument::dispatch($document->id);
+
+        return response()->json([
+            'status' => 'processing',
+            'document_id' => $document->id,
+        ]);
+    }
+}
+```
+
+The request writes the file to durable storage, records its existence in the database, and hands off only a stable identifier to the background job.
+
+```php
+class ProcessDocument implements ShouldQueue
+{
+    public function __construct(
+        private int $documentId
+    ) {}
+
+    public function handle()
+    {
+        $document = Document::findOrFail($this->documentId);
+
+        // The file exists in durable storage
+        // The database record proves it was uploaded
+        // If either is missing, we fail loudly
+        $contents = Storage::disk($document->storage_disk)
+            ->get($document->storage_path);
+
+        // Process the document...
+
+        $document->update(['status' => 'processed']);
+    }
+}
+```
+
+The important change here is not technical, but conceptual. If a background job depends on something, that dependency must exist independently of the request that created it.
+
+That is what statelessness buys you: honesty about dependencies, predictable behavior under failure, and systems that can recover. Not elegance.
+
+## The lie sessions tell
+
+A session bug affected real users, but no one could reproduce it locally. Developers tried. It never showed up in development or staging, only in production, and only under real usage.
+
+The application used standard server-side sessions. Nothing unusual. Authentication state lived in the session, CSRF tokens were stored there, and a small set of feature flags was loaded at login.
+
+```php
+// Middleware that "helpfully" keeps things fresh
+class RefreshUserPermissions
+{
+    public function handle($request, $next)
+    {
+        if ($request->user()) {
+            // Reload permissions from database
+            $permissions = $request->user()->loadPermissions();
+            session(['permissions' => $permissions]);
+        }
+
+        return $next($request);
+    }
+}
+```
+
+```php
+// Another middleware rotating CSRF tokens
+class RotateCsrfToken
+{
+    public function handle($request, $next)
+    {
+        $response = $next($request);
+
+        if ($request->isMethod('POST')) {
+            session()->regenerateToken();
+        }
+
+        return $response;
+    }
+}
+```
+
+The infrastructure looked correct. Sessions were stored in Redis, the application ran across multiple instances, and the load balancer did not use sticky sessions. On paper, this was a textbook setup.
+
+And yet users were randomly logged out. Form submissions failed CSRF checks. Background actions behaved as if the user had no permissions. The failures were intermittent, often resolved on their own, and left no useful logs behind.
+
+The problem was not Redis or session storage. It was that the session was being mutated implicitly during requests. One code path refreshed permissions, another rotated the CSRF token, and another extended the session lifetime. All of this happened automatically inside the middleware pipeline.
+
+Under normal traffic, it mostly worked. Under concurrency, it did not.
+
+Two requests from the same user arrived at the same time. Each read the same session snapshot and each modified different parts of it. One write won. There was no merge, no conflict detection, and no visibility into what was lost.
+
+```
+Timeline:
+
+Request A (browser tab 1)     Request B (browser tab 2)
+─────────────────────────     ─────────────────────────
+Read session v1               Read session v1
+  permissions: [read]           permissions: [read]
+  csrf: "abc123"                csrf: "abc123"
+        │                             │
+        ▼                             ▼
+Update permissions            Rotate CSRF token
+  permissions: [read,write]     csrf: "xyz789"
+        │                             │
+        ▼                             ▼
+Write session v2              Write session v3
+  permissions: [read,write]     permissions: [read]  ← B overwrote A!
+  csrf: "abc123"                csrf: "xyz789"
+```
+
+State was lost without any indication that it had happened.
+
+Sessions feel safe because they are centralized, abstracted, and managed by the framework. That is the trap. Sessions are implicit inputs and outputs, shared mutable state that never appears in a function signature. You cannot tell which code depends on session data, when it changes, or which version of it a request actually observed.
+
+The lie sessions tell is simple. "It's fine, the session is already loaded." Loaded when, written by whom, and observed in what order. Sessions collapse identity, authorization, state transitions, and side effects into a single opaque blob. When something goes wrong, you are not debugging logic. You are debugging time.
+
+### The fix
+
+The fix wasn't "better Redis" or "more locks." The fix was removing ambient state.
+
+```php
+// Before: Identity hidden in session
+class DashboardController extends Controller
+{
+    public function index(Request $request)
+    {
+        // Where do these come from? When were they set?
+        $permissions = session('permissions', []);
+
+        if (!in_array('dashboard.view', $permissions)) {
+            abort(403);
+        }
+
+        return view('dashboard');
+    }
+}
+```
+
+```php
+// After: Identity explicit in the request
+class DashboardController extends Controller
+{
+    public function index(Request $request)
+    {
+        // Claims come from a verified token
+        // They're immutable for this request
+        $this->authorize('view', Dashboard::class);
+
+        return view('dashboard');
+    }
+}
+```
+
+For API authentication, signed tokens carry everything the request needs:
+
+```php
+class TokenService
+{
+    public function generate(User $user): string
+    {
+        return JWT::encode([
+            'sub' => $user->id,
+            'permissions' => $user->permissions->pluck('name'),
+            'iat' => now()->timestamp,
+            'exp' => now()->addHour()->timestamp,
+        ], config('auth.jwt_secret'), 'HS256');
+    }
+
+    public function verify(string $token): Claims
+    {
+        $payload = JWT::decode(
+            $token,
+            new Key(config('auth.jwt_secret'), 'HS256')
+        );
+
+        return new Claims(
+            userId: $payload->sub,
+            permissions: $payload->permissions,
+            issuedAt: Carbon::createFromTimestamp($payload->iat),
+            expiresAt: Carbon::createFromTimestamp($payload->exp),
+        );
+    }
+}
+```
+
+```php
+readonly class Claims
+{
+    public function __construct(
+        public int $userId,
+        public array $permissions,
+        public Carbon $issuedAt,
+        public Carbon $expiresAt,
+    ) {}
+
+    public function can(string $permission): bool
+    {
+        return in_array($permission, $this->permissions);
+    }
+}
+```
+
+Every request becomes: here is who I am, here is what I'm allowed to do. Nothing hidden. Nothing shared. Nothing to race.
+
+## Signed tokens are about boundaries, not auth
+
+Most discussions about signed tokens get stuck on authentication. JWT vs sessions. Cookies vs headers. Stateful vs stateless. That's all surface area.
+
+Signed tokens are not interesting because they prove who you are. They're interesting because they define what a request is allowed to assume. That's a boundary problem, not an auth one.
+
+A session says: "Trust me, the server knows who you are." A signed token says: "Here is exactly what this request claims to be."
+
+That difference matters.
+
+With sessions, identity is ambient, permissions are mutable, state can change mid-request, and context leaks across boundaries. With signed tokens, identity is explicit, claims are immutable for the lifetime of the request, authorization is evaluated rather than discovered, and context is carried rather than inferred.
+
+Nothing appears "automatically." Everything arrives on purpose.
+
+### Boundaries you get for free
+
+When you move to signed tokens, several boundaries snap into place immediately.
+
+**Request boundary.** Each request is self-describing. No shared memory. No hidden reads. If a handler needs identity or permissions, it comes from the token or it doesn't exist.
+
+```php
+class OrderController extends Controller
+{
+    public function store(Request $request, Claims $claims)
+    {
+        // Everything this handler needs is explicit
+        // $claims was resolved from the token by middleware
+        // No session reads, no ambient state
+
+        if (!$claims->can('orders.create')) {
+            throw new UnauthorizedException();
+        }
+
+        return Order::create([
+            'user_id' => $claims->userId,
+            'items' => $request->validated('items'),
+        ]);
+    }
+}
+```
+
+**Concurrency boundary.** Two concurrent requests from the same user do not fight over state. There is no "latest session." There is no merge. There is no lost update. Each request carries its own claims and lives or dies on its own merits.
+
+**Execution boundary.** HTTP requests, background jobs, CLI commands, and webhooks can all share the same model:
+
+```php
+// HTTP request - claims from Authorization header
+class OrderController extends Controller
+{
+    public function store(Request $request, Claims $claims)
+    {
+        CreateOrder::dispatch($claims, $request->validated());
+    }
+}
+
+// Background job - claims passed explicitly
+class CreateOrder implements ShouldQueue
+{
+    public function __construct(
+        private Claims $claims,
+        private array $orderData,
+    ) {}
+
+    public function handle(OrderService $orders)
+    {
+        // Same authorization model as HTTP
+        if (!$this->claims->can('orders.create')) {
+            throw new UnauthorizedException();
+        }
+
+        $orders->create($this->claims->userId, $this->orderData);
+    }
+}
+
+// CLI command - claims from explicit scope
+class ProcessPendingOrders extends Command
+{
+    public function handle(TokenService $tokens)
+    {
+        // System operations get explicit, scoped identity
+        $claims = $tokens->systemClaims(
+            permissions: ['orders.process'],
+            context: 'scheduled:process-pending-orders',
+        );
+
+        Order::pending()->each(function ($order) use ($claims) {
+            ProcessOrder::dispatch($claims, $order->id);
+        });
+    }
+}
+```
+
+A job doesn't "load a session." A CLI command doesn't fake a user. A webhook doesn't get special rules. They all receive an identity, a set of claims, and a scope of authority. Different entry points, same contract.
+
+**Failure boundary.** When something goes wrong, you know what the request thought was true. Tokens give you auditable inputs, reproducible behavior, and verifiable decisions. Sessions give you "it depends," "try again," and "we couldn't reproduce it." One helps postmortems. The other creates folklore.
+
+People often say signed tokens are too rigid, hard to revoke, annoying to rotate. Good. That friction forces you to define lifetimes, design revocation paths, and make authority explicit. Sessions let you defer those decisions indefinitely, until production forces them on you at the worst possible moment.
+
+## Zero Trust starts with self-describing requests
+
+Zero Trust is usually sold as a network story. mTLS. Service meshes. Firewalls with better branding. That's not wrong, it's just incomplete.
+
+If your application trusts a request because of where it came from, you haven't implemented Zero Trust. You've just moved the perimeter.
+
+Real Zero Trust starts inside the application, with requests that can explain themselves.
+
+Most internal systems rely on facts like "it came from the private network" or "it passed through the gateway" or "it's an internal service." Those are routing facts, not trust signals. They say nothing about who initiated the action, what authority was granted, how long that authority is valid, or whether the action should still be allowed.
+
+```php
+// This is not Zero Trust
+class InternalApiMiddleware
+{
+    public function handle($request, $next)
+    {
+        // "It came from inside the house"
+        if (!$request->ip()->isInternal()) {
+            abort(403);
+        }
+
+        // But WHO is making this request?
+        // WHAT are they allowed to do?
+        // For HOW LONG?
+
+        return $next($request);
+    }
+}
+```
+
+A self-describing request carries identity, intent, authority, and constraints. And it proves those claims cryptographically:
+
+```php
+readonly class ServiceRequest
+{
+    public function __construct(
+        public string $serviceId,      // WHO: which service is acting
+        public string $action,          // WHAT: intended operation
+        public array $scopes,           // HOW MUCH: permitted operations
+        public Carbon $expiresAt,       // HOW LONG: time boundary
+        public ?string $onBehalfOf,     // WHY: delegated user context
+        public string $requestId,       // WHICH: idempotency/audit
+    ) {}
+
+    public static function fromToken(string $token): self
+    {
+        $payload = JWT::decode($token, /* ... */);
+
+        return new self(
+            serviceId: $payload->iss,
+            action: $payload->action,
+            scopes: $payload->scopes,
+            expiresAt: Carbon::createFromTimestamp($payload->exp),
+            onBehalfOf: $payload->sub ?? null,
+            requestId: $payload->jti,
+        );
+    }
+
+    public function canPerform(string $action): bool
+    {
+        return in_array($action, $this->scopes)
+            && $this->expiresAt->isFuture();
+    }
+}
+```
+
+```php
+class ServiceAuthMiddleware
+{
+    public function handle($request, $next, string $requiredScope)
+    {
+        $serviceRequest = ServiceRequest::fromToken(
+            $request->bearerToken()
+        );
+
+        if (!$serviceRequest->canPerform($requiredScope)) {
+            Log::warning('Unauthorized service request', [
+                'service' => $serviceRequest->serviceId,
+                'action' => $serviceRequest->action,
+                'required' => $requiredScope,
+                'request_id' => $serviceRequest->requestId,
+            ]);
+
+            abort(403, 'Insufficient scope');
+        }
+
+        // Bind for injection into controllers
+        app()->instance(ServiceRequest::class, $serviceRequest);
+
+        return $next($request);
+    }
+}
+```
+
+No lookups. No ambient context. No "the middleware already checked." The request doesn't ask to be trusted. It presents evidence.
+
+Here's the uncomfortable truth. Most breaches inside applications aren't exploits. They're over-trusted internal calls. Background jobs with god-mode access. Webhooks treated as "internal." Services calling other services with shared credentials. CLIs running as "system." Once inside, everything is trusted. Nothing is questioned. Zero Trust dies quietly at the application boundary.
+
+When every request must present claims, you're forced to ask: who issued this? For what purpose? For how long? With which constraints? And when you can't answer those questions, the request fails. That's not friction. That's design clarity.
+
+## State you didn't design still counts
+
+Sessions, cache, env vars, in-memory flags. They all fail the same way. Quietly. Politely. Expensively.
+
+Stateless PHP isn't about removing features. It's about making boundaries visible and enforceable. Signed tokens don't make your app modern. They make it honest.
+
+Stateless systems don't trust memory. Zero Trust systems don't trust location. Self-describing requests give you both: stateless execution, verifiable authority, and auditable decisions. No secrets hidden in sessions. No trust smuggled in via the network. Just requests that earn what they do.
+
+Zero Trust isn't a toggle. It isn't a product. It's the refusal to let context stand in for proof. If your application can't explain why a request is allowed, you don't have Zero Trust. You have optimism.
+
+And optimism is a terrible production strategy.

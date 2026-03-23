@@ -1,0 +1,1718 @@
+---
+title: "Building your first MCP server with Laravel"
+description: "Learn how to build a Laravel MCP server for task management with tools, resources, prompts, Sanctum auth, Pest testing, and Claude integration."
+category: Laravel
+pubDate: 2025-10-09
+tags: ["laravel", "mcp", "model context protocol", "ai", "claude", "sanctum", "authentication", "pest", "testing", "api", "sevalla"]
+draft: false
+sponsor:
+  name: Sevalla
+  url: https://juststeveking.link/host
+  logo: https://github.com/sevalla-hosting.png
+featured: true
+readingTime: 14
+canonical: "https://sevalla.com/blog/scaffolding-go-services-with-blueprint/"
+crossPost:
+  originalUrl: "https://sevalla.com/blog/scaffolding-go-services-with-blueprint/"
+  originalSite: "Sevalla Blog"
+  publishedDate: 2025-10-09
+  permission: true
+---
+
+## Introduction: Why MCP Changes Everything
+
+I'll be honest - when I first heard about the Model Context Protocol (MCP), I was skeptical. Another protocol? Another way for AI to interact with our apps? But after building my first MCP server, something clicked. This isn't just another API standard. It's a fundamentally different way to think about how AI assistants interact with your data.
+
+Here's the thing: we've all been building REST APIs, GraphQL endpoints, webhooks. But MCP is different. It's specifically designed for AI agents to discover and use your app's capabilities. Instead of writing documentation that an AI might misinterpret, you're giving the AI structured tools it can confidently call. It's like the difference between giving someone written directions versus giving them a GPS.
+### What We're Building
+In this tutorial, we're going to build a Task Management MCP server. Why tasks? Because it's something everyone understands, but it also demonstrates all the key MCP concepts:
+- **Tools** - Actions the AI can perform (create tasks, mark them complete)
+- **Resources** - Data the AI can read (task statistics, reports)
+- **Prompts** - Templates that help the AI interact more effectively
+
+By the end, you'll have a working MCP server that lets Claude (or any MCP client) manage your tasks conversationally. Imagine saying "Create a task to review the Q4 report" and having it just happen. That's what we're building.
+
+Let's dive in.
+## Part 1: Setup
+### Installing Laravel
+First, let's get a fresh Laravel project up and running. I'm assuming you have Composer installed already:
+
+```bash
+composer create-project laravel/laravel task-mcp-server
+cd task-mcp-server
+```
+
+### Installing Laravel MCP
+Now comes the magic. Laravel's MCP package makes this whole process remarkably elegant:
+
+```bash
+composer require laravel/mcp
+```
+
+Once installed, publish the MCP routes file:
+
+```bash
+php artisan vendor:publish --tag=ai-routes
+```
+
+This creates a `routes/ai.php` file - think of it like your `routes/web.php` but specifically for AI interactions. Cool, right?
+
+### Database Setup
+We need somewhere to store our tasks. Update your `.env` file with your database credentials:
+
+```dotenv
+DB_CONNECTION=sqlite
+```
+
+For this tutorial, I'm using SQLite to keep things simple, but any database Laravel supports will work fine.
+
+### Creating the Task Model and Migration
+Let's create our Task model with a migration:
+
+```bash
+php artisan make:model Task -m
+```
+
+Open up the migration file in `database/migrations/*_create_tasks_table.php` and define our schema:
+
+```php
+<?php
+
+use Illuminate\Database\Migrations\Migration;
+use Illuminate\Database\Schema\Blueprint;
+use Illuminate\Support\Facades\Schema;
+
+return new class extends Migration
+{
+    public function up(): void
+    {
+        Schema::create('tasks', function (Blueprint $table) {
+            $table->id();
+            $table->string('title');
+            $table->text('description')->nullable();
+            $table->enum('priority', ['low', 'medium', 'high'])->default('medium');
+            $table->boolean('completed')->default(false);
+            $table->timestamp('completed_at')->nullable();
+            $table->timestamps();
+        });
+    }
+
+    public function down(): void
+    {
+        Schema::dropIfExists('tasks');
+    }
+};
+```
+
+Now update the `app/Models/Task.php` model:
+
+```php
+<?php
+
+namespace App\Models;
+
+use Illuminate\Database\Eloquent\Model;
+
+class Task extends Model
+{
+    protected $fillable = [
+        'title',
+        'description',
+        'priority',
+        'completed',
+        'completed_at',
+    ];
+
+    protected $casts = [
+        'completed' => 'boolean',
+        'completed_at' => 'datetime',
+    ];
+
+    public function scopeIncomplete($query)
+    {
+        return $query->where('completed', false);
+    }
+
+    public function scopeCompleted($query)
+    {
+        return $query->where('completed', true);
+    }
+
+    public function markComplete(): void
+    {
+        $this->update([
+            'completed' => true,
+            'completed_at' => now(),
+        ]);
+    }
+}
+```
+
+Run the migration:
+
+```bash
+php artisan migrate
+```
+
+### Creating a Custom Eloquent Builder
+
+Before we dive into building our MCP server, let's set ourselves up for success with a custom Eloquent Builder. This is one of those patterns that seems like overkill at first, but once you have it, you'll wonder how you ever lived without it.
+
+Here's the problem: as we build out our MCP tools and resources, we're going to be writing the same query logic over and over. "Get incomplete tasks." "Get tasks by priority." "Search tasks by keyword." We could use scopes on the model, but that clutters up our model class. We could write the queries inline, but that leads to duplication.
+
+The solution? A custom builder class that encapsulates all our query logic in one clean, testable, reusable place.
+
+Create a new directory `app/Models/Builders` and add `TaskBuilder.php`:
+
+```php
+<?php
+
+namespace App\Models\Builders;
+
+use Illuminate\Database\Eloquent\Builder;
+
+class TaskBuilder extends Builder
+{
+    public function forUser(int $userId): self
+    {
+        return $this->where('user_id', $userId);
+    }
+
+    public function incomplete(): self
+    {
+        return $this->where('completed', false);
+    }
+
+    public function completed(): self
+    {
+        return $this->where('completed', true);
+    }
+
+    public function priority(string $priority): self
+    {
+        return $this->where('priority', $priority);
+    }
+
+    public function search(?string $keyword): self
+    {
+        if (empty($keyword)) {
+            return $this;
+        }
+
+        return $this->where(function ($query) use ($keyword) {
+            $query->where('title', 'like', "%{$keyword}%")
+                  ->orWhere('description', 'like', "%{$keyword}%");
+        });
+    }
+
+    public function highPriority(): self
+    {
+        return $this->where('priority', 'high');
+    }
+
+    public function recentlyCompleted(int $days = 30): self
+    {
+        return $this->completed()
+                    ->where('completed_at', '>=', now()->subDays($days));
+    }
+
+    public function createdInPeriod(int $days): self
+    {
+        return $this->where('created_at', '>=', now()->subDays($days));
+    }
+
+    public function orderByPriority(): self
+    {
+        return $this->orderByRaw("FIELD(priority, 'high', 'medium', 'low')");
+    }
+}
+```
+
+Now update the `Task` model to use this builder:
+
+```php
+<?php
+
+namespace App\Models;
+
+use App\Builders\TaskBuilder;
+use Illuminate\Database\Eloquent\Model;
+
+class Task extends Model
+{
+    protected $fillable = [
+        'user_id',
+        'title',
+        'description',
+        'priority',
+        'completed',
+        'completed_at',
+    ];
+
+    protected $casts = [
+        'completed' => 'boolean',
+        'completed_at' => 'datetime',
+    ];
+
+    /**
+     * Create a new Eloquent query builder for the model.
+     */
+    public function newEloquentBuilder($query): TaskBuilder
+    {
+        return new TaskBuilder($query);
+    }
+
+    public function markComplete(): void
+    {
+        $this->update([
+            'completed' => true,
+            'completed_at' => now(),
+        ]);
+    }
+}
+```
+
+Look at that. Our model is now clean and focused on what it should be: defining the data structure and basic model methods. All the query logic lives in the builder.
+
+Here's the beauty of this approach: everywhere we use `Task::query()`, we now have access to these fluent, chainable methods. Instead of writing:
+
+```php
+Task::where('user_id', $userId)
+    ->where('completed', false)
+    ->where('priority', 'high')
+    ->get();
+```
+
+We can write:
+
+```php
+Task::forUser($userId)
+    ->incomplete()
+    ->highPriority()
+    ->get();
+```
+
+It's more readable, more maintainable, and easier to test. Plus, if we ever need to change how we filter by priority or what "incomplete" means, we change it in one place.
+
+Now we're cooking. We have a Laravel app with a Task model and a powerful custom builder. Let's build our MCP server.
+## Part 2: Creating Your First MCP Server
+
+### Generate the Server
+Laravel MCP provides an Artisan command to scaffold a server:
+
+```bash
+php artisan make:mcp-server TaskServer
+```
+
+This creates `app/Mcp/Servers/TaskServer.php`. Open it up and you'll see a clean, empty server ready for us to configure:
+
+```php
+<?php
+
+namespace App\Mcp\Servers;
+
+use Laravel\Mcp\Server;
+
+class TaskServer extends Server
+{
+	protected string $name = 'Task Server';
+	protected string $version = '0.0.1';
+	protected string $instructions = <<<'MARKDOWN'
+Instructions describing how to use the server and its features.
+MARKDOWN;
+
+    protected array $tools = [];
+    protected array $resources = [];
+    protected array $prompts = [];
+}
+```
+
+Beautiful in its simplicity. We'll fill these arrays as we build our tools, resources, and prompts.
+
+### Registering the Server
+
+Open `routes/ai.php` and register your server:
+
+```php
+<?php
+
+use App\Mcp\Servers\TaskServer;
+use Laravel\Mcp\Facades\Mcp;
+
+Mcp::web('/mcp/tasks', TaskServer::class);
+```
+
+That's it. Your MCP server is now accessible at `/mcp/tasks`. When an AI client connects to this endpoint, it will discover all the tools, resources, and prompts we're about to create.
+
+## Part 3: Building Your First Tool
+
+Here's where it gets interesting. Tools are the actions an AI can perform through your server. Let's start with the most fundamental one: creating a task.
+
+### Generate the CreateTask Tool
+```bash
+php artisan make:mcp-tool CreateTaskTool
+```
+
+This creates `app/Mcp/Tools/CreateTaskTool.php`. Now let's build it out properly:
+
+```php
+<?php
+
+namespace App\Mcp\Tools;
+
+use App\Models\Task;
+use Illuminate\JsonSchema\JsonSchema;
+use Laravel\Mcp\Request;
+use Laravel\Mcp\Response;
+use Laravel\Mcp\Server\Tool;
+
+class CreateTaskTool extends Tool
+{
+    protected string $description = 'Creates a new task with a title, optional description, and priority level.';
+
+    public function handle(Request $request): Response
+    {
+        // Validate the input with clear, helpful error messages
+        $validated = $request->validate([
+            'title' => ['required', 'string', 'max:255'],
+            'description' => ['nullable', 'string', 'max:1000'],
+            'priority' => ['sometimes', 'in:low,medium,high'],
+        ], [
+            'title.required' => 'You must provide a task title. For example: "Review Q4 report" or "Call John about project".',
+            'title.max' => 'Task title is too long. Please keep it under 255 characters.',
+            'description.max' => 'Task description is too long. Please keep it under 1000 characters.',
+            'priority.in' => 'Priority must be one of: low, medium, or high.',
+        ]);
+
+        // Create the task
+        $task = Task::create($validated);
+
+        // Return a clear, informative response
+        return Response::text(
+            "✅ Task created successfully!\n\n" .
+            "**{$task->title}**\n" .
+            ($task->description ? "{$task->description}\n" : '') .
+            "Priority: {$task->priority}\n" .
+            "ID: {$task->id}"
+        );
+    }
+
+    public function schema(JsonSchema $schema): array
+    {
+        return [
+            'title' => $schema->string()
+                ->description('The title of the task (required)')
+                ->required(),
+
+            'description' => $schema->string()
+                ->description('Optional detailed description of the task'),
+
+            'priority' => $schema->enum(['low', 'medium', 'high'])
+                ->description('Priority level for the task')
+                ->default('medium'),
+        ];
+    }
+}
+```
+
+Let me break down what's happening here, because there's more going on than you might think.
+
+**The Schema Method**: This is how we tell the AI what inputs this tool accepts. Think of it as a contract. The AI knows it needs to provide a `title`, can optionally provide a `description`, and if it provides a `priority`, it must be one of those three values. This is powerful because the AI can reason about these constraints before even calling the tool.
+
+**Validation with Context**: Notice how I'm not just validating - I'm providing helpful error messages. When an AI gets a validation error, it can use those messages to retry with better input. This is crucial for a good user experience.
+
+**Clear Responses**: The response isn't just "Task created." It gives confirmation with details. The AI can relay this back to the user naturally.
+
+### Register the Tool
+
+Update your `TaskServer` to include this tool:
+
+```php
+<?php
+
+namespace App\Mcp\Servers;
+
+use App\Mcp\Tools\CreateTaskTool;
+use Laravel\Mcp\Server;
+
+class TaskServer extends Server
+{
+    protected array $tools = [
+        CreateTaskTool::class,
+    ];
+
+    protected array $resources = [];
+    protected array $prompts = [];
+}
+```
+
+### Testing Your Tool
+
+Let's make sure this works. Laravel MCP includes a fantastic testing API, and we're going to use Pest PHP because, honestly, once you go Pest, you never go back. The syntax is just so much cleaner.
+
+If you haven't installed Pest yet:
+
+```shell
+composer require pestphp/pest --dev --with-all-dependencies
+php artisan pest:install
+```
+
+Create a test file `tests/Feature/TaskMcpTest.php`:
+
+```php
+<?php
+
+use App\Mcp\Servers\TaskServer;
+use App\Mcp\Tools\CreateTaskTool;
+use App\Models\Task;
+
+uses()->group('mcp');
+
+test('can create a task with all fields', function () {
+    $response = TaskServer::tool(CreateTaskTool::class, [
+        'title' => 'Write tutorial',
+        'description' => 'Complete the Laravel MCP tutorial',
+        'priority' => 'high',
+    ]);
+
+    $response->assertOk();
+    $response->assertSee('Write tutorial');
+    $response->assertSee('high');
+
+    expect(Task::first())
+        ->title->toBe('Write tutorial')
+        ->priority->toBe('high')
+        ->completed->toBeFalse();
+});
+
+test('task title is required', function () {
+    $response = TaskServer::tool(CreateTaskTool::class, [
+        'description' => 'A task without a title',
+    ]);
+
+    $response->assertHasErrors();
+});
+
+test('invalid priority is rejected', function () {
+    $response = TaskServer::tool(CreateTaskTool::class, [
+        'title' => 'Test task',
+        'priority' => 'super-urgent',
+    ]);
+
+    $response->assertHasErrors();
+});
+
+test('creates task with default priority when not specified', function () {
+    $response = TaskServer::tool(CreateTaskTool::class, [
+        'title' => 'Simple task',
+    ]);
+
+    $response->assertOk();
+    
+    expect(Task::first())
+        ->priority->toBe('medium');
+});
+```
+
+Look at how clean that is! No class boilerplate, no `$this->`, just pure, expressive tests. This is what I mean when I talk about Pest - it gets out of your way and lets you focus on what you're actually testing.
+
+Run your tests:
+
+```bash
+php artisan test
+```
+
+If everything's green, congratulations! You've just built your first functional MCP tool. An AI can now create tasks in your system with full validation and error handling.
+## Part 4: Adding More Tools
+
+One tool is cool, but a task manager needs more. Let's add tools for completing tasks and searching through them.
+### CompleteTaskTool
+
+```bash
+php artisan make:mcp-tool CompleteTaskTool
+```
+
+```php
+<?php
+
+namespace App\Mcp\Tools;
+
+use App\Models\Task;
+use Illuminate\JsonSchema\JsonSchema;
+use Laravel\Mcp\Request;
+use Laravel\Mcp\Response;
+use Laravel\Mcp\Server\Tool;
+
+class CompleteTaskTool extends Tool
+{
+    protected string $description = 'Marks a task as completed by its ID.';
+
+    public function handle(Request $request): Response
+    {
+        $validated = $request->validate([
+            'task_id' => ['required', 'integer', 'exists:tasks,id'],
+        ], [
+            'task_id.required' => 'You must specify which task to complete using its ID.',
+            'task_id.exists' => 'No task found with that ID. Try searching for tasks first to find the correct ID.',
+        ]);
+
+        $task = Task::findOrFail($validated['task_id']);
+
+        if ($task->completed) {
+            return Response::text("ℹ️ This task was already completed on {$task->completed_at->format('M j, Y')}.");
+        }
+
+        $task->markComplete();
+
+        return Response::text(
+            "✅ Task completed!\n\n" .
+            "**{$task->title}**\n" .
+            "Completed: {$task->completed_at->format('M j, Y \a\t g:i A')}"
+        );
+    }
+
+    public function schema(JsonSchema $schema): array
+    {
+        return [
+            'task_id' => $schema->integer()
+                ->description('The ID of the task to mark as complete')
+                ->required(),
+        ];
+    }
+}
+```
+
+### SearchTasksTool
+
+This one's interesting because it returns multiple pieces of information:
+
+```bash
+php artisan make:mcp-tool SearchTasksTool
+```
+
+```php
+<?php
+
+namespace App\Mcp\Tools;
+
+use App\Models\Task;
+use Illuminate\JsonSchema\JsonSchema;
+use Laravel\Mcp\Request;
+use Laravel\Mcp\Response;
+use Laravel\Mcp\Server\Tool;
+
+class SearchTasksTool extends Tool
+{
+    protected string $description = 'Searches for tasks by keyword, status, or priority. Returns matching tasks with their details.';
+
+    public function handle(Request $request): Response
+    {
+        $validated = $request->validate([
+            'keyword' => ['nullable', 'string', 'max:100'],
+            'status' => ['nullable', 'in:completed,incomplete,all'],
+            'priority' => ['nullable', 'in:low,medium,high'],
+            'limit' => ['nullable', 'integer', 'min:1', 'max:50'],
+        ]);
+
+        // Look at how clean this is with our custom builder!
+        $query = Task::forUser($request->user()->id)
+            ->search($validated['keyword'] ?? null)
+            ->orderBy('created_at', 'desc');
+
+        // Filter by status using our builder methods
+        $status = $validated['status'] ?? 'all';
+        if ($status === 'completed') {
+            $query->completed();
+        } elseif ($status === 'incomplete') {
+            $query->incomplete();
+        }
+
+        // Filter by priority
+        if ($priority = $validated['priority'] ?? null) {
+            $query->priority($priority);
+        }
+
+        $limit = $validated['limit'] ?? 10;
+        $tasks = $query->limit($limit)->get();
+
+        if ($tasks->isEmpty()) {
+            return Response::text("No tasks found matching your criteria.");
+        }
+
+        $output = "Found {$tasks->count()} task(s):\n\n";
+
+        foreach ($tasks as $task) {
+            $status = $task->completed ? '✅' : '⏳';
+            $output .= "{$status} **[{$task->id}]** {$task->title}\n";
+            
+            if ($task->description) {
+                $output .= "   {$task->description}\n";
+            }
+            
+            $output .= "   Priority: {$task->priority}";
+            
+            if ($task->completed) {
+                $output .= " | Completed: {$task->completed_at->format('M j, Y')}";
+            }
+            
+            $output .= "\n\n";
+        }
+
+        return Response::text($output);
+    }
+
+    public function schema(JsonSchema $schema): array
+    {
+        return [
+            'keyword' => $schema->string()
+                ->description('Search for tasks containing this keyword in title or description'),
+
+            'status' => $schema->enum(['completed', 'incomplete', 'all'])
+                ->description('Filter by completion status')
+                ->default('all'),
+
+            'priority' => $schema->enum(['low', 'medium', 'high'])
+                ->description('Filter by priority level'),
+
+            'limit' => $schema->integer()
+                ->description('Maximum number of tasks to return (1-50)')
+                ->default(10),
+        ];
+    }
+}
+```
+
+### Register All Tools
+
+Update your `TaskServer`:
+
+```php
+<?php
+
+namespace App\Mcp\Servers;
+
+use App\Mcp\Tools\CompleteTaskTool;
+use App\Mcp\Tools\CreateTaskTool;
+use App\Mcp\Tools\SearchTasksTool;
+use Laravel\Mcp\Server;
+
+class TaskServer extends Server
+{
+    protected array $tools = [
+        CreateTaskTool::class,
+        CompleteTaskTool::class,
+        SearchTasksTool::class,
+    ];
+
+    protected array $resources = [];
+    protected array $prompts = [];
+}
+```
+
+Now your AI assistant can create tasks, mark them complete, and search through them. That's already pretty powerful.
+
+---
+
+## Part 5: Creating Resources
+
+Tools are great for actions, but what about data the AI should just know about? That's where resources come in.
+
+Resources are like read-only endpoints that give the AI context. Let's create two: one for task statistics and one for a list of completed tasks.
+
+### TaskStatsResource
+
+```bash
+php artisan make:mcp-resource TaskStatsResource
+```
+
+```php
+<?php
+
+namespace App\Mcp\Resources;
+
+use App\Models\Task;
+use Laravel\Mcp\Request;
+use Laravel\Mcp\Response;
+use Laravel\Mcp\Server\Resource;
+
+class TaskStatsResource extends Resource
+{
+    protected string $description = 'Provides statistical overview of all tasks including completion rates and priority breakdown.';
+    
+    protected string $uri = 'tasks://stats';
+
+    public function handle(Request $request): Response
+    {
+        $userId = $request->user()->id;
+
+        // Beautiful, readable queries thanks to our builder
+        $totalTasks = Task::forUser($userId)->count();
+        $completedTasks = Task::forUser($userId)->completed()->count();
+        $incompleteTasks = Task::forUser($userId)->incomplete()->count();
+        
+        $completionRate = $totalTasks > 0 
+            ? round(($completedTasks / $totalTasks) * 100, 1)
+            : 0;
+
+        $priorityBreakdown = Task::forUser($userId)
+            ->incomplete()
+            ->selectRaw('priority, count(*) as count')
+            ->groupBy('priority')
+            ->pluck('count', 'priority')
+            ->toArray();
+
+        $stats = "# Task Statistics\n\n";
+        $stats .= "**Total Tasks:** {$totalTasks}\n";
+        $stats .= "**Completed:** {$completedTasks}\n";
+        $stats .= "**Incomplete:** {$incompleteTasks}\n";
+        $stats .= "**Completion Rate:** {$completionRate}%\n\n";
+        
+        if (!empty($priorityBreakdown)) {
+            $stats .= "## Incomplete Tasks by Priority\n";
+            foreach (['high', 'medium', 'low'] as $priority) {
+                $count = $priorityBreakdown[$priority] ?? 0;
+                $stats .= "- **" . ucfirst($priority) . ":** {$count}\n";
+            }
+        }
+
+        return Response::text($stats);
+    }
+}
+```
+
+### RecentCompletedTasksResource
+
+```bash
+php artisan make:mcp-resource RecentCompletedTasksResource
+```
+
+```php
+<?php
+
+namespace App\Mcp\Resources;
+
+use App\Models\Task;
+use Laravel\Mcp\Request;
+use Laravel\Mcp\Response;
+use Laravel\Mcp\Server\Resource;
+
+class RecentCompletedTasksResource extends Resource
+{
+    protected string $description = 'Shows the 20 most recently completed tasks with completion dates.';
+    
+    protected string $uri = 'tasks://completed/recent';
+
+    public function handle(Request $request): Response
+    {
+        // One line, crystal clear intent
+        $completedTasks = Task::forUser($request->user()->id)
+            ->completed()
+            ->orderBy('completed_at', 'desc')
+            ->limit(20)
+            ->get();
+
+        if ($completedTasks->isEmpty()) {
+            return Response::text("No completed tasks yet.");
+        }
+
+        $output = "# Recently Completed Tasks\n\n";
+
+        foreach ($completedTasks as $task) {
+            $output .= "✅ **{$task->title}**\n";
+            $output .= "   Completed: {$task->completed_at->diffForHumans()}\n";
+            $output .= "   Priority was: {$task->priority}\n\n";
+        }
+
+        return Response::text($output);
+    }
+}
+```
+
+### Register Resources
+
+Update your `TaskServer`:
+
+```php
+<?php
+
+namespace App\Mcp\Servers;
+
+use App\Mcp\Resources\RecentCompletedTasksResource;
+use App\Mcp\Resources\TaskStatsResource;
+use App\Mcp\Tools\CompleteTaskTool;
+use App\Mcp\Tools\CreateTaskTool;
+use App\Mcp\Tools\SearchTasksTool;
+use Laravel\Mcp\Server;
+
+class TaskServer extends Server
+{
+    protected array $tools = [
+        CreateTaskTool::class,
+        CompleteTaskTool::class,
+        SearchTasksTool::class,
+    ];
+
+    protected array $resources = [
+        TaskStatsResource::class,
+        RecentCompletedTasksResource::class,
+    ];
+
+    protected array $prompts = [];
+}
+```
+
+Here's what I love about resources: the AI can proactively check them. When someone asks "How am I doing with my tasks?", the AI can read the TaskStatsResource and give them meaningful insights without needing to call multiple tools.
+
+## Part 6: Working with Prompts
+
+Prompts are pre-configured conversation templates that help the AI interact with your system more effectively. Think of them as saved workflows.
+
+Let's create a productivity report prompt that analyzes task completion patterns:
+
+```bash
+php artisan make:mcp-prompt ProductivityReportPrompt
+```
+
+```php
+<?php
+
+namespace App\Mcp\Prompts;
+
+use App\Models\Task;
+use Laravel\Mcp\Request;
+use Laravel\Mcp\Response;
+use Laravel\Mcp\Server\Prompt;
+use Laravel\Mcp\Server\Prompts\Argument;
+
+class ProductivityReportPrompt extends Prompt
+{
+    protected string $description = 'Generates a productivity report analyzing task completion patterns over a specified time period.';
+
+    public function handle(Request $request): array
+    {
+        $validated = $request->validate([
+            'days' => ['sometimes', 'integer', 'min:1', 'max:90'],
+            'tone' => ['sometimes', 'in:formal,casual,encouraging'],
+        ]);
+
+        $days = $validated['days'] ?? 7;
+        $tone = $validated['tone'] ?? 'casual';
+        $userId = $request->user()->id;
+
+        // Look how expressive these queries are!
+        $completedInPeriod = Task::forUser($userId)
+            ->recentlyCompleted($days)
+            ->count();
+            
+        $createdInPeriod = Task::forUser($userId)
+            ->createdInPeriod($days)
+            ->count();
+        
+        $stillIncomplete = Task::forUser($userId)
+            ->incomplete()
+            ->createdInPeriod($days)
+            ->count();
+
+        $highPriorityIncomplete = Task::forUser($userId)
+            ->incomplete()
+            ->highPriority()
+            ->count();
+
+        // Build context for the AI
+        $context = "# Productivity Data ({$days} days)\n\n";
+        $context .= "- Tasks completed: {$completedInPeriod}\n";
+        $context .= "- Tasks created: {$createdInPeriod}\n";
+        $context .= "- Still incomplete from this period: {$stillIncomplete}\n";
+        $context .= "- High priority tasks pending: {$highPriorityIncomplete}\n";
+
+        // Tone-specific instructions
+        $toneInstructions = match($tone) {
+            'formal' => 'Provide a professional, data-driven analysis suitable for a workplace report.',
+            'encouraging' => 'Be motivating and positive, celebrating accomplishments and gently encouraging progress on pending tasks.',
+            default => 'Be friendly and conversational, like a helpful colleague.',
+        };
+
+        return [
+            Response::text(
+                "You are a productivity analyst. Based on the following task data, " .
+                "provide insights about the user's productivity. {$toneInstructions}\n\n" .
+                "{$context}"
+            )->asAssistant(),
+            
+            Response::text(
+                "Please analyze my productivity over the last {$days} days and give me insights."
+            ),
+        ];
+    }
+
+    public function arguments(): array
+    {
+        return [
+            new Argument(
+                name: 'days',
+                description: 'Number of days to analyze (1-90)',
+                required: false
+            ),
+            new Argument(
+                name: 'tone',
+                description: 'Tone for the report: formal, casual, or encouraging',
+                required: false
+            ),
+        ];
+    }
+}
+```
+
+### Register the Prompt
+
+Update your `TaskServer`:
+
+```php
+<?php
+
+namespace App\Mcp\Servers;
+
+use App\Mcp\Prompts\ProductivityReportPrompt;
+use App\Mcp\Resources\RecentCompletedTasksResource;
+use App\Mcp\Resources\TaskStatsResource;
+use App\Mcp\Tools\CompleteTaskTool;
+use App\Mcp\Tools\CreateTaskTool;
+use App\Mcp\Tools\SearchTasksTool;
+use Laravel\Mcp\Server;
+
+class TaskServer extends Server
+{
+    protected array $tools = [
+        CreateTaskTool::class,
+        CompleteTaskTool::class,
+        SearchTasksTool::class,
+    ];
+
+    protected array $resources = [
+        TaskStatsResource::class,
+        RecentCompletedTasksResource::class,
+    ];
+
+    protected array $prompts = [
+        ProductivityReportPrompt::class,
+    ];
+}
+```
+
+Prompts are subtle but powerful. They let you encode domain knowledge about how the AI should analyze your data.
+
+### The Builder Pattern Payoff
+
+Before we move on, let's appreciate what we've accomplished with our custom builder. Look at how our code has evolved:
+
+**Before (verbose and error-prone):**
+
+```php
+$tasks = Task::where('user_id', $userId)
+    ->where('completed', false)
+    ->where('priority', 'high')
+    ->where('created_at', '>=', now()->subDays(7))
+    ->get();
+```
+
+**After (expressive and maintainable):**
+
+```php
+$tasks = Task::forUser($userId)
+    ->incomplete()
+    ->highPriority()
+    ->createdInPeriod(7)
+    ->get();
+```
+
+See the difference? The second version reads like English. More importantly:
+
+- **It's testable** - We can test each builder method in isolation
+- **It's reusable** - The logic lives in one place
+- **It's maintainable** - Need to change how "high priority" works? One location.
+- **It's composable** - Mix and match methods to build complex queries naturally
+
+This is the kind of code that future-you will thank present-you for writing. Trust me on this one.
+
+## Part 7: Adding Authentication
+
+Right now, anyone who finds your MCP endpoint can create and manage tasks. Let's fix that with Laravel Sanctum.
+
+### Install Sanctum
+
+If you don't already have Sanctum installed:
+
+```bash
+php artisan install:api
+```
+
+This sets up Sanctum and creates the necessary migrations.
+
+### Protect Your MCP Server
+
+Update your `routes/ai.php`:
+
+```php
+<?php
+
+use App\Mcp\Servers\TaskServer;
+use Laravel\Mcp\Facades\Mcp;
+
+Mcp::web('/mcp/tasks', TaskServer::class)
+    ->middleware(['auth:sanctum']);
+```
+
+That's it. Now all requests to your MCP server need a valid Sanctum token.
+
+### Creating an API Token
+
+Let's create a simple command to generate tokens for testing:
+
+```bash
+php artisan make:command CreateMcpToken
+```
+
+```php
+<?php
+
+namespace App\Console\Commands;
+
+use App\Models\User;
+use Illuminate\Console\Command;
+
+class CreateMcpToken extends Command
+{
+    protected $signature = 'mcp:token {email}';
+    protected $description = 'Create an MCP API token for a user';
+
+    public function handle(): void
+    {
+        $user = User::where('email', $this->argument('email'))->first();
+
+        if (!$user) {
+            $this->error('User not found');
+            return;
+        }
+
+        $token = $user->createToken('mcp-access')->plainTextToken;
+
+        $this->info('Token created successfully:');
+        $this->line($token);
+        $this->newLine();
+        $this->info('Use this in your Authorization header:');
+        $this->line("Bearer {$token}");
+    }
+}
+```
+
+Create a user and generate a token:
+
+```bash
+php artisan tinker
+>>> User::create(['name' => 'Test User', 'email' => 'test@example.com', 'password' => bcrypt('password')]);
+>>> exit
+
+php artisan mcp:token test@example.com
+```
+
+Now you can use that token in your MCP client configuration.
+
+### User-Scoped Tasks
+
+Want to make tasks user-specific? Add a user_id to your tasks table:
+
+```bash
+php artisan make:migration add_user_id_to_tasks_table
+```
+
+```php
+<?php
+
+use Illuminate\Database\Migrations\Migration;
+use Illuminate\Database\Schema\Blueprint;
+use Illuminate\Support\Facades\Schema;
+
+return new class extends Migration
+{
+    public function up(): void
+    {
+        Schema::table('tasks', function (Blueprint $table) {
+            $table->foreignId('user_id')->nullable()->constrained()->cascadeOnDelete();
+        });
+    }
+
+    public function down(): void
+    {
+        Schema::table('tasks', function (Blueprint $table) {
+            $table->dropForeign(['user_id']);
+            $table->dropColumn('user_id');
+        });
+    }
+};
+```
+
+Run the migration:
+
+```bash
+php artisan migrate
+```
+
+Update your Task model:
+
+```php
+<?php
+
+namespace App\Models;
+
+use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\Relations\BelongsTo;
+
+class Task extends Model
+{
+    protected $fillable = [
+        'user_id',
+        'title',
+        'description',
+        'priority',
+        'completed',
+        'completed_at',
+    ];
+
+    protected $casts = [
+        'completed' => 'boolean',
+        'completed_at' => 'datetime',
+    ];
+
+    public function user(): BelongsTo
+    {
+        return $this->belongsTo(User::class);
+    }
+
+    public function scopeForUser($query, $userId)
+    {
+        return $query->where('user_id', $userId);
+    }
+
+    public function scopeIncomplete($query)
+    {
+        return $query->where('completed', false);
+    }
+
+    public function scopeCompleted($query)
+    {
+        return $query->where('completed', true);
+    }
+
+    public function markComplete(): void
+    {
+        $this->update([
+            'completed' => true,
+            'completed_at' => now(),
+        ]);
+    }
+}
+```
+
+Now update your tools to scope to the authenticated user. For example, in `CreateTaskTool`:
+
+```php
+public function handle(Request $request): Response
+{
+    $validated = $request->validate([
+        'title' => ['required', 'string', 'max:255'],
+        'description' => ['nullable', 'string', 'max:1000'],
+        'priority' => ['sometimes', 'in:low,medium,high'],
+    ], [
+        'title.required' => 'You must provide a task title. For example: "Review Q4 report" or "Call John about project".',
+        'title.max' => 'Task title is too long. Please keep it under 255 characters.',
+        'description.max' => 'Task description is too long. Please keep it under 1000 characters.',
+        'priority.in' => 'Priority must be one of: low, medium, or high.',
+    ]);
+
+    // Add the authenticated user's ID
+    $validated['user_id'] = $request->user()->id;
+
+    $task = Task::create($validated);
+
+    return Response::text(
+        "✅ Task created successfully!\n\n" .
+        "**{$task->title}**\n" .
+        ($task->description ? "{$task->description}\n" : '') .
+        "Priority: {$task->priority}\n" .
+        "ID: {$task->id}"
+    );
+}
+```
+
+Do the same for other tools and resources - always scope queries with `Task::forUser($request->user()->id)`.
+
+## Part 8: Testing Your Server
+
+Let's write comprehensive tests for everything we've built.
+
+### Update Your Tests
+Update `tests/Feature/TaskMcpTest.php` with the full test suite:
+
+```php
+<?php
+
+use App\Mcp\Servers\TaskServer;
+use App\Mcp\Tools\CompleteTaskTool;
+use App\Mcp\Tools\CreateTaskTool;
+use App\Mcp\Tools\SearchTasksTool;
+use App\Models\Task;
+use App\Models\User;
+
+uses()->group('mcp');
+
+beforeEach(function () {
+    $this->user = User::factory()->create();
+    $this->otherUser = User::factory()->create();
+});
+
+test('can create a task', function () {
+    $response = TaskServer::actingAs($this->user)->tool(CreateTaskTool::class, [
+        'title' => 'Write tutorial',
+        'description' => 'Complete the Laravel MCP tutorial',
+        'priority' => 'high',
+    ]);
+
+    $response->assertOk();
+    $response->assertSee('Write tutorial');
+    $response->assertSee('high');
+
+    expect(Task::first())
+        ->user_id->toBe($this->user->id)
+        ->title->toBe('Write tutorial')
+        ->priority->toBe('high')
+        ->completed->toBeFalse();
+});
+
+test('can complete a task', function () {
+    $task = Task::factory()->create([
+        'user_id' => $this->user->id,
+        'title' => 'Test task',
+        'completed' => false,
+    ]);
+
+    $response = TaskServer::actingAs($this->user)->tool(CompleteTaskTool::class, [
+        'task_id' => $task->id,
+    ]);
+
+    $response->assertOk();
+    $response->assertSee('completed');
+
+    expect($task->fresh())
+        ->completed->toBeTrue()
+        ->completed_at->not->toBeNull();
+});
+
+test('can search tasks by priority', function () {
+    Task::factory()->create([
+        'user_id' => $this->user->id,
+        'title' => 'Important meeting',
+        'priority' => 'high',
+    ]);
+
+    Task::factory()->create([
+        'user_id' => $this->user->id,
+        'title' => 'Review documents',
+        'priority' => 'low',
+    ]);
+
+    $response = TaskServer::actingAs($this->user)->tool(SearchTasksTool::class, [
+        'priority' => 'high',
+    ]);
+
+    $response->assertOk();
+    $response->assertSee('Important meeting');
+    $response->assertDontSee('Review documents');
+});
+
+test('can search by keyword', function () {
+    Task::factory()->create([
+        'user_id' => $this->user->id,
+        'title' => 'Budget review meeting',
+    ]);
+
+    Task::factory()->create([
+        'user_id' => $this->user->id,
+        'title' => 'Team standup',
+    ]);
+
+    $response = TaskServer::actingAs($this->user)->tool(SearchTasksTool::class, [
+        'keyword' => 'budget',
+    ]);
+
+    $response->assertOk();
+    $response->assertSee('Budget review');
+    $response->assertDontSee('Team standup');
+});
+
+test('users only see their own tasks', function () {
+    Task::factory()->create([
+        'user_id' => $this->user->id,
+        'title' => 'My task',
+    ]);
+
+    Task::factory()->create([
+        'user_id' => $this->otherUser->id,
+        'title' => 'Other user task',
+    ]);
+
+    $response = TaskServer::actingAs($this->user)->tool(SearchTasksTool::class, []);
+
+    $response->assertOk();
+    $response->assertSee('My task');
+    $response->assertDontSee('Other user task');
+});
+
+test('task title is required', function () {
+    $response = TaskServer::actingAs($this->user)->tool(CreateTaskTool::class, [
+        'description' => 'A task without a title',
+    ]);
+
+    $response->assertHasErrors();
+});
+
+test('invalid priority is rejected', function () {
+    $response = TaskServer::actingAs($this->user)->tool(CreateTaskTool::class, [
+        'title' => 'Test task',
+        'priority' => 'super-urgent',
+    ]);
+
+    $response->assertHasErrors();
+});
+
+test('completing already completed task gives helpful message', function () {
+    $task = Task::factory()->completed()->create([
+        'user_id' => $this->user->id,
+    ]);
+
+    $response = TaskServer::actingAs($this->user)->tool(CompleteTaskTool::class, [
+        'task_id' => $task->id,
+    ]);
+
+    $response->assertOk();
+    $response->assertSee('already completed');
+});
+```
+
+### Testing the Builder Directly
+
+You can also test your custom builder methods in isolation. This is one of those practices that seems like overkill until you catch a bug before it hits production. Create `tests/Unit/TaskBuilderTest.php`:
+
+```php
+<?php
+
+use App\Models\Task;
+use App\Models\User;
+
+uses()->group('builder');
+
+beforeEach(function () {
+    $this->user = User::factory()->create();
+});
+
+test('for user filters by user', function () {
+    $myTask = Task::factory()->create(['user_id' => $this->user->id]);
+    $otherTask = Task::factory()->create();
+
+    $tasks = Task::forUser($this->user->id)->get();
+
+    expect($tasks)->toContain($myTask)
+        ->not->toContain($otherTask);
+});
+
+test('incomplete filters only incomplete tasks', function () {
+    $incomplete = Task::factory()->create([
+        'user_id' => $this->user->id,
+        'completed' => false,
+    ]);
+
+    $complete = Task::factory()->completed()->create([
+        'user_id' => $this->user->id,
+    ]);
+
+    $tasks = Task::forUser($this->user->id)->incomplete()->get();
+
+    expect($tasks)->toContain($incomplete)
+        ->not->toContain($complete);
+});
+
+test('search finds tasks by title', function () {
+    Task::factory()->create([
+        'user_id' => $this->user->id,
+        'title' => 'Budget review',
+    ]);
+
+    Task::factory()->create([
+        'user_id' => $this->user->id,
+        'title' => 'Team meeting',
+    ]);
+
+    $tasks = Task::forUser($this->user->id)->search('budget')->get();
+
+    expect($tasks)->toHaveCount(1)
+        ->first()->title->toBe('Budget review');
+});
+
+test('high priority filters correctly', function () {
+    $highPriority = Task::factory()->create([
+        'user_id' => $this->user->id,
+        'priority' => 'high',
+    ]);
+
+    Task::factory()->create([
+        'user_id' => $this->user->id,
+        'priority' => 'low',
+    ]);
+
+    $tasks = Task::forUser($this->user->id)->highPriority()->get();
+
+    expect($tasks)->toHaveCount(1)
+        ->toContain($highPriority);
+});
+
+test('builder methods are chainable', function () {
+    Task::factory()->create([
+        'user_id' => $this->user->id,
+        'priority' => 'high',
+        'completed' => false,
+        'title' => 'Important task',
+    ]);
+
+    Task::factory()->create([
+        'user_id' => $this->user->id,
+        'priority' => 'high',
+        'completed' => true,
+        'title' => 'Completed important task',
+    ]);
+
+    Task::factory()->create([
+        'user_id' => $this->user->id,
+        'priority' => 'low',
+        'completed' => false,
+        'title' => 'Low priority task',
+    ]);
+
+    // Chain multiple builder methods - this is the magic
+    $tasks = Task::forUser($this->user->id)
+        ->incomplete()
+        ->highPriority()
+        ->search('important')
+        ->get();
+
+    expect($tasks)->toHaveCount(1)
+        ->first()->title->toBe('Important task');
+});
+
+test('search handles null gracefully', function () {
+    Task::factory()->count(3)->create(['user_id' => $this->user->id]);
+
+    $tasks = Task::forUser($this->user->id)->search(null)->get();
+
+    expect($tasks)->toHaveCount(3);
+});
+
+test('recently completed filters by timeframe', function () {
+    // Task completed 5 days ago
+    $recentTask = Task::factory()->create([
+        'user_id' => $this->user->id,
+        'completed' => true,
+        'completed_at' => now()->subDays(5),
+    ]);
+
+    // Task completed 40 days ago
+    Task::factory()->create([
+        'user_id' => $this->user->id,
+        'completed' => true,
+        'completed_at' => now()->subDays(40),
+    ]);
+
+    $tasks = Task::forUser($this->user->id)->recentlyCompleted(30)->get();
+
+    expect($tasks)->toHaveCount(1)
+        ->toContain($recentTask);
+});
+```
+
+Here's what I love about these builder tests: they're fast (no HTTP layer), focused (one thing at a time), and they document how your builder methods actually work. When someone joins your team in six months, these tests become living documentation.
+
+```bash
+php artisan test
+```
+
+You should see something beautiful - all green checkmarks. That's the feeling of well-tested code.
+
+Don't forget to create a Task factory in `database/factories/TaskFactory.php`:
+
+```php
+<?php
+
+namespace Database\Factories;
+
+use App\Models\User;
+use Illuminate\Database\Eloquent\Factories\Factory;
+
+class TaskFactory extends Factory
+{
+    public function definition(): array
+    {
+        return [
+            'user_id' => User::factory(),
+            'title' => fake()->sentence(),
+            'description' => fake()->paragraph(),
+            'priority' => fake()->randomElement(['low', 'medium', 'high']),
+            'completed' => false,
+            'completed_at' => null,
+        ];
+    }
+
+    public function completed(): static
+    {
+        return $this->state(fn (array $attributes) => [
+            'completed' => true,
+            'completed_at' => fake()->dateTimeBetween('-30 days', 'now'),
+        ]);
+    }
+}
+```
+
+Run your tests:
+
+```bash
+php artisan test
+```
+
+### Using the MCP Inspector
+
+Laravel MCP includes a built-in inspector for interactive testing:
+
+```bash
+php artisan mcp:inspector /mcp/tasks
+```
+
+This launches an interactive tool where you can:
+
+- See all available tools, resources, and prompts
+- Test tools with different inputs
+- View resource data
+- Try out prompts
+
+It's invaluable during development.
+
+## Part 9: Using Your MCP Server
+
+Now for the fun part - actually using what we built!
+
+### Connecting from Claude Desktop
+
+1. Start your Laravel server:
+
+```bash
+php artisan serve
+```
+
+2. Open your Claude Desktop settings (or any MCP client)
+    
+3. Add your server configuration:
+    
+
+```json
+{
+  "mcpServers": {
+    "tasks": {
+      "url": "http://localhost:8000/mcp/tasks",
+      "headers": {
+        "Authorization": "Bearer YOUR_TOKEN_HERE"
+      }
+    }
+  }
+}
+```
+
+4. Restart Claude Desktop
+
+### Example Interactions
+
+Once connected, you can have conversations like:
+
+> **You:** "Create a task to review the Q4 budget report with high priority"
+> **Claude:** _[Calls CreateTaskTool]_ ✅ Task created successfully!
+> **Review the Q4 budget report** Priority: high ID: 1
+
+> **You:** "What tasks do I have pending?"
+> **Claude:** _[Calls SearchTasksTool with status='incomplete']_ Found 3 task(s):
+> ⏳ **[1]** Review the Q4 budget report Priority: high
+> ⏳ **[2]** Call supplier about delivery Priority: medium
+> ⏳ **[3]** Update project documentation Priority: low
+
+> **You:** "I finished reviewing the budget. Mark that task complete."
+> **Claude:** _[Calls CompleteTaskTool with task_id=1]_ ✅ Task completed!
+> **Review the Q4 budget report** Completed: Oct 7, 2025 at 2:30 PM
+
+>**You:** "How productive have I been this week?"
+>**Claude:** _[Calls ProductivityReportPrompt]_ Based on your task data over the last 7 days:
+>
+>You've completed 5 tasks while creating 8 new ones. You're staying on top of things! You have 3 incomplete tasks, with 1 high-priority item still pending. That budget review completion was great timing - high-priority items like that can really impact your week.
+>
+>Focus suggestion: Tackle that supplier call next while the budget details are fresh in your mind.
+
+## Wrapping Up: What You've Built
+
+Let's take a step back and appreciate what we created here. You now have a fully functional MCP server that:
+- ✅ **Exposes three tools** for creating, completing, and searching tasks
+- ✅ **Provides two resources** for statistical overviews and recent activity
+- ✅ **Includes a prompt** for productivity analysis
+- ✅ **Authenticates users** with Laravel Sanctum
+- ✅ **Scopes data per user** for privacy and security
+- ✅ **Has comprehensive tests** for reliability
+- ✅ **Follows Laravel best practices** throughout
+
+But more importantly, you understand the MCP mindset. This isn't just about building APIs - it's about building interfaces that AI can truly understand and use effectively.
+
+### What's Next?
+Some ideas to extend this:
+
+#### **Add More Tools:**
+- UpdateTaskTool for editing existing tasks
+- DeleteTaskTool with confirmation
+- SetTaskDueDateTool for deadline management
+- BulkCompleteTasksTool for batch operations
+
+#### **Enhance Resources:**
+- UpcomingDeadlinesResource
+- TasksByProjectResource (if you add projects)
+- TimeTrackingResource (if you track time spent)
+
+#### **Advanced Features:**
+- Task tags and categories
+- Subtasks and dependencies
+- Notifications when tasks are due
+- Integration with external services (Google Calendar, etc.)
+- Natural language due date parsing
+
+#### **Better Prompts:**
+- DailyPlanningPrompt for morning task planning
+- WeeklyReviewPrompt for retrospectives
+- FocusTimePrompt to suggest deep work sessions
+
+### Resources
+- [Laravel MCP Documentation](https://laravel.com/docs/12.x/mcp)
+- [Model Context Protocol Specification](https://modelcontextprotocol.io/)
+- [Laravel Sanctum](https://laravel.com/docs/12.x/sanctum)
+- [Full source code for this tutorial](https://github.com/yourusername/laravel-mcp-tasks) _(placeholder)_
+
+### Final Thoughts
+
+When I first started exploring MCP, I was struck by how natural it felt. We've been building APIs for decades, but this is different. We're not just exposing data and functions - we're building tools that AI can genuinely use to help people.
+
+The task manager we built today is simple, but it demonstrates something interesting: your Laravel apps can now be AI-native. They can respond intelligently to natural language requests, provide context-aware information, and help users accomplish their goals conversationally.
+
+That's pretty exciting.
+
+Now go build something awesome with MCP. I can't wait to see what you create.
+
+_Happy coding! 🚀_
+
