@@ -346,7 +346,7 @@ featured: false
 transcript: false
 ---
 
-import { VideoStats } from '@/components/videos';
+
 
 # ${cleanTitle}
 
