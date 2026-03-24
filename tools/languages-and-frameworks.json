@@ -1,0 +1,11 @@
+{
+  "title": "Languages & Frameworks",
+  "icon": "lucide:code",
+  "items": [
+    { "name": "PHP (Laravel, Symfony)" },
+    { "name": "TypeScript & JavaScript" },
+    { "name": "Go" },
+    { "name": "Astro, React, Vue" },
+    { "name": "Tailwind CSS" }
+  ]
+}

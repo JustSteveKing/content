@@ -1,0 +1,30 @@
+{
+  "title": "Hardware",
+  "icon": "lucide:monitor",
+  "items": [
+    {
+      "name": "Framework Desktop",
+      "description": "Main Development Machine. Ryzen™ AI Max+ 395, 64Gb RAM, Noctua Fan, 2x1Tb NVMe Drives. Running Omarchy."
+    },
+    {
+      "name": "Samsung 32\" 4K Monitor",
+      "description": "Primary Monitor"
+    },
+    {
+      "name": "ZSA Moonlander",
+      "description": "Keyboard"
+    },
+    {
+      "name": "Logitech Lift",
+      "description": "Mouse"
+    },
+    {
+      "name": "Bose QC",
+      "description": "Headphones"
+    },
+    {
+      "name": "Google Pixel 10 Pro XL",
+      "description": "Phone"
+    }
+  ]
+}

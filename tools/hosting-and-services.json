@@ -1,0 +1,16 @@
+{
+  "title": "Hosting & Services",
+  "icon": "lucide:cloud",
+  "items": [
+    {
+      "name": "Sevalla",
+      "url": "https://sevalla.com/",
+      "description": "Hosting"
+    },
+    {
+      "name": "Cloudflare",
+      "url": "https://www.cloudflare.com/",
+      "description": "DNS"
+    }
+  ]
+}

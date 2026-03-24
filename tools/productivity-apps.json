@@ -1,0 +1,36 @@
+{
+  "title": "Productivity & Apps",
+  "icon": "lucide:layout-grid",
+  "items": [
+    {
+      "name": "Obsidian",
+      "url": "https://obsidian.md/",
+      "description": "Notes"
+    },
+    {
+      "name": "Dia",
+      "url": "https://www.diabrowser.com/",
+      "description": "Browser"
+    },
+    {
+      "name": "Proton Mail",
+      "url": "https://proton.me/mail",
+      "description": "Email"
+    },
+    {
+      "name": "Dub.co",
+      "url": "https://dub.co/",
+      "description": "Link Management"
+    },
+    {
+      "name": "Cal.com",
+      "url": "https://cal.com/",
+      "description": "Scheduling"
+    },
+    {
+      "name": "Raycast",
+      "url": "https://raycast.com/",
+      "description": "Launcher"
+    }
+  ]
+}

@@ -1,0 +1,28 @@
+{
+  "title": "Editor & Terminal",
+  "icon": "lucide:terminal",
+  "items": [
+    {
+      "name": "PHPStorm",
+      "url": "https://www.jetbrains.com/phpstorm/",
+      "description": "Editor"
+    },
+    {
+      "name": "Catppuccin Mocha",
+      "description": "Theme"
+    },
+    {
+      "name": "JetBrains Mono with ligatures",
+      "description": "Font"
+    },
+    {
+      "name": "Ghostty",
+      "url": "https://ghostty.org/",
+      "description": "Terminal"
+    },
+    {
+      "name": "zsh with Oh My Zsh",
+      "description": "Current shell, although contemplating nushell."
+    }
+  ]
+}

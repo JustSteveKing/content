@@ -414,6 +414,36 @@
           "type": "string"
         }
       }
+    },
+    "toolCategory": {
+      "title": "Tool Category",
+      "description": "Schema for JSON files in tools/",
+      "type": "object",
+      "required": ["title", "icon", "items"],
+      "additionalProperties": false,
+      "properties": {
+        "title": {
+          "type": "string"
+        },
+        "icon": {
+          "type": "string",
+          "description": "Iconify icon string, e.g. lucide:monitor"
+        },
+        "items": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "object",
+            "required": ["name"],
+            "additionalProperties": false,
+            "properties": {
+              "name": { "type": "string" },
+              "description": { "type": "string" },
+              "url": { "type": "string", "format": "uri" }
+            }
+          }
+        }
+      }
     }
   }
 }

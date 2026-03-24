@@ -1,0 +1,25 @@
+{
+  "title": "Development Tools",
+  "icon": "lucide:wrench",
+  "items": [
+    {
+      "name": "Git & GitHub",
+      "description": "Version Control"
+    },
+    {
+      "name": "Yaak",
+      "url": "https://yaak.app/",
+      "description": "API Testing"
+    },
+    {
+      "name": "TablePlus",
+      "url": "https://tableplus.com/",
+      "description": "Database"
+    },
+    {
+      "name": "Orb Stack",
+      "url": "https://orbstack.dev/",
+      "description": "Containers"
+    }
+  ]
+}

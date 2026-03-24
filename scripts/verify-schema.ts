@@ -25,9 +25,14 @@ const dirToSchema: Record<string, string> = {
   'podcasts': 'podcast',
 };
 
+// Directories containing plain JSON files (no frontmatter)
+const jsonDirToSchema: Record<string, string> = {
+  'tools': 'toolCategory',
+};
+
 // Create a map of validators
 const validators: Record<string, any> = {};
-for (const [dir, defName] of Object.entries(dirToSchema)) {
+for (const [dir, defName] of Object.entries({ ...dirToSchema, ...jsonDirToSchema })) {
   const definition = schema.$defs[defName];
   if (definition) {
     validators[dir] = ajv.compile(definition);
@@ -103,6 +108,50 @@ async function run() {
       } catch (e: any) {
         totalErrors++;
         console.error(`❌ ${file}: Failed to parse frontmatter`);
+        console.error(`   - ${e.message}`);
+      }
+    }
+  }
+
+  // Validate plain JSON files
+  for (const dir of Object.keys(jsonDirToSchema)) {
+    const dirPath = join(process.cwd(), dir);
+    if (!existsSync(dirPath)) {
+      continue;
+    }
+
+    const glob = new Glob(`${dir}/*.json`);
+    const files = Array.from(glob.scanSync());
+
+    if (files.length === 0) continue;
+
+    console.log(`📂 Checking ${dir}/ (${files.length} files)`);
+
+    for (const file of files) {
+      totalFiles++;
+      try {
+        const data = JSON.parse(readFileSync(join(process.cwd(), file), 'utf8'));
+        const validate = validators[dir];
+
+        if (!validate) {
+          console.warn(`⚠️  No validator for directory: ${dir}`);
+          continue;
+        }
+
+        const valid = validate(data);
+        if (!valid) {
+          totalErrors++;
+          console.error(`❌ ${file}`);
+          validate.errors.forEach((err: any) => {
+            const path = err.instancePath || 'root';
+            const msg = err.message;
+            const params = JSON.stringify(err.params);
+            console.error(`   - ${path}: ${msg} (${params})`);
+          });
+        }
+      } catch (e: any) {
+        totalErrors++;
+        console.error(`❌ ${file}: Failed to parse JSON`);
         console.error(`   - ${e.message}`);
       }
     }

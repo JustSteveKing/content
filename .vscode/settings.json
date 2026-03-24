@@ -1,12 +1,18 @@
-{                                                                                          
-    "yaml.schemas": {                    
-      "./schema.json#/$defs/article":       "articles/*.md",                                 
-      "./schema.json#/$defs/talk":          "talks/*.md",                                    
-      "./schema.json#/$defs/package":       "packages/*.md",                                 
-      "./schema.json#/$defs/video":         "videos/*.md",                                   
-      "./schema.json#/$defs/apiGuide":      "api-guides/*.md",                               
-      "./schema.json#/$defs/testimonial":   "testimonials/*.md",                             
-      "./schema.json#/$defs/contribution":  "contributions/*.md",
-      "./schema.json#/$defs/podcast":       "podcasts/*.md"                                  
-    }                           
-  }
+{
+  "yaml.schemas": {
+    "./schema.json#/$defs/article": "articles/*.md",
+    "./schema.json#/$defs/talk": "talks/*.md",
+    "./schema.json#/$defs/package": "packages/*.md",
+    "./schema.json#/$defs/video": "videos/*.md",
+    "./schema.json#/$defs/apiGuide": "api-guides/*.md",
+    "./schema.json#/$defs/testimonial": "testimonials/*.md",
+    "./schema.json#/$defs/contribution": "contributions/*.md",
+    "./schema.json#/$defs/podcast": "podcasts/*.md"
+  },
+  "json.schemas": [
+    {
+      "fileMatch": ["tools/*.json"],
+      "url": "./schema.json#/$defs/toolCategory"
+    }
+  ]
+}
