@@ -1,0 +1,73 @@
+---
+title: Building Psychological Safety in Engineering
+description: "How to create a culture where engineers feel safe to take risks, speak up, and make mistakes without fear of punishment."
+category: Management
+pubDate: 2026-03-28
+minRead: 12
+author:
+  name: Steve McDougall
+  avatar:
+    src: https://avatars.githubusercontent.com/u/6368379?v=4
+    alt: Steve McDougall
+tags: ["remote-work", "engineering-management", "leadership", "team-culture"]
+---
+
+Let me ask you something uncomfortable: when was the last time someone on your team told you they had made a mistake before you found out about it yourself?
+
+If you have to think hard about that, or if the honest answer is "I am not sure that has ever happened," you probably have a psychological safety problem. Not a people problem. Not a talent problem. A culture problem, and one that sits squarely in your lap as the person responsible for setting the conditions under which your team operates.
+
+Psychological safety is one of those concepts that gets talked about in engineering leadership circles to the point where it starts to feel like a buzzword. But the research behind it is solid, and the practical reality is straightforward: engineers on teams where they feel safe to take risks, speak up, and make mistakes without fear of punishment consistently outperform engineers on teams where they do not. Google's Project Aristotle found it was the single biggest predictor of team effectiveness across hundreds of internal teams. It matters more than individual talent, more than technical skill, more than compensation.
+
+So why is it so rare? Partly because it is genuinely hard to build. Partly because the behaviours that build it are counterintuitive for technically minded people who have been rewarded their whole careers for being right. And partly because leaders often think they have it when they do not, because the absence of psychological safety is largely invisible from the top.
+
+Here is what I mean by that. When engineers do not feel safe, they do not tell you. They work around problems quietly. They do not raise concerns in meetings. They stay silent when they disagree. They fix bugs without mentioning them. They leave rather than confront a difficult situation. From your vantage point as a manager, everything might look fine. The problems are just invisible, which is exactly what makes the culture so hard to improve from the inside if you are not actively looking for the signals.
+
+So let's talk about what to look for, what to build, and what to stop doing.
+
+The first signal to watch is who speaks in group settings. In a psychologically safe team, contributions are distributed. Junior engineers raise concerns. Senior engineers acknowledge uncertainty. Different people push back on ideas in different meetings. If you notice that the same two or three people do all the talking, or that nobody ever disagrees with whoever has the most tenure, or that critical questions always come up in private after the meeting rather than in the meeting itself, those are meaningful signals. The information is moving, but it is moving through channels that feel safer, which means you are not actually getting it when and where it matters.
+
+The second signal is how the team handles incidents and failures. This is the clearest window into your culture. When something breaks in production, what happens? Is the post-mortem focused on understanding the failure and improving the system, or does it subtly or not so subtly focus on who was responsible? Do engineers run toward an incident or away from it? Do people escalate early when something is going wrong, or do they hold out hoping to fix it themselves rather than surface the problem?
+
+I have seen teams where engineers would rather work through the night on a production issue than escalate because they were afraid of how the escalation would be received. That is not dedication. That is fear. And it is a direct result of an environment where being the person who raised the alarm felt more dangerous than trying to quietly fix the problem.
+
+The blameless post-mortem is the standard recommendation for addressing this, and it is a good one - but only if it is actually blameless. A lot of post-mortems that are nominally blameless still subtly assign fault through the framing of their questions: "why did the engineer merge without a code review" rather than "what in our process allowed this change to go out without sufficient review." The difference in those two questions is the difference between a culture that learns and a culture that punishes while pretending not to.
+
+Write your post-mortem templates with this framing explicitly built in. Questions like: what in our system made this failure possible, what would have needed to be different for this to have been caught earlier, what can we change about our process to prevent this class of failure. Not: who approved this, why was this not caught, whose responsibility was this. If you run post-mortems this way consistently, over time it changes how the team thinks about failure - as information about the system, not as evidence of someone's incompetence.
+
+Feedback loops are the second major lever. A team without healthy feedback loops is a team where problems silently compound until they become crises. Building those loops requires two distinct things: creating channels for feedback to flow, and demonstrating through your own behaviour that feedback is welcome and acted on.
+
+The first part is structural. Regular one-on-ones where you ask specific questions rather than open-ended check-ins. Retrospectives that have genuine psychological safety built into them (anonymous input tools can help here if the team is not yet comfortable with open discussion). Skip-level conversations if your org is large enough. Anonymous pulse surveys for tracking sentiment over time. These are all mechanisms for surfacing information that would otherwise stay invisible.
+
+The second part is behavioural and it is more important. If engineers give you feedback and nothing happens, they stop giving feedback. If you react defensively when someone raises a concern, they stop raising concerns. If you say you want honesty but subtly reward people who tell you what you want to hear, you will get people who tell you what you want to hear.
+
+The most powerful thing you can do to build feedback culture is to model receiving feedback well. When someone tells you something uncomfortable, thank them specifically for the specificity of the feedback. Then act on it and tell them you acted on it. Do this consistently and over time it signals that feedback in this team is not just tolerated but genuinely valued and used. That signal compounds. People talk to each other about how you respond, and your reputation as someone who receives feedback well becomes one of the structural features of your team's culture.
+
+Ask for feedback on yourself directly and explicitly. Not "any feedback for me?" in a one-on-one where the power dynamic makes honest negative feedback almost impossible. More specific prompts: "I ran that planning session last week - was there anything about the format that was not working for you?" or "I made a call on the architecture last month and I have been wondering whether I handled that well - what was your read on it?" Specific questions lower the barrier enough that more honest answers become possible.
+
+The third lever is how you respond to mistakes, and this is the most visible signal your team gets about what the culture actually is regardless of what you say it is.
+
+When an engineer makes a significant mistake - pushes a bug to production, misestimates badly, handles a difficult customer situation poorly - your response in that moment is teaching the whole team what the rules are. Not just the person involved. Everyone who hears about it is watching what happens.
+
+The response that builds psychological safety has a few consistent properties. It is proportionate to the situation. It focuses on understanding what happened and learning from it rather than on assigning fault. It is private when the situation calls for privacy. It treats the person as an intelligent adult who does not need to be punished but who does need support in improving.
+
+None of that means being soft on genuinely unacceptable behaviour. If someone repeatedly ignores code review conventions, ships without testing, or behaves disrespectfully to a colleague, those are different situations that call for direct and specific feedback. The distinction is between mistakes (things that happen despite good intentions and reasonable effort) and patterns of behaviour that reflect poor judgment or disrespect. Psychological safety is not about protecting people from the consequences of repeated poor behaviour. It is about ensuring that honest effort and reasonable risk-taking are not punished.
+
+There is a specific failure mode worth naming here because it is common and because managers who fall into it often do not know they are doing it. It is what I think of as the chilling effect of public criticism. When a leader criticises an engineer's work in front of the team (in a code review, in a meeting, in a Slack thread where multiple people are watching) the impact is not contained to that one person. Every engineer on the team who sees it learns something about the risk of being visible and vulnerable. The criticised engineer may recover. But the observation travels further than you think, and it quietly teaches people to keep their heads down.
+
+Code review is where this plays out most often in engineering teams. Reviews where every comment is framed as a problem to be fixed, where reviewers never acknowledge what is working well, and where tone is dismissive or impatient -- that culture compounds over time and eventually starts to affect how openly engineers communicate and how willing they are to take on work that is outside their comfort zone.
+
+It is worth reviewing the norms around code review explicitly with your team. Not to make code review soft, but to make it genuinely useful. The goal of code review is to improve the code and grow the engineer. Both parts matter. A review that consistently improves the code but leaves the engineer feeling beaten up is a review that is failing at half its job.
+
+One last thing that does not get enough attention: the connection between psychological safety and retention. Engineers leave teams for a lot of reasons, but one of the more consistent ones is the slow erosion of feeling like they can do their best work. That erosion is usually not a single incident but an accumulation of small signals - a feedback that was not heard, a mistake that was handled poorly, a concern that was dismissed, a pattern of who gets credit and who does not. It is invisible until someone puts in their notice, at which point the manager usually asks "what happened?" without realising the honest answer is "a lot of things, over a long time."
+
+Psychological safety is not a team-building exercise. It is not a workshop or a values statement. It is the cumulative result of thousands of small interactions
+- how you respond to a mistake
+- how you run a post-mortem
+- how you receive feedback
+- how you handle a tense code review
+
+That either add up to a culture where people feel safe enough to do their best work, or they do not.
+
+You build it slowly and you can damage it quickly. That asymmetry is worth keeping in mind every time you have one of those small interactions. Because you are always, whether you realise it or not, signalling to your team what the rules are.
+
+*Next in the series: Strategy vs. Execution -- how senior engineering leaders align product, technology, and business goals into a coherent technical direction.*
