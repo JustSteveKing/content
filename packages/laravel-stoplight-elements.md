@@ -1,19 +1,19 @@
 ---
-name: juststeveking/laravel-stoplight-elements
-description: A simple API documentation package for Laravel using OpenAPI and Stoplight Elements
+name: "juststeveking/laravel-stoplight-elements"
+description: "A simple API documentation package for Laravel using OpenAPI and Stoplight Elements"
 packagist: "https://packagist.org/packages/juststeveking/laravel-stoplight-elements"
 github: "https://github.com/JustSteveKing/laravel-stoplight-elements"
-downloads: 71164
-monthlyDownloads: 2308
-stars: 44
-version: dev-main
-updatedAt: 2026-03-09
+downloads: 72662
+monthlyDownloads: 2887
+stars: 43
+version: "3.0.1"
+updatedAt: "2026-03-25"
 ---
 
 # Laravel Stoplight Elements
 
 [![Latest Version on Packagist][ico-version]][link-packagist]
-[
+[![Software License][ico-license]](LICENSE.md)
 [![Build Status][ico-github-action]][link-github-action]
 [![Total Downloads][ico-downloads]][link-downloads]
 
@@ -26,6 +26,7 @@ You can install this package via composer:
 ```bash
 composer require juststeveking/laravel-stoplight-elements
 ```
+
 
 ## Configuration
 
@@ -57,13 +58,16 @@ return [
 ];
 ```
 
+
 ## Contributing
 
 Please see [CONTRIBUTING](CONTRIBUTING.md) and [CODE_OF_CONDUCT](CODE_OF_CONDUCT.md) for details.
 
+
 ## Security
 
 If you discover any security related issues, please email juststevemcd@gmail.com instead of using the issue tracker.
+
 
 ## Credits
 
@@ -71,9 +75,11 @@ If you discover any security related issues, please email juststevemcd@gmail.com
 - [All Contributors][link-contributors]
 - [Stoplight Team for the Elements Web Components](https://stoplight.io/open-source/elements/)
 
+
 ## License
 
 The MIT License (MIT). Please see [License File](LICENSE.md) for more information.
+
 
 [ico-version]: https://img.shields.io/packagist/v/juststeveking/laravel-stoplight-elements.svg?style=flat-square
 [ico-license]: https://img.shields.io/badge/license-MIT-brightgreen.svg?style=flat-square
@@ -85,3 +91,4 @@ The MIT License (MIT). Please see [License File](LICENSE.md) for more informatio
 [link-downloads]: https://packagist.org/packages/juststeveking/laravel-stoplight-elements
 [link-author]: https://github.com/JustSteveKing
 [link-contributors]: ../../contributors
+

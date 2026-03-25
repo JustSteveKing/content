@@ -1,13 +1,13 @@
 ---
-name: juststeveking/os-process
-description: A PHP Package to work with OS processes in an OOP way.
+name: "juststeveking/os-process"
+description: "A PHP Package to work with OS processes in an OOP way."
 packagist: "https://packagist.org/packages/juststeveking/os-process"
 github: "https://github.com/JustSteveKing/os-process"
 downloads: 159
 monthlyDownloads: 0
 stars: 76
-version: dev-main
-updatedAt: 2026-03-09
+version: "1.0.0"
+updatedAt: "2026-03-25"
 ---
 
 # OS Process
@@ -127,6 +127,7 @@ $terraform->apply()->run(); // Will run `terraform apply` in an OS process.
 
 You can also obtain information about the process
 
+
 ```php
 $terraform = new Terraform();
 
@@ -159,3 +160,6 @@ $process->start(); // start `terraform apply` in an OS process. (start not run)
     });
 
 ```
+
+
+

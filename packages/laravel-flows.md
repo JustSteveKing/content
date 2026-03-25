@@ -1,13 +1,13 @@
 ---
-name: juststeveking/laravel-flows
-description: A fluent, modular workflow builder for Laravel.
+name: "juststeveking/laravel-flows"
+description: "A fluent, modular workflow builder for Laravel."
 packagist: "https://packagist.org/packages/juststeveking/laravel-flows"
 github: "https://github.com/JustSteveKing/laravel-flows"
-downloads: 15
-monthlyDownloads: 0
+downloads: 18
+monthlyDownloads: 3
 stars: 105
-version: dev-main
-updatedAt: 2026-03-09
+version: "1.0.4"
+updatedAt: "2026-03-25"
 ---
 
 # Laravel Flows
@@ -15,9 +15,9 @@ updatedAt: 2026-03-09
 <!-- BADGES_START -->
 [![PHP Version][badge-php]][php]
 [![Latest Version][badge-release]][packagist]
-[](https://github.com/JustSteveKing/laravel-flows/actions/workflows/tests.yml)
-[](https://github.com/JustSteveKing/laravel-flows/actions/workflows/formats.yml)
-[](LICENSE)
+[![Tests](https://github.com/JustSteveKing/laravel-flows/actions/workflows/tests.yml/badge.svg)](https://github.com/JustSteveKing/laravel-flows/actions/workflows/tests.yml)
+[![Formats](https://github.com/JustSteveKing/laravel-flows/actions/workflows/formats.yml/badge.svg)](https://github.com/JustSteveKing/laravel-flows/actions/workflows/formats.yml)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 [![Total Downloads][badge-downloads]][downloads]
 
 [php]: https://php.net
@@ -426,3 +426,4 @@ Contributions are welcome! Please submit a pull request or open an issue if you 
 ## License
 
 This package is open-sourced software licensed under the MIT license.
+

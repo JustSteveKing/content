@@ -1,13 +1,13 @@
 ---
-name: juststeveking/http-slim
-description: A slim psr compliant http client to provide better interoperability.
+name: "juststeveking/http-slim"
+description: "A slim psr compliant http client to provide better interoperability."
 packagist: "https://packagist.org/packages/juststeveking/http-slim"
 github: "https://github.com/JustSteveKing/http-slim"
-downloads: 70367
-monthlyDownloads: 450
+downloads: 70703
+monthlyDownloads: 566
 stars: 7
-version: dev-master
-updatedAt: 2026-03-09
+version: "v2.1.0"
+updatedAt: "2026-03-25"
 ---
 
 # Http Slim
@@ -16,7 +16,7 @@ updatedAt: 2026-03-09
 [![Latest Version][badge-release]][packagist]
 [![Software License][badge-license]][license]
 [![PHP Version][badge-php]][php]
-
+![run-tests](https://github.com/JustSteveKing/http-slim/workflows/run-tests/badge.svg)
 [![Total Downloads][badge-downloads]][downloads]
 
 [badge-release]: https://img.shields.io/packagist/v/juststeveking/http-slim.svg?style=flat-square&label=release
@@ -39,6 +39,7 @@ The main goal of this package is to adhere to the following PSRs:
 - [PSR-17 - HTTP Factories](https://www.php-fig.org/psr/psr-17/)
 - [PSR-7 - HTTP Message Interface](https://www.php-fig.org/psr/psr-7/)
 
+
 ## Installation
 
 Using composer:
@@ -58,6 +59,7 @@ A few packages that are recommended:
 - [Guzzle](http://docs.guzzlephp.org/en/stable/)
 - [Symfony HttpClient](https://symfony.com/doc/current/components/http_client.html)
 - [A great PSR implementation with factories to adhere to PSR-18 fully](https://github.com/Nyholm/psr7)
+
 
 ## Usage
 
@@ -80,6 +82,7 @@ $httpClient = HttpClient::build(
 
 // Using HTTP Auto-discovery
 $httpClient = HttpClient::build();
+
 
 // perform a get request
 $httpClient->get(
@@ -140,3 +143,4 @@ $ ./vendor/bin/phpunit --testdox
 ## Security
 
 If you discover any security related issues, please email juststevemcd@gmail.com instead of using the issue tracker.
+

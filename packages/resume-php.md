@@ -1,25 +1,25 @@
 ---
-name: juststeveking/resume-php
-description: A PHP library for building and working with the JSON resume schema.
+name: "juststeveking/resume-php"
+description: "A PHP library for building and working with the JSON resume schema."
 packagist: "https://packagist.org/packages/juststeveking/resume-php"
 github: "https://github.com/JustSteveKing/resume-php"
-downloads: 160
-monthlyDownloads: 10
+downloads: 169
+monthlyDownloads: 13
 stars: 105
-version: dev-main
-updatedAt: 2026-03-09
+version: "0.0.2"
+updatedAt: "2026-03-25"
 ---
 
 # Resume PHP
 
 A PHP library for building and working with the [JSON Resume](https://jsonresume.org/) schema.
 
-[](https://packagist.org/packages/juststeveking/resume-php)
-[](https://packagist.org/packages/juststeveking/resume-php)
-[](./LICENSE)
-[](https://github.com/juststeveking/resume-php/actions/workflows/tests.yml)
-[](https://github.com/juststeveking/resume-php/actions/workflows/static-analysis.yml)
-[](https://github.com/juststeveking/resume-php/actions/workflows/code-style.yml)
+[![Latest Version on Packagist](https://img.shields.io/packagist/v/juststeveking/resume-php.svg?style=flat-square)](https://packagist.org/packages/juststeveking/resume-php)
+[![Total Downloads](https://img.shields.io/packagist/dt/juststeveking/resume-php.svg?style=flat-square)](https://packagist.org/packages/juststeveking/resume-php)
+[![License](https://img.shields.io/packagist/l/juststeveking/resume-php.svg?style=flat-square)](./LICENSE)
+[![Tests](https://github.com/juststeveking/resume-php/actions/workflows/tests.yml/badge.svg)](https://github.com/juststeveking/resume-php/actions/workflows/tests.yml)
+[![Static Analysis](https://github.com/juststeveking/resume-php/actions/workflows/static-analysis.yml/badge.svg)](https://github.com/juststeveking/resume-php/actions/workflows/static-analysis.yml)
+[![Code Style](https://github.com/juststeveking/resume-php/actions/workflows/code-style.yml/badge.svg)](https://github.com/juststeveking/resume-php/actions/workflows/code-style.yml)
 
 ## Introduction
 
@@ -328,19 +328,19 @@ up:
 
 ### Tests
 
-[](https://github.com/juststeveking/resume-php/actions/workflows/tests.yml)
+[![Tests](https://github.com/juststeveking/resume-php/actions/workflows/tests.yml/badge.svg)](https://github.com/juststeveking/resume-php/actions/workflows/tests.yml)
 
 Runs PHPUnit tests on PHP 8.4 to ensure all functionality works as expected.
 
 ### Static Analysis
 
-[](https://github.com/juststeveking/resume-php/actions/workflows/static-analysis.yml)
+[![Static Analysis](https://github.com/juststeveking/resume-php/actions/workflows/static-analysis.yml/badge.svg)](https://github.com/juststeveking/resume-php/actions/workflows/static-analysis.yml)
 
 Use PHPStan to perform static code analysis and catch potential bugs.
 
 ### Code Style
 
-[](https://github.com/juststeveking/resume-php/actions/workflows/code-style.yml)
+[![Code Style](https://github.com/juststeveking/resume-php/actions/workflows/code-style.yml/badge.svg)](https://github.com/juststeveking/resume-php/actions/workflows/code-style.yml)
 
 Ensures code follows the defined style rules using Laravel Pint.
 
@@ -366,4 +366,5 @@ The MIT License (MIT). Please see [License File](LICENSE) for more information.
 ## Credits
 
 - [Steve McDougall](https://github.com/juststeveking)
-- [All Contributors](https://github.com/JustSteveKing/resume-php/blob/main/../contributors)
+- [All Contributors](../../contributors)
+

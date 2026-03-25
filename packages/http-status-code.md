@@ -1,16 +1,18 @@
 ---
-name: juststeveking/http-status-code
-description: A simple class to return correct status codes for http responses
+name: "juststeveking/http-status-code"
+description: "A simple class to return correct status codes for http responses"
 packagist: "https://packagist.org/packages/juststeveking/http-status-code"
 github: "https://github.com/JustSteveKing/http-status-code"
-downloads: 291242
-monthlyDownloads: 8031
+downloads: 296167
+monthlyDownloads: 8617
 stars: 49
-version: dev-master
-updatedAt: 2026-03-09
+version: "v1.0"
+updatedAt: "2026-03-25"
 ---
 
 # Http Status Codes
+
+![run-tests](https://github.com/JustSteveKing/http-status-code/workflows/run-tests/badge.svg)
 
 A simple Enum to return correct status codes for http responses.
 
@@ -25,6 +27,7 @@ $ composer require juststeveking/http-status-code
 ```
 
 You are then free to use it as needed within your projects.
+
 
 ## Usage
 

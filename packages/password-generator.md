@@ -1,20 +1,20 @@
 ---
-name: juststeveking/password-generator
-description: Generate random, memorable passwords easily.
+name: "juststeveking/password-generator"
+description: "Generate random, memorable passwords easily."
 packagist: "https://packagist.org/packages/juststeveking/password-generator"
 github: "https://github.com/JustSteveKing/password-generator"
 downloads: 46
 monthlyDownloads: 0
 stars: 23
-version: dev-main
-updatedAt: 2026-03-09
+version: "1.0.0"
+updatedAt: "2026-03-25"
 ---
 
 # Password Generator
 
-[](https://packagist.org/packages/juststeveking/password-generator)
-[](https://github.com/juststeveking/password-generator/actions/workflows/tests.yml)
-[](https://packagist.org/packages/juststeveking/password-generator)
+[![Latest Version on Packagist](https://img.shields.io/packagist/v/juststeveking/password-generator.svg?style=flat-square)](https://packagist.org/packages/juststeveking/password-generator)
+[![Test Suite](https://github.com/juststeveking/password-generator/actions/workflows/tests.yml/badge.svg)](https://github.com/juststeveking/password-generator/actions/workflows/tests.yml)
+[![Total Downloads](https://img.shields.io/packagist/dt/juststeveking/password-generator.svg?style=flat-square)](https://packagist.org/packages/juststeveking/password-generator)
 <!--delete-->
 
 **Disclaimer**. This is not intended for use in a production environment to create your passwords. My use case for this is to actually generate one off use codes such as One Time Pass Codes. This is not the most secure as the list of words is quite small, and will leave you open to a potential dictionary attack.
@@ -102,13 +102,14 @@ Please see [CHANGELOG](CHANGELOG.md) for more information on what has changed re
 
 ## Security Vulnerabilities
 
-Please review [our security policy](https://github.com/JustSteveKing/password-generator/blob/main/../security/policy) on how to report security vulnerabilities.
+Please review [our security policy](../../security/policy) on how to report security vulnerabilities.
 
 ## Credits
 
 - [Steve McDougall](https://github.com/juststeveking)
-- [All Contributors](https://github.com/JustSteveKing/password-generator/blob/main/../contributors)
+- [All Contributors](../../contributors)
 
 ## License
 
 The MIT License (MIT). Please see [License File](LICENSE.md) for more information.
+

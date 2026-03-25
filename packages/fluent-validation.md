@@ -1,20 +1,20 @@
 ---
-name: juststeveking/fluent-validation
-description: Fluent Validation is a helper package, that allows you to use sensible defaults for your Laravel validation rules.`
+name: "juststeveking/fluent-validation"
+description: "Fluent Validation is a helper package, that allows you to use sensible defaults for your Laravel validation rules.`"
 packagist: "https://packagist.org/packages/juststeveking/fluent-validation"
 github: "https://github.com/JustSteveKing/fluent-validation"
 downloads: 568
 monthlyDownloads: 0
 stars: 25
-version: dev-main
-updatedAt: 2026-03-09
+version: "0.0.2"
+updatedAt: "2026-03-25"
 ---
 
 # Fluent Validation
 
-[](https://packagist.org/packages/juststeveking/fluent-validation)
-[](https://github.com/juststeveking/fluent-validation/actions/workflows/tests.yml)
-[](https://packagist.org/packages/juststeveking/fluent-validation)
+[![Latest Version on Packagist](https://img.shields.io/packagist/v/juststeveking/fluent-validation.svg?style=flat-square)](https://packagist.org/packages/juststeveking/fluent-validation)
+[![Test Suite](https://github.com/juststeveking/fluent-validation/actions/workflows/tests.yml/badge.svg)](https://github.com/juststeveking/fluent-validation/actions/workflows/tests.yml)
+[![Total Downloads](https://img.shields.io/packagist/dt/juststeveking/fluent-validation.svg?style=flat-square)](https://packagist.org/packages/juststeveking/fluent-validation)
 
 Fluent Validation is a helper package, that allows you to use sensible defaults for your Laravel validation rules.
 
@@ -130,13 +130,14 @@ Please see [CHANGELOG](CHANGELOG.md) for more information on what has changed re
 
 ## Security Vulnerabilities
 
-Please review [our security policy](https://github.com/JustSteveKing/fluent-validation/blob/main/../security/policy) on how to report security vulnerabilities.
+Please review [our security policy](../../security/policy) on how to report security vulnerabilities.
 
 ## Credits
 
 - [Steve McDougall](https://github.com/juststeveking)
-- [All Contributors](https://github.com/JustSteveKing/fluent-validation/blob/main/../contributors)
+- [All Contributors](../../contributors)
 
 ## License
 
 The MIT License (MIT). Please see [License File](LICENSE.md) for more information.
+

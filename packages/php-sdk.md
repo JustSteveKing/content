@@ -1,13 +1,13 @@
 ---
-name: juststeveking/php-sdk
-description: A framework for building SDKs in PHP.
+name: "juststeveking/php-sdk"
+description: "A framework for building SDKs in PHP."
 packagist: "https://packagist.org/packages/juststeveking/php-sdk"
 github: "https://github.com/JustSteveKing/php-sdk"
-downloads: 71525
-monthlyDownloads: 567
+downloads: 71907
+monthlyDownloads: 673
 stars: 217
-version: dev-main
-updatedAt: 2026-03-09
+version: "v2.2.0"
+updatedAt: "2026-03-25"
 ---
 
 # PHP SDK
@@ -15,7 +15,7 @@ updatedAt: 2026-03-09
 <!-- BADGES_START -->
 [![Latest Version][badge-release]][packagist]
 [![PHP Version][badge-php]][php]
-
+![tests](https://github.com/JustSteveKing/php-sdk/workflows/tests/badge.svg)
 [![Total Downloads][badge-downloads]][downloads]
 
 [badge-release]: https://img.shields.io/packagist/v/juststeveking/php-sdk.svg?style=flat-square&label=release
@@ -189,8 +189,9 @@ Without the following packages and people, this framework would have been a lot 
 ## Credits
 
 - [Steve McDougall](https://github.com/JustSteveKing)
-- [All Contributors](https://github.com/JustSteveKing/php-sdk/blob/main/../contributors)
+- [All Contributors](../../contributors)
 
 ## LICENSE
 
-The MIT License (MIT). Please see [License File](https://github.com/JustSteveKing/php-sdk/blob/main/LICENSE) for more information.
+The MIT License (MIT). Please see [License File](./LICENSE) for more information.
+

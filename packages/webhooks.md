@@ -1,19 +1,21 @@
 ---
-name: juststeveking/webhooks
-description: The simplest way to start sending webhooks in PHP.
+name: "juststeveking/webhooks"
+description: "The simplest way to start sending webhooks in PHP."
 packagist: "https://packagist.org/packages/juststeveking/webhooks"
 github: "https://github.com/JustSteveKing/webhooks"
 downloads: 9
 monthlyDownloads: 0
 stars: 4
-version: dev-main
-updatedAt: 2026-03-09
+version: "0.0.2"
+updatedAt: "2026-03-25"
 ---
+
+# Webhooks
 
 <!-- BADGES_START -->
 [![Latest Version][badge-release]][packagist]
 [![Software License][badge-license]][license]
-[](https://github.com/JustSteveKing/webhooks/actions/workflows/tests.yml)
+[![Run Tests](https://github.com/JustSteveKing/webhooks/actions/workflows/tests.yml/badge.svg)](https://github.com/JustSteveKing/webhooks/actions/workflows/tests.yml)
 [![PHP Version][badge-php]][php]
 [![Total Downloads][badge-downloads]][downloads]
 
@@ -43,6 +45,7 @@ The next step is to install a OSR compliant package to do the request itself, yo
 - PSR 7 Request Library
 - PSR17 Request and Stream Factories
 - PSR18 Http Client
+
 
 This package will auto-discover these packages you have installed for you, so  you not need to wire anything up.
 
@@ -115,3 +118,4 @@ However, if you are unable to run this please use the following command:
 ## Security
 
 If you discover any security related issues, please email juststevemcd@gmail.com instead of using the issue tracker.
+

@@ -1,19 +1,19 @@
 ---
-name: juststeveking/eloquent-log-driver
-description: A Laravel Log Driver for Eloquent
+name: "juststeveking/eloquent-log-driver"
+description: "A Laravel Log Driver for Eloquent"
 packagist: "https://packagist.org/packages/juststeveking/eloquent-log-driver"
 github: "https://github.com/JustSteveKing/eloquent-log-driver"
 downloads: 3238
 monthlyDownloads: 0
 stars: 7
-version: dev-master
-updatedAt: 2026-03-09
+version: "1.2.0"
+updatedAt: "2026-03-25"
 ---
 
 # Eloquent Log Driver
 
 [![Latest Version on Packagist][ico-version]][link-packagist]
-[
+[![Software License][ico-license]](LICENSE.md)
 [![Quality Score][ico-code-quality]][link-code-quality]
 [![Total Downloads][ico-downloads]][link-downloads]
 
@@ -103,3 +103,4 @@ The MIT License (MIT). Please see [License File](LICENSE.md) for more informatio
 [link-downloads]: https://packagist.org/packages/juststeveking/eloquent-log-driver
 [link-author]: https://github.com/JustSteveKing
 [link-contributors]: ../../contributors
+

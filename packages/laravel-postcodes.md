@@ -1,23 +1,25 @@
 ---
-name: juststeveking/laravel-postcodes
-description: A service wrapper around postcodes.io
+name: "juststeveking/laravel-postcodes"
+description: "A service wrapper around postcodes.io"
 packagist: "https://packagist.org/packages/juststeveking/laravel-postcodes"
 github: "https://github.com/JustSteveKing/LaravelPostcodes"
-downloads: 109044
-monthlyDownloads: 5961
+downloads: 113484
+monthlyDownloads: 7793
 stars: 81
-version: dev-master
-updatedAt: 2026-03-09
+version: "V1.5.0"
+updatedAt: "2026-03-25"
 ---
 
 <p align="center">
+
+![](laravel-postal-code-validation.png)
 
 </p>
 
 # LaravelPostcodes
 
 [![Latest Version on Packagist][ico-version]][link-packagist]
-[
+[![Software License][ico-license]](LICENSE.md)
 [![Build Status][ico-github-action]][link-github-action]
 [![Coverage Status][ico-scrutinizer]][link-scrutinizer]
 [![Quality Score][ico-code-quality]][link-code-quality]
@@ -52,6 +54,7 @@ If, for some reason, this doesn't work please use the following steps:
 ```
 
 - Add `POSTCODES_URL` to your `.env` file and add `https://api.postcodes.io/` as the value.
+
 
 ## Basic Usage
 
@@ -158,6 +161,7 @@ $service->getPostcode('AB10 1AB');
 // You can also use the facade:
 Postcode::getPostcode('AB10 1AB');
 ```
+
 
 ### Bulk Lookup Postcodes
 
@@ -340,3 +344,4 @@ The MIT License (MIT). Please see [License File](LICENSE.md) for more informatio
 [link-downloads]: https://packagist.org/packages/juststeveking/laravel-postcodes
 [link-author]: https://github.com/JustSteveKing
 [link-contributors]: ../../contributors
+

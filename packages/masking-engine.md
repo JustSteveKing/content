@@ -1,13 +1,13 @@
 ---
-name: juststeveking/masking-engine
-description: A data masking engine for PHP.
+name: "juststeveking/masking-engine"
+description: "A data masking engine for PHP."
 packagist: "https://packagist.org/packages/juststeveking/masking-engine"
 github: "https://github.com/JustSteveKing/masking-engine"
 downloads: 3
 monthlyDownloads: 0
 stars: 26
-version: dev-main
-updatedAt: 2026-03-09
+version: "0.0.1"
+updatedAt: "2026-03-25"
 ---
 
 # Masking Engine
@@ -15,7 +15,7 @@ updatedAt: 2026-03-09
 <!-- BADGES_START -->
 [![Latest Version][badge-release]][packagist]
 [![PHP Version][badge-php]][php]
-[](https://github.com/JustSteveKing/masking-engine/actions/workflows/ci.yml)[![Total Downloads][badge-downloads]][downloads]
+[![run-tests](https://github.com/JustSteveKing/masking-engine/actions/workflows/ci.yml/badge.svg)](https://github.com/JustSteveKing/masking-engine/actions/workflows/ci.yml)[![Total Downloads][badge-downloads]][downloads]
 
 [badge-release]: https://img.shields.io/packagist/v/juststeveking/masking-engine.svg?style=flat-square&label=release
 [badge-php]: https://img.shields.io/packagist/php-v/juststeveking/masking-engine.svg?style=flat-square
@@ -134,3 +134,4 @@ coding standards in place for this library, and test coverage is kept to a high 
 ## Security
 
 If you find any security related issues with this package, please feel free to reach out to me directly.
+

@@ -1,13 +1,13 @@
 ---
-name: juststeveking/laravel-data-object-tools
-description: A set of tools to make working with Data Transfer Objects easier in Laravel
+name: "juststeveking/laravel-data-object-tools"
+description: "A set of tools to make working with Data Transfer Objects easier in Laravel"
 packagist: "https://packagist.org/packages/juststeveking/laravel-data-object-tools"
 github: "https://github.com/JustSteveKing/laravel-data-object-tools"
-downloads: 14244
-monthlyDownloads: 29
+downloads: 14268
+monthlyDownloads: 42
 stars: 67
-version: dev-main
-updatedAt: 2026-03-09
+version: "2.0.0"
+updatedAt: "2026-03-25"
 ---
 
 # Laravel Data Object Tools
@@ -110,8 +110,10 @@ composer run test
 ## Credits
 
 - [Steve McDougall](https://github.com/JustSteveKing)
-- [All Contributors](https://github.com/JustSteveKing/laravel-data-object-tools/blob/main/../contributors)
+- [All Contributors](../../contributors)
 
 ## LICENSE
 
-The MIT License (MIT). Please see [License File](https://github.com/JustSteveKing/laravel-data-object-tools/blob/main/LICENSE) for more information.
+The MIT License (MIT). Please see [License File](./LICENSE) for more information.
+
+

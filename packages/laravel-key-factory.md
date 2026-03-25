@@ -1,21 +1,21 @@
 ---
-name: juststeveking/laravel-key-factory
-description: A simple package to generate Eloquent Model Keys
+name: "juststeveking/laravel-key-factory"
+description: "A simple package to generate Eloquent Model Keys"
 packagist: "https://packagist.org/packages/juststeveking/laravel-key-factory"
 github: "https://github.com/JustSteveKing/laravel-key-factory"
-downloads: 1276
-monthlyDownloads: 88
+downloads: 1344
+monthlyDownloads: 156
 stars: 6
-version: dev-main
-updatedAt: 2026-03-09
+version: "1.1.0"
+updatedAt: "2026-03-25"
 ---
 
 # A simple package to generate Eloquent Model Keys
 
-[](https://packagist.org/packages/juststeveking/laravel-key-factory)
-[](https://github.com/juststeveking/laravel-key-factory/actions?query=workflow%3Arun-tests+branch%3Amain)
-[](https://github.com/juststeveking/laravel-key-factory/actions?query=workflow%3A"Check+%26+fix+styling"+branch%3Amain)
-[](https://packagist.org/packages/juststeveking/laravel-key-factory)
+[![Latest Version on Packagist](https://img.shields.io/packagist/v/juststeveking/laravel-key-factory.svg?style=flat-square)](https://packagist.org/packages/juststeveking/laravel-key-factory)
+[![GitHub Tests Action Status](https://img.shields.io/github/workflow/status/juststeveking/laravel-key-factory/run-tests?label=tests)](https://github.com/juststeveking/laravel-key-factory/actions?query=workflow%3Arun-tests+branch%3Amain)
+[![GitHub Code Style Action Status](https://img.shields.io/github/workflow/status/juststeveking/laravel-key-factory/Check%20&%20fix%20styling?label=code%20style)](https://github.com/juststeveking/laravel-key-factory/actions?query=workflow%3A"Check+%26+fix+styling"+branch%3Amain)
+[![Total Downloads](https://img.shields.io/packagist/dt/juststeveking/laravel-key-factory.svg?style=flat-square)](https://packagist.org/packages/juststeveking/laravel-key-factory)
 
 Laravel Key Factory is a simple package to generate Eloquent Model Keys for your models easily. This is something I do quite often, instead of using UUID's which can be quite unfriendly to look at, I use Model keys which are unique strings generated for each model.
 
@@ -96,13 +96,14 @@ Please see [CONTRIBUTING](.github/CONTRIBUTING.md) for details.
 
 ## Security Vulnerabilities
 
-Please review [our security policy](https://github.com/JustSteveKing/laravel-key-factory/blob/main/../security/policy) on how to report security vulnerabilities.
+Please review [our security policy](../../security/policy) on how to report security vulnerabilities.
 
 ## Credits
 
 - [Steve McDougall](https://github.com/JustSteveKing)
-- [All Contributors](https://github.com/JustSteveKing/laravel-key-factory/blob/main/../contributors)
+- [All Contributors](../../contributors)
 
 ## License
 
 The MIT License (MIT). Please see [License File](LICENSE.md) for more information.
+

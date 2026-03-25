@@ -1,14 +1,16 @@
 ---
-name: juststeveking/result
-description: A tiny, framework-agnostic Result type for PHP 8.4 that makes error handling explicit, composable, and testable.
+name: "juststeveking/result"
+description: "A tiny, framework-agnostic Result type for PHP 8.4 that makes error handling explicit, composable, and testable."
 packagist: "https://packagist.org/packages/juststeveking/result"
 github: "https://github.com/JustSteveKing/result"
 downloads: 2
 monthlyDownloads: 0
 stars: 2
-version: dev-main
-updatedAt: 2026-03-09
+version: "1.0.0"
+updatedAt: "2026-03-25"
 ---
+
+# Result
 
 A tiny, framework-agnostic Result type for PHP that makes error handling explicit, composable, and testable.
 
@@ -17,15 +19,18 @@ A tiny, framework-agnostic Result type for PHP that makes error handling explici
 - Chain operations with map/andThen and recover with mapErr/orElse
 - Ergonomic helpers and a small ComparableResult utility
 
+
 ## Requirements
 
 - PHP 8.4+
+
 
 ## Installation
 
 ```bash
 composer require juststeveking/result
 ```
+
 
 ## Quick start
 
@@ -51,6 +56,7 @@ $out = result_match(
 // "answer: 42"
 ```
 
+
 ## The Result interface
 
 All results implement `JustSteveKing\Result\Contracts\ResultInterface<T>` where `T` is the success value type (documented via PHPDoc for static analysis).
@@ -69,6 +75,7 @@ Key operations:
 - `orElse(callable(Throwable): ResultInterface<T>): ResultInterface<T>` - recover from Err by producing a new Result
 - `tap(callable(T): void): $this` - side-effect on Ok; no-op on Err
 - `tapErr(callable(Throwable): void): $this` - side-effect on Err; no-op on Ok
+
 
 ### Examples
 
@@ -131,6 +138,7 @@ Result::err(new RuntimeException('no'))
 	->expect('Failed to compute');   // throws UnwrapException
 ```
 
+
 ## Helper functions
 
 This package autoloads a few global helpers in the `JustSteveKing\Result` namespace:
@@ -151,6 +159,7 @@ $output = result_match(
 );
 ```
 
+
 ## ComparableResult
 
 `ComparableResult` is a small utility for success values that are comparable as array-keys (`int|string`). It's handy when you need a simple value equality check without unwrapping:
@@ -169,13 +178,16 @@ $err->equals('anything'); // false
 $inner = $cmp->inner(); // ResultInterface<int|string>
 ```
 
+
 ## Error behavior
 
 Calling `unwrap()` or `expect()` on an `Err` throws `JustSteveKing\Result\Exceptions\UnwrapException` with your message (for `expect`) and the original Throwable as `previous`.
 
+
 ## Static analysis and generics
 
 The library uses PHPDoc templates (e.g. `@template T`) to communicate types to tools like PHPStan/Psalm. You'll get strong typing for `ResultInterface<T>` in editors and CI when using these tools.
+
 
 ## Tooling
 
@@ -192,10 +204,14 @@ composer stan
 composer pint
 ```
 
+
 ## Contributing
 
 Bug reports and PRs are welcome. See `CONTRIBUTING.md` for guidelines.
 
+
 ## License
 
 MIT. See `LICENSE`.
+
+

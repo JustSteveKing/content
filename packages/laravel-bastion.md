@@ -1,17 +1,17 @@
 ---
-name: juststeveking/laravel-bastion
-description: Stripe-inspired API authentication with environment isolation, granular scopes, and built-in security.
+name: "juststeveking/laravel-bastion"
+description: "Stripe-inspired API authentication with environment isolation, granular scopes, and built-in security."
 packagist: "https://packagist.org/packages/juststeveking/laravel-bastion"
 github: "https://github.com/JustSteveKing/laravel-bastion"
-downloads: 45
-monthlyDownloads: 4
+downloads: 47
+monthlyDownloads: 5
 stars: 107
-version: dev-main
-updatedAt: 2026-03-09
+version: "0.0.2"
+updatedAt: "2026-03-25"
 ---
 
 <p align="center">
-  
+  <img src="art/laravel-bastion-logo.png" alt="Laravel Bastion Logo" width="200">
 </p>
 
 # Laravel Bastion
@@ -19,9 +19,9 @@ updatedAt: 2026-03-09
 <!-- BADGES_START -->
 [![PHP Version][badge-php]][php]
 [![Latest Version][badge-release]][packagist]
-[](https://github.com/JustSteveKing/laravel-bastion/actions/workflows/tests.yml)
-[](https://github.com/JustSteveKing/laravel-bastion/actions/workflows/formats.yml)
-[](LICENSE)
+[![Tests](https://github.com/JustSteveKing/laravel-bastion/actions/workflows/tests.yml/badge.svg)](https://github.com/JustSteveKing/laravel-bastion/actions/workflows/tests.yml)
+[![Formats](https://github.com/JustSteveKing/laravel-bastion/actions/workflows/formats.yml/badge.svg)](https://github.com/JustSteveKing/laravel-bastion/actions/workflows/formats.yml)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 [![Total Downloads][badge-downloads]][downloads]
 
 [php]: https://php.net
@@ -514,3 +514,4 @@ Bastion focuses on token-based authentication with scopes and environments. It d
 - Domain/host origin restrictions
 
 If you need these controls, add them at your application layer (e.g., trusted proxies, firewall/WAF rules, or custom middleware) alongside Bastion.
+

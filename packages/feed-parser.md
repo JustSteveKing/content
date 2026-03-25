@@ -1,13 +1,13 @@
 ---
-name: juststeveking/feed-parser
-description: A simple feed parser for PHP with zero dependencies.
+name: "juststeveking/feed-parser"
+description: "A simple feed parser for PHP with zero dependencies."
 packagist: "https://packagist.org/packages/juststeveking/feed-parser"
 github: "https://github.com/JustSteveKing/feed-parser"
 downloads: 15
 monthlyDownloads: 1
 stars: 5
-version: dev-main
-updatedAt: 2026-03-09
+version: "0.0.1"
+updatedAt: "2026-03-25"
 ---
 
 # Feed Generator
@@ -15,7 +15,7 @@ updatedAt: 2026-03-09
 <!-- BADGES_START -->
 [![Latest Version][badge-release]][packagist]
 [![PHP Version][badge-php]][php]
-
+![tests](https://github.com/juststeveking/feed-parser/workflows/tests/badge.svg)
 [![Total Downloads][badge-downloads]][downloads]
 
 [badge-release]: https://img.shields.io/packagist/v/juststeveking/feed-parser.svg?style=flat-square&label=release
@@ -144,8 +144,9 @@ composer refactor
 ## Credits
 
 - [Steve McDougall](https://github.com/JustSteveKing)
-- [All Contributors](https://github.com/JustSteveKing/feed-parser/blob/main/../contributors)
+- [All Contributors](../../contributors)
 
 ## LICENSE
 
-The MIT License (MIT). Please see [License File](https://github.com/JustSteveKing/feed-parser/blob/main/LICENSE) for more information.
+The MIT License (MIT). Please see [License File](./LICENSE) for more information.
+

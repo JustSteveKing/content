@@ -1,25 +1,26 @@
 ---
-name: juststeveking/laravel-transporter
-description: Transporter is a futuristic way to send API requests in PHP. This is an OOP approach to handle API requests.
+name: "juststeveking/laravel-transporter"
+description: "Transporter is a futuristic way to send API requests in PHP. This is an OOP approach to handle API requests."
 packagist: "https://packagist.org/packages/juststeveking/laravel-transporter"
 github: "https://github.com/JustSteveKing/laravel-transporter"
-order: 1
-downloads: 190976
-monthlyDownloads: 5922
+downloads: 194523
+monthlyDownloads: 6280
 stars: 480
-version: dev-main
-updatedAt: 2026-03-09
+version: "3.2.0"
+updatedAt: "2026-03-25"
 ---
 
 # Transporter
 
-[](https://packagist.org/packages/juststeveking/laravel-transporter)
-[](https://github.com/JustSteveKing/laravel-transporter/actions?query=workflow%3Arun-tests+branch%3Amain)
-[](https://packagist.org/packages/juststeveking/laravel-transporter)
+[![Latest Version on Packagist](https://img.shields.io/packagist/v/juststeveking/laravel-transporter.svg?style=flat-square)](https://packagist.org/packages/juststeveking/laravel-transporter)
+[![GitHub Tests Action Status](https://img.shields.io/github/actions/workflow/status/JustSteveKing/laravel-transporter/run-tests.yml?branch=main&label=Tests&style=flat-square)](https://github.com/JustSteveKing/laravel-transporter/actions?query=workflow%3Arun-tests+branch%3Amain)
+[![Total Downloads](https://img.shields.io/packagist/dt/juststeveking/laravel-transporter.svg?style=flat-square)](https://packagist.org/packages/juststeveking/laravel-transporter)
 
 Transporter is a futuristic way to send API requests in PHP. This is an OOP approach to handle API requests.
 
 <p align="center">
+
+![](banner.png)
 
 </p>
 
@@ -55,6 +56,7 @@ php artisan make:api-request NameOfYourRequest
 
 This will by default publish as: `app/Transporter/Requests/NameOfYourRequest.php`
 
+
 ## Usage
 
 Transporter Requests are an extention of Laravels `PendingRequest` so all of the methods available on a Pending Request is available to you on your requests.
@@ -77,6 +79,7 @@ When building your request to send, you can override the following:
 - Request Query Params using `withQuery(array $query)`
 - Request Path using `setPath(string $path)`
 
+
 ### Checking the payload
 
 I had a request in an issue to be able to see the request data for a request, so I have added a helper method called `payload` which will return whatever has been stored in the request `data` property.
@@ -90,6 +93,7 @@ $request = TestRequest::build()
 
 $data = $request->payload(); // ['title' => 'Build a package']
 ```
+
 
 ### Concurrent Requests
 
@@ -259,14 +263,15 @@ Please see [CONTRIBUTING](.github/CONTRIBUTING.md) for details.
 
 ## Security Vulnerabilities
 
-Please review [our security policy](https://github.com/JustSteveKing/laravel-transporter/blob/main/../security/policy) on how to report security vulnerabilities.
+Please review [our security policy](../../security/policy) on how to report security vulnerabilities.
 
 ## Credits
 
 - [Zuzana Kunckova](https://github.com/zuzana-kunckova)
 - [Steve McDougall](https://github.com/JustSteveKing)
-- [All Contributors](https://github.com/JustSteveKing/laravel-transporter/blob/main/../contributors)
+- [All Contributors](../../contributors)
 
 ## License
 
 The MIT License (MIT). Please see [License File](LICENSE.md) for more information.
+

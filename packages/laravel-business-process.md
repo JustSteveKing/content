@@ -1,13 +1,13 @@
 ---
-name: juststeveking/laravel-business-process
-description: Laravel Business Process is a simple and clean way to run business process using a Laravel Pipeline, in a structured and type-safe way.
+name: "juststeveking/laravel-business-process"
+description: "Laravel Business Process is a simple and clean way to run business process using a Laravel Pipeline, in a structured and type-safe way."
 packagist: "https://packagist.org/packages/juststeveking/laravel-business-process"
 github: "https://github.com/JustSteveKing/laravel-business-process"
-downloads: 3395
-monthlyDownloads: 116
+downloads: 3436
+monthlyDownloads: 135
 stars: 66
-version: dev-main
-updatedAt: 2026-03-09
+version: "0.0.1"
+updatedAt: "2026-03-25"
 ---
 
 # Laravel Business Process
@@ -15,7 +15,7 @@ updatedAt: 2026-03-09
 <!-- BADGES_START -->
 [![Latest Version][badge-release]][packagist]
 [![Software License][badge-license]][license]
-[](https://github.com/JustSteveKing/laravel-business-process/actions/workflows/tests.yml)
+[![Run Tests](https://github.com/JustSteveKing/laravel-business-process/actions/workflows/tests.yml/badge.svg)](https://github.com/JustSteveKing/laravel-business-process/actions/workflows/tests.yml)
 [![PHP Version][badge-php]][php]
 [![Total Downloads][badge-downloads]][downloads]
 
@@ -127,8 +127,10 @@ composer run test
 ## Credits
 
 - [Steve McDougall](https://github.com/JustSteveKing)
-- [All Contributors](https://github.com/JustSteveKing/laravel-business-process/blob/main/../contributors)
+- [All Contributors](../../contributors)
 
 ## LICENSE
 
-The MIT License (MIT). Please see [License File](https://github.com/JustSteveKing/laravel-business-process/blob/main/LICENSE) for more information.
+The MIT License (MIT). Please see [License File](./LICENSE) for more information.
+
+

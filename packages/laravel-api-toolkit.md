@@ -1,23 +1,23 @@
 ---
-name: juststeveking/laravel-api-toolkit
-description: A toolkit for creating APIs in Laravel
+name: "juststeveking/laravel-api-toolkit"
+description: "A toolkit for creating APIs in Laravel"
 packagist: "https://packagist.org/packages/juststeveking/laravel-api-toolkit"
 github: "https://github.com/JustSteveKing/laravel-api-toolkit"
-downloads: 448
-monthlyDownloads: 18
+downloads: 455
+monthlyDownloads: 15
 stars: 25
-version: dev-main
-updatedAt: 2026-03-09
+version: "v1.0.0"
+updatedAt: "2026-03-25"
 ---
 
 # A toolkit for creating APIs in Laravel
 
-[](LICENSE.md)
-[](https://php.net)
-[](https://packagist.org/packages/juststeveking/laravel-api-toolkit)
-
-[](https://scrutinizer-ci.com/g/JustSteveKing/laravel-api-toolkit/?branch=main)
-[](https://packagist.org/packages/juststeveking/laravel-api-toolkit)
+[![Software License](https://img.shields.io/badge/license-MIT-brightgreen.svg?style=flat-square)](LICENSE.md)
+[![PHP Version](https://img.shields.io/packagist/php-v/juststeveking/php-sdk.svg?style=flat-square)](https://php.net)
+[![Latest Version on Packagist](https://img.shields.io/packagist/v/juststeveking/laravel-api-toolkit.svg?style=flat-square)](https://packagist.org/packages/juststeveking/laravel-api-toolkit)
+![Tests](https://github.com/JustSteveKing/laravel-api-toolkit/workflows/Tests/badge.svg)
+[![Scrutinizer Code Quality](https://scrutinizer-ci.com/g/JustSteveKing/laravel-api-toolkit/badges/quality-score.png?b=main)](https://scrutinizer-ci.com/g/JustSteveKing/laravel-api-toolkit/?branch=main)
+[![Total Downloads](https://img.shields.io/packagist/dt/juststeveking/laravel-api-toolkit.svg?style=flat-square)](https://packagist.org/packages/juststeveking/laravel-api-toolkit)
 
 A toolkit for creating APIs in Laravel.
 
@@ -122,13 +122,14 @@ Please see [CONTRIBUTING](.github/CONTRIBUTING.md) for details.
 
 ## Security Vulnerabilities
 
-Please review [our security policy](https://github.com/JustSteveKing/laravel-api-toolkit/blob/main/../security/policy) on how to report security vulnerabilities.
+Please review [our security policy](../../security/policy) on how to report security vulnerabilities.
 
 ## Credits
 
 - [Steve McDougall](https://github.com/JustSteveKing)
-- [All Contributors](https://github.com/JustSteveKing/laravel-api-toolkit/blob/main/../contributors)
+- [All Contributors](../../contributors)
 
 ## License
 
 The MIT License (MIT). Please see [License File](LICENSE.md) for more information.
+

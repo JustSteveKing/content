@@ -1,13 +1,13 @@
 ---
-name: juststeveking/sdk-tools
-description: A set of tools you can use to help make better SDKs.
+name: "juststeveking/sdk-tools"
+description: "A set of tools you can use to help make better SDKs."
 packagist: "https://packagist.org/packages/juststeveking/sdk-tools"
 github: "https://github.com/JustSteveKing/sdk-tools"
-downloads: 7191
-monthlyDownloads: 414
+downloads: 7376
+monthlyDownloads: 438
 stars: 20
-version: dev-main
-updatedAt: 2026-03-09
+version: "0.0.5"
+updatedAt: "2026-03-25"
 ---
 
 # JustSteveKing SDK Tools
@@ -15,7 +15,7 @@ updatedAt: 2026-03-09
 <!-- BADGES_START -->
 [![Latest Version][badge-release]][packagist]
 [![Software License][badge-license]][license]
-[](https://github.com/JustSteveKing/sdk-tools/actions/workflows/tests.yml)
+[![Run Tests](https://github.com/JustSteveKing/sdk-tools/actions/workflows/tests.yml/badge.svg)](https://github.com/JustSteveKing/sdk-tools/actions/workflows/tests.yml)
 [![PHP Version][badge-php]][php]
 [![Total Downloads][badge-downloads]][downloads]
 
@@ -279,8 +279,10 @@ composer run test
 ## Credits
 
 - [Steve McDougall](https://github.com/JustSteveKing)
-- [All Contributors](https://github.com/JustSteveKing/sdk-tools/blob/main/../contributors)
+- [All Contributors](../../contributors)
 
 ## LICENSE
 
-The MIT License (MIT). Please see [License File](https://github.com/JustSteveKing/sdk-tools/blob/main/LICENSE) for more information.
+The MIT License (MIT). Please see [License File](./LICENSE) for more information.
+
+

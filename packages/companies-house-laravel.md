@@ -1,24 +1,27 @@
 ---
-name: juststeveking/companies-house-laravel
-description: A Laravel wrapper to get companies house information and validate company numbers
+name: "juststeveking/companies-house-laravel"
+description: "A Laravel wrapper to get companies house information and validate company numbers"
 packagist: "https://packagist.org/packages/juststeveking/companies-house-laravel"
 github: "https://github.com/JustSteveKing/companies-house-laravel"
-downloads: 4087
-monthlyDownloads: 121
+downloads: 4092
+monthlyDownloads: 11
 stars: 22
-version: dev-master
-updatedAt: 2026-03-09
+version: "v1.2.0"
+updatedAt: "2026-03-25"
 ---
 
 # Laravel Companies House
 
 <p align="center">
 
+![](./companies-house-laravel.png)
+
 </p>
 
-[](https://packagist.org/packages/juststeveking/companies-house-laravel)
+[![Latest Version on Packagist](https://img.shields.io/packagist/v/juststeveking/companies-house-laravel.svg?style=flat-square)](https://packagist.org/packages/juststeveking/companies-house-laravel)
+![Tests](https://github.com/juststeveking/companies-house-laravel/workflows/Tests/badge.svg?branch=master)
+[![Total Downloads](https://img.shields.io/packagist/dt/juststeveking/companies-house-laravel.svg?style=flat-square)](https://packagist.org/packages/juststeveking/companies-house-laravel)
 
-[](https://packagist.org/packages/juststeveking/companies-house-laravel)
 
 A Laravel wrapper to get companies house information and validate company numbers.
 
@@ -57,6 +60,7 @@ This library is aimed to be easy to use, and slots into Laravel with no issues.
 
 The package will install a Service Provider for you, meaning that all you need to do is resolve the `Client` from the container, and start using it.
 
+
 ### Get A Company Profile
 
 To get a company profile, you can quite simply:
@@ -79,6 +83,7 @@ class CompanyController extends Controler
 }
 ```
 
+
 ## Get A Companies Officers
 
 You can get a `Collection` of Company Officers using the companies number:
@@ -100,6 +105,7 @@ class CompanyOfficersController extends Controler
     }
 }
 ```
+
 
 ### Get a specific Officer from a Company
 
@@ -124,6 +130,7 @@ class CompanyOfficerController extends Controler
 }
 ```
 
+
 ### Searching
 
 There are a few options when it comes to searching, you can search for:
@@ -132,6 +139,7 @@ There are a few options when it comes to searching, you can search for:
 - officers
 - disqualified officers
 - search all
+
 
 #### Searching for Companies
 
@@ -157,6 +165,7 @@ class CompanySearchController extends Controler
 }
 ```
 
+
 #### Searching for Officers
 
 This will return a `SearchCollection`
@@ -180,6 +189,7 @@ class OfficersSearchController extends Controler
     }
 }
 ```
+
 
 #### Searching everything
 
@@ -219,9 +229,12 @@ $this->validate($request, [
 ]);
 ```
 
+
 ## Testing
 
 To understand how to use this part please follow the Laravel documentation for [Testing the Http Client](https://laravel.com/docs/8.x/http-client#testing)
+
+
 
 Run the unit tests:
 
@@ -244,8 +257,9 @@ If you discover any security related issues, please email juststevemcd@gmail.com
 ## Credits
 
 - [Steve McDougall](https://github.com/JustSteveKing)
-- [All Contributors](https://github.com/JustSteveKing/companies-house-laravel/blob/main/../contributors)
+- [All Contributors](../../contributors)
 
 ## License
 
 The MIT License (MIT). Please see [License File](LICENSE.md) for more information.
+

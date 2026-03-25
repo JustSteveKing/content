@@ -1,13 +1,13 @@
 ---
-name: juststeveking/laravel-webhooks
-description: A simple webhook implementation for Laravel.
+name: "juststeveking/laravel-webhooks"
+description: "A simple webhook implementation for Laravel."
 packagist: "https://packagist.org/packages/juststeveking/laravel-webhooks"
 github: "https://github.com/JustSteveKing/laravel-webhooks"
 downloads: 16
 monthlyDownloads: 0
 stars: 83
-version: dev-main
-updatedAt: 2026-03-09
+version: "0.0.51"
+updatedAt: "2026-03-25"
 ---
 
 # Laravel Webhooks
@@ -15,7 +15,7 @@ updatedAt: 2026-03-09
 <!-- BADGES_START -->
 [![Latest Version][badge-release]][packagist]
 [![Software License][badge-license]][license]
-[](https://github.com/JustSteveKing/laravel-webhooks/actions/workflows/tests.yml)
+[![Run Tests](https://github.com/JustSteveKing/laravel-webhooks/actions/workflows/tests.yml/badge.svg)](https://github.com/JustSteveKing/laravel-webhooks/actions/workflows/tests.yml)
 [![PHP Version][badge-php]][php]
 [![Total Downloads][badge-downloads]][downloads]
 
@@ -142,8 +142,9 @@ composer run test
 ## Credits
 
 - [Steve McDougall](https://github.com/JustSteveKing)
-- [All Contributors](https://github.com/JustSteveKing/laravel-webhooks/blob/main/../contributors)
+- [All Contributors](../../contributors)
 
 ## LICENSE
 
-The MIT License (MIT). Please see [License File](https://github.com/JustSteveKing/laravel-webhooks/blob/main/LICENSE) for more information.
+The MIT License (MIT). Please see [License File](./LICENSE) for more information.
+

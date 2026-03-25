@@ -1,16 +1,18 @@
 ---
-name: juststeveking/workflow
-description: This package is aimed to be a simplistic PHP workflow package that works in a similar fashion to GitHub Actions.
+name: "juststeveking/workflow"
+description: "This package is aimed to be a simplistic PHP workflow package that works in a similar fashion to GitHub Actions."
 packagist: "https://packagist.org/packages/juststeveking/workflow"
 github: "https://github.com/JustSteveKing/workflow"
 downloads: 2
 monthlyDownloads: 0
 stars: 4
-version: dev-main
-updatedAt: 2026-03-09
+version: "0.0.1"
+updatedAt: "2026-03-25"
 ---
 
-[](https://github.com/JustSteveKing/workflow/actions/workflows/test.yml)
+# Workflow
+
+[![Tests](https://github.com/JustSteveKing/workflow/actions/workflows/test.yml/badge.svg?branch=main)](https://github.com/JustSteveKing/workflow/actions/workflows/test.yml)
 
 This package is aimed to be a simplistic PHP workflow package that works in a similar fashion to GitHub Actions.
 
@@ -152,3 +154,4 @@ Each Job for each workflow anythings returned will be added to an internal log o
 ```php
 $runner->logs();
 ```
+

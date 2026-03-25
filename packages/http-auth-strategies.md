@@ -1,13 +1,13 @@
 ---
-name: juststeveking/http-auth-strategies
-description: A simple PHP package that is used to create different Http Auth Headers
+name: "juststeveking/http-auth-strategies"
+description: "A simple PHP package that is used to create different Http Auth Headers"
 packagist: "https://packagist.org/packages/juststeveking/http-auth-strategies"
 github: "https://github.com/JustSteveKing/http-auth-strategies"
-downloads: 70296
-monthlyDownloads: 450
+downloads: 70632
+monthlyDownloads: 566
 stars: 8
-version: dev-main
-updatedAt: 2026-03-09
+version: "v1.2.0"
+updatedAt: "2026-03-25"
 ---
 
 # Http Auth Strategies
@@ -15,7 +15,8 @@ updatedAt: 2026-03-09
 <!-- BADGES_START -->
 [![Latest Version][badge-release]][packagist]
 [![PHP Version][badge-php]][php]
-
+![tests](https://github.com/JustSteveKing/http-auth-strategies/workflows/tests/badge.svg)
+![Check & fix styling](https://github.com/JustSteveKing/http-auth-strategies/workflows/Code%20style/badge.svg)
 [![Total Downloads][badge-downloads]][downloads]
 
 [badge-release]: https://img.shields.io/packagist/v/juststeveking/http-auth-strategies.svg?style=flat-square&label=release
@@ -70,3 +71,4 @@ $strategy->setHeaderName('X-API-KEY');
 $strategy->getHeader('Bearer');
 // ['X-API-KEY' => 'Bearer your-api-key']
 ```
+

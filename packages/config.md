@@ -1,21 +1,23 @@
 ---
-name: juststeveking/config
-description: A simple dot notation connfiguration package
+name: "juststeveking/config"
+description: "A simple dot notation connfiguration package"
 packagist: "https://packagist.org/packages/juststeveking/config"
 github: "https://github.com/JustSteveKing/config"
 downloads: 158
 monthlyDownloads: 0
 stars: 1
-version: dev-master
-updatedAt: 2026-03-09
+version: "v2.0.0"
+updatedAt: "2026-03-25"
 ---
+
+# Config
 
 <!-- BADGES_START -->
 [![Latest Version][badge-release]][packagist]
 [![Software License][badge-license]][license]
 [![PHP Version][badge-php]][php]
-
-[](https://scrutinizer-ci.com/g/JustSteveKing/config/?branch=master)
+![run-tests](https://github.com/JustSteveKing/config/workflows/run-tests/badge.svg)
+[![Scrutinizer Code Quality](https://scrutinizer-ci.com/g/JustSteveKing/config/badges/quality-score.png?b=master)](https://scrutinizer-ci.com/g/JustSteveKing/config/?branch=master)
 [![Total Downloads][badge-downloads]][downloads]
 
 [badge-release]: https://img.shields.io/packagist/v/juststeveking/config.svg?style=flat-square&label=release
@@ -30,9 +32,11 @@ updatedAt: 2026-03-09
 [downloads]: https://packagist.org/packages/juststeveking/config
 <!-- BADGES_END -->
 
+
 **Please note, this package is a work in progress. While there will be no breaking changes a stable release is not yet available**
 
 A simple dot notation configuration package.
+
 
 ## Installing
 
@@ -43,6 +47,7 @@ $ composer require juststeveking/config
 ```
 
 You are then to use this package however you need.
+
 
 ## Usage
 
@@ -86,3 +91,4 @@ $ ./vendor/bin/phpunit --testdox
 ## Security
 
 If you discover any security related issues, please email juststevemcd@gmail.com instead of using the issue tracker.
+

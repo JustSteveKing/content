@@ -1,13 +1,13 @@
 ---
-name: juststeveking/cloudevents
-description: Cloud Events in PHP.
+name: "juststeveking/cloudevents"
+description: "Cloud Events in PHP."
 packagist: "https://packagist.org/packages/juststeveking/cloudevents"
 github: "https://github.com/JustSteveKing/cloudevents"
 downloads: 2
 monthlyDownloads: 0
 stars: 4
-version: dev-main
-updatedAt: 2026-03-09
+version: "0.0.1"
+updatedAt: "2026-03-25"
 ---
 
 # Cloud Events PHP
@@ -15,7 +15,7 @@ updatedAt: 2026-03-09
 <!-- BADGES_START -->
 [![Latest Version][badge-release]][packagist]
 [![PHP Version][badge-php]][php]
-[](https://github.com/JustSteveKing/cloudevents/actions/workflows/ci.yml)
+[![Tests](https://github.com/JustSteveKing/cloudevents/actions/workflows/ci.yml/badge.svg)](https://github.com/JustSteveKing/cloudevents/actions/workflows/ci.yml)
 [![Total Downloads][badge-downloads]][downloads]
 
 [badge-release]: https://img.shields.io/packagist/v/juststeveking/cloudevents.svg?style=flat-square&label=release
@@ -29,21 +29,21 @@ updatedAt: 2026-03-09
 Welcome to the **Cloud Events PHP** repository! This library enables you to create and manage [Cloud Events](https://cloudevents.io/) in PHP with ease.
 
 ## Table of Contents
-- [Installation](https://github.com/JustSteveKing/cloudevents/blob/main#installation)
-- [Usage](https://github.com/JustSteveKing/cloudevents/blob/main#usage)
-- [Features](https://github.com/JustSteveKing/cloudevents/blob/main#features)
-- [Properties](https://github.com/JustSteveKing/cloudevents/blob/main#properties)
-- [Why Cloud Events?](https://github.com/JustSteveKing/cloudevents/blob/main#why-cloud-events)
-- [Examples](https://github.com/JustSteveKing/cloudevents/blob/main#examples)
-  - [Distributed Systems Communication](https://github.com/JustSteveKing/cloudevents/blob/main#distributed-systems-communication)
-  - [Audit Trail & Logging](https://github.com/JustSteveKing/cloudevents/blob/main#audit-trail--logging)
-  - [Integration Scenarios](https://github.com/JustSteveKing/cloudevents/blob/main#integration-scenarios)
-  - [Common Use Cases](https://github.com/JustSteveKing/cloudevents/blob/main#common-use-cases)
-  - [Example 1: User Registration Event](https://github.com/JustSteveKing/cloudevents/blob/main#example-1-user-registration-event)
-  - [Example 2: Order Created Event](https://github.com/JustSteveKing/cloudevents/blob/main#example-2-order-created-event)
-  - [Example 3: File Upload Event](https://github.com/JustSteveKing/cloudevents/blob/main#example-3-file-upload-event)
-- [Contributing](https://github.com/JustSteveKing/cloudevents/blob/main#contributing)
-- [License](https://github.com/JustSteveKing/cloudevents/blob/main#license)
+- [Installation](#installation)
+- [Usage](#usage)
+- [Features](#features)
+- [Properties](#properties)
+- [Why Cloud Events?](#why-cloud-events)
+- [Examples](#examples)
+  - [Distributed Systems Communication](#distributed-systems-communication)
+  - [Audit Trail & Logging](#audit-trail--logging)
+  - [Integration Scenarios](#integration-scenarios)
+  - [Common Use Cases](#common-use-cases)
+  - [Example 1: User Registration Event](#example-1-user-registration-event)
+  - [Example 2: Order Created Event](#example-2-order-created-event)
+  - [Example 3: File Upload Event](#example-3-file-upload-event)
+- [Contributing](#contributing)
+- [License](#license)
 
 ## Installation
 
@@ -94,6 +94,7 @@ $event = CloudEvent::make([
 - Easy creation and management of Cloud Events
 - Flexible event data structure
 
+
 ## Properties
 
 - `id`: Identifies the event. Producers MUST ensure that source + id is unique for each distinct event. If a duplicate event is re-sent (e.g. due to a network error) it MAY have the same id. Consumers MAY assume that Events with identical source and id are duplicates.
@@ -104,6 +105,7 @@ $event = CloudEvent::make([
 - `dataSchema`: Identifies the schema that data adheres to. Incompatible changes to the schema SHOULD be reflected by a different URI. See Versioning of CloudEvents in the Primer for more information.
 - `subject`: This describes the subject of the event in the context of the event producer (identified by source). In publish-subscribe scenarios, a subscriber will typically subscribe to events emitted by a source, but the source identifier alone might not be sufficient as a qualifier for any specific event if the source context has internal sub-structure.
 - `time`: Timestamp of when the occurrence happened. If the time of the occurrence cannot be determined then this attribute MAY be set to some other time (such as the current time) by the CloudEvents producer, however all producers for the same source MUST be consistent in this respect. In other words, either they all use the actual time of the occurrence or they all use the same algorithm to determine the value used.
+
 
 ## Why Cloud Events?
 
@@ -133,6 +135,7 @@ Here are some examples of how you could use this library to create Cloud Events.
 - Business transactions (orders, payments, refunds)
 - System events (backup completed, error occurred)
 - Resource state changes (document updated, image processed)
+
 
 The key benefit is that cloud events provide a consistent, standardized format for event data across different systems and platforms, making it easier to build reliable, interoperable event-driven architectures.
 
@@ -202,3 +205,4 @@ $uploadEvent = CloudEvent::make([
 ## License
 
 This project is licensed under the MIT License. See the [LICENSE](LICENSE) file for details.
+

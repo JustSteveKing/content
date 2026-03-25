@@ -1,19 +1,19 @@
 ---
-name: juststeveking/laravel-redoc
-description: A simple API documentation package for Laravel using OpenAPI and Redoc
+name: "juststeveking/laravel-redoc"
+description: "A simple API documentation package for Laravel using OpenAPI and Redoc"
 packagist: "https://packagist.org/packages/juststeveking/laravel-redoc"
 github: "https://github.com/JustSteveKing/laravel-redoc"
-downloads: 285168
-monthlyDownloads: 11459
+downloads: 289335
+monthlyDownloads: 10613
 stars: 92
-version: dev-main
-updatedAt: 2026-03-09
+version: "2.1.0"
+updatedAt: "2026-03-25"
 ---
 
 # Laravel Redoc
 
 [![Latest Version on Packagist][ico-version]][link-packagist]
-[
+[![Software License][ico-license]](LICENSE.md)
 [![Build Status][ico-github-action]][link-github-action]
 [![Total Downloads][ico-downloads]][link-downloads]
 
@@ -74,19 +74,23 @@ return [
 ];
 ```
 
+
 ## Contributing
 
 Please see [CONTRIBUTING](CONTRIBUTING.md) and [CODE_OF_CONDUCT](CODE_OF_CONDUCT.md) for details.
 
+
 ## Security
 
 If you discover any security related issues, please email juststevemcd@gmail.com instead of using the issue tracker.
+
 
 ## Credits
 
 - [Steve McDougall][link-author]
 - [All Contributors][link-contributors]
 - [Redocly Team for their open source tool redoc](https://github.com/Redocly/redoc)
+
 
 ## License
 

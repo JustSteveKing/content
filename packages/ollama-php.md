@@ -1,13 +1,13 @@
 ---
-name: juststeveking/ollama-php
-description: A PHP SDK for interacting with the Ollama API.
+name: "juststeveking/ollama-php"
+description: "A PHP SDK for interacting with the Ollama API."
 packagist: "https://packagist.org/packages/juststeveking/ollama-php"
 github: "https://github.com/JustSteveKing/ollama-php"
-downloads: 78
+downloads: 79
 monthlyDownloads: 1
 stars: 27
-version: dev-main
-updatedAt: 2026-03-09
+version: "dev-main"
+updatedAt: "2026-03-25"
 ---
 
 # Ollama PHP SDK
@@ -116,3 +116,4 @@ $sdk->generate(Prompt::make([
 ```
 
 This will return an instance of `GenerateResponse`.
+

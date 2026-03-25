@@ -12,7 +12,8 @@
   "scripts": {
     "verify-schema": "bun scripts/verify-schema.ts",
     "stats": "bun scripts/stats.ts",
-    "sync-youtube": "bun scripts/sync-youtube.ts"
+    "sync-youtube": "bun scripts/sync-youtube.ts",
+    "sync-packages": "bun scripts/sync-packages.ts"
   },
   "dependencies": {
     "ajv": "^8.18.0",

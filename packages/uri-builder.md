@@ -1,16 +1,18 @@
 ---
-name: juststeveking/uri-builder
-description: A simple URI builder in PHP that is slightly opinionated
+name: "juststeveking/uri-builder"
+description: "A simple URI builder in PHP that is slightly opinionated"
 packagist: "https://packagist.org/packages/juststeveking/uri-builder"
 github: "https://github.com/JustSteveKing/uri-builder"
-downloads: 280902
-monthlyDownloads: 6613
+downloads: 284866
+monthlyDownloads: 7057
 stars: 20
-version: dev-main
-updatedAt: 2026-03-09
+version: "v1.1.0"
+updatedAt: "2026-03-25"
 ---
 
 <p align="center">
+
+![](./uri-builder.png)
 
 </p>
 
@@ -18,8 +20,8 @@ updatedAt: 2026-03-09
 <!-- BADGES_START -->
 [![Latest Version][badge-release]][packagist]
 [![PHP Version][badge-php]][php]
-
-[](https://scrutinizer-ci.com/g/JustSteveKing/uri-builder/?branch=main)
+![tests](https://github.com/JustSteveKing/uri-builder/workflows/tests/badge.svg)
+[![Scrutinizer Code Quality](https://scrutinizer-ci.com/g/JustSteveKing/uri-builder/badges/quality-score.png?b=main)](https://scrutinizer-ci.com/g/JustSteveKing/uri-builder/?branch=main)
 [![Total Downloads][badge-downloads]][downloads]
 
 [badge-release]: https://img.shields.io/packagist/v/juststeveking/uri-builder.svg?style=flat-square&label=release
@@ -36,6 +38,7 @@ A simple URI builder in PHP that is slightly opinionated
 ## Purpose
 
 The purpose of this package is to provide a fluent interface to build JSON:API compliant URI strings.
+
 
 ## Usage
 
@@ -117,3 +120,4 @@ $url->addQueryParam('include', 'test,another,options')
     ->addQueryParam('published', true, true);
 ```
 The output will be: `https://www.domain.com/api/v1/resource?include=test,another,options&published=true`
+

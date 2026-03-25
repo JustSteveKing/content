@@ -1,24 +1,26 @@
 ---
-name: juststeveking/laravel-feature-flags
-description: A simple to use Feature Flags package for Laravel
+name: "juststeveking/laravel-feature-flags"
+description: "A simple to use Feature Flags package for Laravel"
 packagist: "https://packagist.org/packages/juststeveking/laravel-feature-flags"
 github: "https://github.com/JustSteveKing/laravel-feature-flags"
-downloads: 50493
-monthlyDownloads: 231
+downloads: 50686
+monthlyDownloads: 279
 stars: 177
-version: dev-main
-updatedAt: 2026-03-09
+version: "1.4.0"
+updatedAt: "2026-03-25"
 ---
 
 # Laravel Feature Flags
 
-[
-[](https://php.net)
-[](https://github.com/JustSteveKing/laravel-feature-flags/actions/workflows/tests.yml)
+[![Software License][ico-license]](LICENSE.md)
+[![PHP Version](https://img.shields.io/packagist/php-v/juststeveking/laravel-feature-flags.svg?style=flat-square)](https://php.net)
+[![Run Tests](https://github.com/JustSteveKing/laravel-feature-flags/actions/workflows/tests.yml/badge.svg)](https://github.com/JustSteveKing/laravel-feature-flags/actions/workflows/tests.yml)
 [![Latest Version on Packagist][ico-version]][link-packagist]
 [![Total Downloads][ico-downloads]][link-downloads]
 
 <p align="center">
+
+![](banner.png)
 
 </p>
 
@@ -74,7 +76,9 @@ php artisan migrate
 
 This package allows you to manage user features and feature groups in a database.
 
+
 **All Feature and Feature Group names will be normalised to lower case on save.**
+
 
 To use this package your User model needs to have the `HasFeatures` trait:
 
@@ -315,3 +319,4 @@ The MIT License (MIT). Please see [License File](LICENSE.md) for more informatio
 
 [link-author]: https://github.com/JustSteveKing
 [link-contributors]: ../../contributors
+
