@@ -1,0 +1,81 @@
+---
+title: "Scaling Engineering Teams Without Losing Velocity"
+description: "Growth slows you down before it speeds you up. Here's how to design your org structure, hiring cycles, and cross-team coordination to avoid the common traps that kill velocity as you scale."
+category: Management
+pubDate: 2026-03-27
+minRead: 12
+author:
+  name: Steve McDougall
+  avatar:
+    src: https://avatars.githubusercontent.com/u/6368379?v=4
+    alt: Steve McDougall
+tags: ["engineering-management", "leadership", "career-transition", "team-culture", "management-skills"]
+---
+
+Here is something that surprises almost every engineering manager the first time they live through it: growth slows you down before it speeds you up.
+
+You hire five more engineers. You expect output to increase proportionally. Instead, things get messier. PRs take longer to review. Standups run over. Someone built a feature that conflicts with something another team was working on. The planning process that worked for eight people completely breaks down at fifteen. Velocity, by most measures, actually drops.
+
+This is not a failure of hiring. It is a failure of org design. And it happens so reliably, at so many companies, that it has become one of the most predictable traps in engineering leadership.
+
+The good news is that it is largely avoidable if you think about the structural side of growth before you need it, rather than after things are already falling apart. That is what this article is about. Not headcount strategy in the abstract, but the practical mechanics of how teams grow: org structure, hiring cycles, cross-team coordination, and the specific bottlenecks that kill velocity as you scale.
+
+I want to start with the thing most scaling guides skip, which is the relationship between team size and communication overhead. It is not intuitive until you see the numbers.
+
+When you have a team of four engineers, there are six possible communication paths between them. Add a fifth person and you get ten. Add a sixth and you get fifteen. The formula is `n(n-1)/2`, and the point is not to memorise it but to understand the curve. Every person you add increases the number of relationships, dependencies, and potential misalignments on the team. At some point, that overhead exceeds the capacity benefit of adding another person.
+
+This is what Brooks' Law is actually pointing at when it says adding manpower to a late software project makes it later. It is not that people are useless. It is that onboarding and coordination costs are real, and if you add people without managing the structural overhead, you pay more than you gain.
+
+The practical implication is that teams above a certain size need organisational structure to remain effective, not because structure is inherently good, but because it reduces the surface area of coordination that each person has to manage. Smaller, autonomous teams with clear ownership can each operate with low overhead while the aggregate output scales. This is the core logic behind the two-pizza team concept, and it holds up in practice even if the pizza metric itself is a bit silly.
+
+So when should you split a team? The signals I watch for:
+- when more than half your standup is irrelevant to most of the people in it
+- when engineers are regularly blocked waiting for decisions from a single point of authority
+- when the codebase has grown to the point where nobody fully understands the system end-to-end
+- when you have grown past eight or nine people and the coordination overhead is visibly slowing things down.
+
+Any one of those is a reasonable trigger. Two or more at once and you are already overdue.
+
+How you split matters as much as when. The worst splits are by technical layer; frontend team, backend team, infrastructure team. That structure creates handoff-heavy workflows where a single feature requires coordination across three teams and nobody owns the outcome end-to-end. Conway's Law tells you that your org structure will reflect your system architecture, so if you want loosely coupled systems, you need loosely coupled teams with bounded ownership. Organise around product domains or user-facing capabilities instead. A team that owns the payments experience end-to-end - from the frontend interaction to the backend logic to the database schema - can move fast without waiting on anyone else.
+
+The flip side of this is that you need to be deliberate about shared infrastructure. When teams own their domains end-to-end, they will inevitably have shared concerns: authentication, logging, deployment pipelines, internal libraries. Left unaddressed, every team solves these independently and you end up with seven slightly different implementations of the same thing. The solution is a platform or infrastructure function - a small team explicitly chartered to own the things that are shared - with a strong bias toward building self-service tooling rather than becoming a bottleneck that product teams have to request work from.
+
+Now let's talk about hiring cycles, because this is where a lot of scaling plans go wrong in a different way.
+
+Hiring has a lag. From the moment you open a role to the moment a new hire is meaningfully contributing is typically four to six months, sometimes more. That includes recruiting time, interview process, notice period, onboarding, and ramp-up. If you wait until your team is visibly overloaded to start hiring, you will be waiting for relief for a long time while the people already on your team burn out.
+
+The right time to start a hiring cycle is before you need the capacity, not when you need it. That requires a planning horizon most engineering managers are not used to operating on. You need to look three to six months out and ask: what does this team need to look like at that point, given what we have committed to delivering? Work backward from that and you will usually find that you needed to start hiring two months ago.
+
+This requires building a relationship with your recruiting function and being a genuine partner rather than just a consumer. Understand what is in the pipeline. Give fast, specific feedback on candidates. Keep your job descriptions current. Show up to sourcing conversations. Engineering managers who treat recruiting as someone else's job tend to have longer time-to-hire and weaker candidate pools than those who engage actively.
+
+One thing worth doing if you have the data: track your actual time-to-productivity for new hires by role and seniority. Not time-to-hire, but time-to-first-meaningful-contribution and time-to-full-productivity. That data tells you how far ahead you need to plan, and it often reveals onboarding gaps that are adding weeks of unnecessary ramp-up time.
+
+Cross-team handoffs are where velocity goes to die once you have multiple teams. I have seen this pattern so many times it is almost a cliche: two teams are working on adjacent parts of a system, the interface between them is not well defined, and what should be a clean integration turns into a weeks-long negotiation over API contracts, data ownership, and who is responsible for what.
+
+The solution is not more meetings between teams. It is clearer ownership and better written contracts upfront. Before work begins on anything that spans team boundaries, you want a written definition of: who owns what, what the interface looks like, what the expected behaviour is, and what the escalation path is when something goes wrong. This does not have to be elaborate. A short technical spec or an RFC that both teams have reviewed and agreed to is usually enough.
+
+Some teams formalise this with an internal RFC process, where any significant technical change that affects other teams requires a written proposal with a comment period before work begins. Done lightly, this is genuinely useful. Done heavily, it becomes bureaucratic overhead that slows everything down. The right level depends on your team size and the pace of change in your system. At ten engineers, a quick shared doc and a Slack thread is probably enough. At fifty, you probably want something more structured.
+
+Dependency management is a related problem that gets worse as teams scale. When team A is blocked on team B's work, that is a velocity killer. The standard advice is to minimise cross-team dependencies, which is correct but not always achievable. When dependencies are unavoidable, the goal is to surface them as early as possible, sequence work so that the dependent team can start on other things, and have a clear escalation path when a dependency is at risk of slipping.
+
+This is one of the things that makes engineering planning genuinely hard at scale. You are not just sequencing work within a team. You are managing a dependency graph across multiple teams, each with their own priorities and constraints. The teams that do this well treat inter-team dependencies as first-class items in planning - visible, tracked, and actively managed - rather than background assumptions that only surface when they blow up.
+
+Let me talk about a specific bottleneck that I see consistently kill velocity in growing teams: the single point of decision authority.
+
+It usually starts innocuously. A senior engineer or tech lead has strong opinions and good judgment, so decisions naturally flow through them. This works fine at small scale. At scale, it creates a queue. Every architectural decision, every significant PR, every cross-cutting concern sits waiting for one person's input. That person becomes increasingly overloaded and increasingly a blocker, not because they are doing anything wrong but because the structure has not kept up with the team's growth.
+
+The solution is to distribute decision-making authority deliberately. That means being explicit about who has authority over what class of decision, investing in documentation and principles that allow people to make good decisions independently, and creating a culture where "I made a call and here is my reasoning" is the norm rather than "I waited for someone to tell me what to do."
+
+This requires accepting that some decisions made without your input will be decisions you would have made differently. That is an uncomfortable tradeoff. But a slightly suboptimal decision made quickly and autonomously is almost always better for team velocity than the perfect decision that took two weeks to reach because everything had to go through one person.
+
+The other bottleneck worth naming explicitly is the release process. Teams that can deploy independently and safely move faster than teams that share a deployment pipeline or a release schedule. If your release process requires coordination across multiple teams or a human approval gate that creates a queue, that is a structural constraint on your velocity that hiring more people will not fix. Investing in a deployment pipeline that gives teams independent, safe, fast release capability is one of the highest-leverage infrastructure investments you can make as you scale.
+
+There is a meta-principle underlying most of what I have described: the goal of organisational design as you scale is to keep the blast radius of any individual team's decisions small while maximising their autonomy within that boundary. Small blast radius means that when a team makes a mistake, it does not cascade across the whole system. High autonomy means the team can move fast without waiting for permission or coordination.
+
+Those two things are in tension, and the job of engineering leadership is to find the right balance for your organisation at its current size and stage. The balance shifts as you grow. What worked at fifteen engineers will break at forty. What works at forty will need to change at a hundred. The managers who navigate this well are the ones who keep asking "is our structure still serving us, or are we serving our structure?" and are willing to change the answer when it needs to change.
+
+Growth is not just an execution problem. It is a design problem. The teams that scale well treat their org structure, hiring cadence, and cross-team coordination as things that need to be actively designed and maintained, not defaults that exist until they break.
+
+Start designing before you need to. You will be glad you did.
+
+*Next in the series: Building Psychological Safety in Engineering -- creating a culture where failure is a learning opportunity, not a liability.*
