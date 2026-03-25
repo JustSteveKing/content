@@ -44,25 +44,51 @@
       "position": "Technical Director",
       "startDate": "2024-10-01",
       "highlights": [
-        "Architected scalable Laravel 11 SaaS platform serving 10,000+ users",
-        "Implemented API-first design reducing technical debt by 60%",
-        "Led CI/CD improvements boosting deployment speed by 40%",
-        "Mentored 5-person development team, improving code quality scores by 35%"
+        "Designed and delivered a Laravel 11 SaaS platform serving thousands of users",
+        "Established API-first development practices to reduce technical debt",
+        "Improved deployment workflows with modern CI/CD automation",
+        "Mentored a development team, introducing code review and best practices"
       ],
-      "summary": "Architected a scalable Laravel SaaS platform with API-first design, enhancing maintainability and flexibility for a rapidly growing user base. Led comprehensive technical strategy including infrastructure modernization and CI/CD pipeline optimization. As fractional CTO, provided strategic guidance on hiring, roadmap planning, and product vision while directly mentoring developers to elevate code quality and team productivity.",
+      "summary": "Architected and launched a scalable Laravel SaaS platform using an API-first approach, supporting rapid user growth and seamless feature expansion. Led technical strategy, modernized infrastructure, and optimized CI/CD pipelines. As fractional CTO, guided hiring, roadmap planning, and product direction, while mentoring developers to improve code quality and team collaboration.",
       "url": "https://www.linkedin.com/company/lilafuches/",
-      "technologies": ["Laravel 11", "PHP 8.x", "API Design", "CI/CD", "AWS"]
+      "technologies": [
+        "Laravel 11",
+        "PHP 8.x",
+        "API Design",
+        "CI/CD",
+        "AWS"
+      ]
+    },
+    {
+      "name": "certificates.dev",
+      "position": "Laravel Content Owner",
+      "startDate": "2026-03-01",
+      "highlights": [
+        "Created the Laravel certification curriculum",
+        "Designed and authored code challenges for candidate assessment",
+        "Led and facilitated Laravel bootcamps for developer upskilling",
+        "Represented certificates.dev at industry events and conferences as a speaker"
+      ],
+      "summary": "Responsible for creating the Laravel certification curriculum, designing code challenges, running bootcamps, and representing certificates.dev at industry events and conferences as a speaker.",
+      "url": "https://certificates.dev/",
+      "technologies": [
+        "Laravel",
+        "Curriculum Design",
+        "Technical Writing",
+        "Public Speaking",
+        "Developer Education"
+      ]
     },
     {
       "name": "PHP FIG (Framework Interoperability Group)",
       "position": "Core Committee Member",
       "startDate": "2024-02-01",
       "highlights": [
-        "Contributing to PSR standards affecting millions of PHP developers worldwide",
-        "Reviewing and voting on critical PHP interoperability proposals",
-        "Representing real-world developer perspectives in standardization processes"
+        "Drafted and reviewed PSR standards for PHP framework interoperability",
+        "Participated in proposal discussions and formal voting on new standards",
+        "Provided practical developer feedback to guide standardization decisions"
       ],
-      "summary": "Shape PHP language standards by contributing to proposals and RFCs focused on framework interoperability. Engage directly with the global PHP community to drive adoption of PSR standards and best practices. Provide crucial real-world developer insights to guide standardization efforts that impact the entire PHP ecosystem.",
+      "summary": "Contributed to PHP language standards by drafting and reviewing proposals focused on framework interoperability. Participated in open discussions and formal voting processes. Shared practical developer insights to help guide the direction of new PSR standards adopted by the PHP community.",
       "url": "https://www.linkedin.com/company/php-fig/",
       "technologies": [
         "PHP",
@@ -74,7 +100,6 @@
       "name": "php[architect]",
       "position": "Technical Columnist",
       "startDate": "2023-08-01",
-      "endDate": "2025-01-31",
       "highlights": [
         "Published 12+ monthly deep-dive articles reaching 50,000+ developers",
         "Covered advanced PHP 8.x features, Laravel patterns, and architectural best practices",
@@ -82,7 +107,12 @@
       ],
       "summary": "Authored monthly technical deep-dives on advanced PHP topics and architectural best practices for one of the industry's most respected publications. Simplified complex concepts for a broad developer audience using storytelling techniques and clear, practical examples. Collaborated closely with editorial teams to ensure technical accuracy and maximum reader value.",
       "url": "https://www.linkedin.com/company/phparch/",
-      "technologies": ["PHP", "Laravel", "Software Architecture", "Technical Writing"]
+      "technologies": [
+        "PHP",
+        "Laravel",
+        "Software Architecture",
+        "Technical Writing"
+      ]
     },
     {
       "name": "Treblle",
@@ -98,7 +128,12 @@
       "summary": "Led comprehensive developer education initiatives, creating extensive technical content library that significantly increased API adoption and community engagement. Represented Treblle at major international conferences, gathering critical community feedback that directly influenced product roadmap. Built practical demo projects and sample code that dramatically simplified product onboarding and accelerated developer success.",
       "url": "https://www.linkedin.com/company/treblle/",
       "location": "Remote",
-      "technologies": ["Developer Advocacy", "API Design", "Public Speaking", "Content Strategy"]
+      "technologies": [
+        "Developer Advocacy",
+        "API Design",
+        "Public Speaking",
+        "Content Strategy"
+      ]
     },
     {
       "name": "Laravel News",
@@ -112,7 +147,12 @@
       ],
       "summary": "Published comprehensive articles on Laravel internals, package development, and architectural best practices for the Laravel community's primary news source. Produced educational content specifically targeting intermediate-to-advanced Laravel developers, focusing on real-world application and performance optimization. Actively highlighted innovative open-source projects and community contributions to foster ecosystem growth.",
       "url": "https://www.linkedin.com/company/laravel-news/",
-      "technologies": ["Laravel", "PHP", "Technical Writing", "Open Source"]
+      "technologies": [
+        "Laravel",
+        "PHP",
+        "Technical Writing",
+        "Open Source"
+      ]
     },
     {
       "name": "Geomiq",
@@ -128,7 +168,13 @@
       "summary": "Managed cross-functional engineering teams delivering high-performance Laravel applications for major manufacturing clients. Implemented comprehensive process improvements including enhanced code review workflows and automated testing, resulting in significant bug reduction. Mentored engineers through structured career development programs and technical coaching sessions.",
       "url": "https://www.linkedin.com/company/geomiq/",
       "location": "Remote",
-      "technologies": ["Engineering Management", "Laravel", "CI/CD", "PostgreSQL", "Redis"]
+      "technologies": [
+        "Engineering Management",
+        "Laravel",
+        "CI/CD",
+        "PostgreSQL",
+        "Redis"
+      ]
     },
     {
       "name": "Mumsnet",
@@ -143,7 +189,13 @@
       "summary": "Led backend engineering for one of the UK's highest-traffic community platforms, architecting Laravel solutions for millions of users. Designed and maintained critical APIs that improved system reliability and dramatically reduced response times. Collaborated closely with product and design teams to ship engagement-driving features while mentoring junior engineers and establishing improved development workflows.",
       "url": "https://www.linkedin.com/company/mumsnet/",
       "location": "Remote",
-      "technologies": ["Laravel", "MySQL", "Varnish", "Redis", "High Traffic Systems"]
+      "technologies": [
+        "Laravel",
+        "MySQL",
+        "Varnish",
+        "Redis",
+        "High Traffic Systems"
+      ]
     },
     {
       "name": "PHP South Wales",
@@ -158,7 +210,11 @@
       ],
       "summary": "Created PHP South Wales to bring developers together regardless of background or experience level. Hosted monthly events featuring diverse speakers and topics, fostering continuous learning and professional growth. Built a welcoming community that became a launching pad for many developers' careers and established lasting connections across the Welsh tech scene.",
       "url": "https://www.linkedin.com/company/php-south-wales/",
-      "technologies": ["Community Building", "Event Organization", "Public Speaking"]
+      "technologies": [
+        "Community Building",
+        "Event Organization",
+        "Public Speaking"
+      ]
     },
     {
       "name": "Car & Classic",
@@ -173,7 +229,12 @@
       "summary": "Oversaw talented engineering team building Laravel-powered systems for the UK and Europe's largest classic car marketplace. Introduced structured agile planning processes that improved team velocity and delivery consistency. Led infrastructure initiatives ensuring exceptional uptime while fostering high-trust, high-impact team culture through regular coaching and mentorship.",
       "url": "https://www.linkedin.com/company/car-and-classic-limited/",
       "location": "Remote",
-      "technologies": ["Engineering Management", "Laravel", "Agile", "E-commerce"]
+      "technologies": [
+        "Engineering Management",
+        "Laravel",
+        "Agile",
+        "E-commerce"
+      ]
     },
     {
       "name": "Jump Twenty Four",
@@ -189,7 +250,12 @@
       "summary": "Led engineering initiatives across multiple client projects at a Laravel-focused digital agency, from discovery through technical delivery. Implemented comprehensive CI/CD automation that dramatically reduced release times while establishing rigorous testing and code quality standards. Played key role in hiring and onboarding while shaping a culture of technical craftsmanship and accountability.",
       "url": "https://www.linkedin.com/company/jump-twenty-four/",
       "location": "Remote",
-      "technologies": ["Engineering Management", "Laravel", "CI/CD", "Testing Standards"]
+      "technologies": [
+        "Engineering Management",
+        "Laravel",
+        "CI/CD",
+        "Testing Standards"
+      ]
     },
     {
       "name": "Squarefoot Capital",
@@ -204,7 +270,11 @@
       "summary": "Owned architecture and delivery of mission-critical Laravel-based financial products, including complex real-time data pipelines and third-party integrations. Worked closely with stakeholders to align ambitious business objectives with technical execution while enforcing high engineering standards to ensure code quality and long-term maintainability.",
       "url": "https://www.linkedin.com/company/squarefootcapital/",
       "location": "United Kingdom",
-      "technologies": ["Laravel", "Financial APIs", "Event Driven Architecture"]
+      "technologies": [
+        "Laravel",
+        "Financial APIs",
+        "Event Driven Architecture"
+      ]
     },
     {
       "name": "Lila Fuches Limited",
@@ -218,7 +288,12 @@
       ],
       "summary": "Established technical foundation and product architecture for innovative SaaS platform. Led development from initial MVP through market-ready product launch, establishing development practices and technical standards that supported sustainable growth.",
       "url": "https://www.linkedin.com/company/lilafuches/",
-      "technologies": ["CTO", "Product Strategy", "Laravel", "AWS"]
+      "technologies": [
+        "CTO",
+        "Product Strategy",
+        "Laravel",
+        "AWS"
+      ]
     },
     {
       "name": "HM Forces",
@@ -234,7 +309,11 @@
       "summary": "Served as Combat Engineer with frontline deployment to Afghanistan, specializing in route clearance and IED detection operations. Gained comprehensive training in mechanical and electrical engineering while developing exceptional problem-solving skills under pressure. Experience included operating complex military equipment and working effectively in high-stakes team environments.",
       "url": "https://www.linkedin.com/company/hm-forces/",
       "location": "Worldwide",
-      "technologies": ["Mechanical Engineering", "Electrical Engineering", "Problem Solving Under Pressure"]
+      "technologies": [
+        "Mechanical Engineering",
+        "Electrical Engineering",
+        "Problem Solving Under Pressure"
+      ]
     }
   ],
   "volunteer": [
@@ -524,10 +603,19 @@
         "Enables 'Resume as Code' workflows for developers",
         "Includes JSON-LD support for better SEO and discoverability"
       ],
-      "keywords": ["PHP", "JSON Resume", "Type Safety", "Open Source", "SEO"],
+      "keywords": [
+        "PHP",
+        "JSON Resume",
+        "Type Safety",
+        "Open Source",
+        "SEO"
+      ],
       "startDate": "2024-01-01",
       "url": "https://github.com/juststeveking/resume-php",
-      "roles": ["Author", "Maintainer"]
+      "roles": [
+        "Author",
+        "Maintainer"
+      ]
     },
     {
       "name": "juststeveking/laravel-transporter",
@@ -538,10 +626,19 @@
         "Maintains high test coverage and documentation standards",
         "Adopted by numerous production Laravel applications for robust API integration"
       ],
-      "keywords": ["PHP", "Laravel", "API Client", "OOP", "Open Source"],
+      "keywords": [
+        "PHP",
+        "Laravel",
+        "API Client",
+        "OOP",
+        "Open Source"
+      ],
       "startDate": "2021-01-01",
       "url": "https://github.com/JustSteveKing/laravel-transporter",
-      "roles": ["Author", "Maintainer"]
+      "roles": [
+        "Author",
+        "Maintainer"
+      ]
     },
     {
       "name": "juststeveking/ollama-php",
@@ -551,10 +648,20 @@
         "Designed with developer experience (DX) in mind with fluent APIs",
         "Featured in multiple technical tutorials on AI integration with PHP"
       ],
-      "keywords": ["PHP", "AI", "LLM", "Ollama", "SDK", "Open Source"],
+      "keywords": [
+        "PHP",
+        "AI",
+        "LLM",
+        "Ollama",
+        "SDK",
+        "Open Source"
+      ],
       "startDate": "2024-01-01",
       "url": "https://github.com/JustSteveKing/ollama-php",
-      "roles": ["Author", "Maintainer"]
+      "roles": [
+        "Author",
+        "Maintainer"
+      ]
     },
     {
       "name": "PHP South Wales Community",
