@@ -683,6 +683,55 @@
         "Founder",
         "Lead Organizer"
       ]
+    },
+    {
+      "name": "juststeveking/scout",
+      "description": "Scout is a terminal-based dashboard for monitoring the health of multiple services and APIs. Configure endpoints, authentication, and health checks in a single config file, then launch Scout to see real-time status across all your services.",
+      "highlights": [
+        "Monitor multiple APIs and services from your terminal dashboard",
+        "Real-time status updates for all configured endpoints",
+        "Simple YAML configuration for endpoints and health checks",
+        "Perfect for staging, microservices, and development environments"
+      ],
+      "keywords": [
+        "Go",
+        "Terminal UI",
+        "Monitoring",
+        "APIs",
+        "DevOps",
+        "Open Source"
+      ],
+      "startDate": "2025-03-01",
+      "url": "https://github.com/juststeveking/scout",
+      "roles": [
+        "Author",
+        "Maintainer"
+      ]
+    },
+    {
+      "name": "juststeveking/phponline",
+      "description": "PHP Online (phponline.dev) is the modern homepage for the PHP community. It aggregates high-quality news, RFCs, podcasts, and videos from trusted sources into a unified, searchable, and highly readable format.",
+      "highlights": [
+        "Central pulse for the PHP ecosystem",
+        "Magazine-style experience for trending news and language evolution",
+        "Aggregates blogs, podcasts, YouTube, and events",
+        "Community-driven submissions and automated content processing",
+        "Built with Astro, Svelte, Tailwind CSS, and Bun"
+      ],
+      "keywords": [
+        "PHP",
+        "Community",
+        "News Aggregator",
+        "Astro",
+        "Svelte",
+        "Open Source"
+      ],
+      "startDate": "2026-03-01",
+      "url": "https://github.com/juststeveking/phponline",
+      "roles": [
+        "Founder",
+        "Maintainer"
+      ]
     }
   ],
   "meta": {
