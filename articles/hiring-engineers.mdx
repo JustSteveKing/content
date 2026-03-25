@@ -1,0 +1,97 @@
+---
+title: "Hiring Engineers: A Manager's Playbook"
+description: A practical guide for engineers moving into management—covering mindset shifts, letting go of coding, time management, feedback, and building leadership skills.
+category: Management
+pubDate: 2026-03-25
+minRead: 12
+author:
+  name: Steve McDougall
+  avatar:
+    src: https://avatars.githubusercontent.com/u/6368379?v=4
+    alt: Steve McDougall
+tags: ["engineering-management", "leadership", "career-transition", "team-culture", "management-skills"]
+---
+
+Hiring is one of the highest-leverage things you will do as an engineering manager. A single great hire compounds over years. A single bad hire - or more precisely, a bad hiring process that lets the wrong person through while filtering out the right ones; costs you more than you think. Not just in time and salary, but in team morale, velocity, and the invisible tax of managing a poor fit.
+
+Most engineering hiring processes are broken in ways that managers do not fully recognise until they have been on the other side of them. I have sat in hiring debriefs where five engineers gave five different verdicts on the same candidate and nobody could articulate why they felt the way they did. I have seen candidates with brilliant portfolios fail whiteboard tests that had nothing to do with the actual job. I have watched great engineers get filtered out because they had a quiet interview style and the interviewer mistook silence for incompetence.
+
+The goal of this article is to help you build a process that is structured enough to reduce those failure modes, flexible enough to surface genuine talent, and honest enough to actually tell candidates what working on your team is like. That last one matters more than most people realise. Hiring is a two-way evaluation, and the best candidates have options.
+
+Let's walk through the full arc: structure, technical assessment, culture and values alignment, and onboarding. Not as separate checklists but as a coherent system that you design intentionally.
+
+Defining what you are actually hiring for is the step most hiring processes skip or do half-heartedly. A job description is not a definition of success. "Strong communication skills and a passion for technology" is not a definition of success. Before you post a role, sit down with a blank document and answer three questions: what does this person need to be able to do in the first ninety days to be considered a strong hire? What do they need to be able to do after a year? What specific gaps on the team are we trying to close?
+
+Those answers should drive everything else. The technical assessment should test for the actual skills the role requires. The interview questions should probe for the actual behaviours the role demands. The evaluation criteria should map directly to those definitions of success. When you have that clarity upfront, the rest of the process becomes much easier to design and much harder to game.
+
+It also forces an honest conversation about scope. Are you hiring a senior engineer to independently own complex technical problems, or a mid-level engineer to execute on well-defined work? Those are different roles, different assessments, and different interview conversations. Conflating them (which is extremely common) leads to either overhiring for the work or underhiring for the scope and setting someone up to fail.
+
+The interview structure itself should follow a consistent format for every candidate for the same role. Not because consistency is a bureaucratic virtue but because without it, you cannot make fair comparisons. If candidate A had a rigorous technical discussion and candidate B got a casual conversation about their career history, your debrief is comparing two different things. Structured interviews reduce that problem significantly.
+
+A reasonable interview structure for a senior engineering role looks something like this. A recruiter or hiring manager screen that covers career background, motivations, and basic role fit; thirty minutes tops, mostly conversational. A technical assessment that gives you signal on the actual skills the role requires; more on format in a moment. A values and working-style conversation with one or two people on the team. And a final conversation with the hiring manager that covers the role more deeply, answers the candidate's questions, and gives you a chance to assess how they think about their work at a higher level.
+
+The exact structure will vary by seniority and team. But the principle is the same:
+- each stage should have a clear purpose
+- a clear set of things it is trying to evaluate
+- a consistent format so that different candidates are being measured against the same bar.
+
+Technical assessment is where the most disagreement happens and where the most damage is done. Let me be direct about what I think: timed algorithm puzzles and whiteboard problems that bear no resemblance to the actual job are a poor way to assess most engineering roles. They test a specific kind of performance under artificial pressure that correlates poorly with day-to-day engineering work. They also systematically disadvantage experienced engineers who have been in industry roles and simply do not practice leetcode.
+
+That does not mean technical assessment is not important. It absolutely is. It means the assessment should reflect the actual work.
+
+For most backend engineering roles, a practical take-home that asks the candidate to do something roughly analogous to what they would do on the job is a better signal than a timed algorithm test. Something like: here is a small API, extend it with this feature, write tests, and leave notes on any tradeoffs you made. That tells you how someone actually writes code, how they think about testing, how they communicate their decisions; _all things that matter in the role_. You can review it asynchronously, which is fairer to candidates in different timezones or with jobs that make synchronous sessions difficult.
+
+If you do a live technical session, make it collaborative rather than evaluative in the traditional sense. Work through a problem together. Let the candidate look things up. Ask them to walk you through their reasoning. That is a much closer simulation of actual engineering work than asking someone to produce a correct answer under observation with no resources.
+
+One thing worth doing regardless of format: review your technical assessment regularly to check whether it is actually predicting performance. If you can look back at candidates you hired and compare their assessment performance to their on-the-job performance, you will often find that the correlation is weaker than you assumed. That is useful information for calibrating the assessment over time.
+
+Culture fit is a phrase that gets misused constantly, so let's reframe it. What you are actually evaluating in a "culture fit" conversation is values alignment and working style compatibility. Not whether someone shares your hobbies or went to the same kind of school. The distinction matters because culture fit as commonly practiced is one of the most reliable vectors for homogeneity in hiring.
+
+Values alignment is about the things that actually affect how someone works: how they handle disagreement, how they respond to ambiguity, how they communicate when something is going wrong, whether they default to transparency or opacity under pressure, how they think about ownership. Those are things you can probe for directly with behavioural questions.
+
+Behavioural questions should be specific and past-oriented. "Tell me about a time when you had to push back on a technical decision you disagreed with" gives you real signal. "Are you someone who speaks up when you disagree" gives you the answer the candidate thinks you want. The difference in data quality between those two questions is significant.
+
+A few questions that reliably surface useful signal across seniority levels:
+- Tell me about a time a project you were responsible for went significantly off track. What happened and what did you do?
+- Tell me about a piece of feedback that genuinely changed how you work.
+- How do you typically approach a technical decision when the right answer is not obvious?
+- Tell me about a time you worked with someone whose working style was very different from yours.
+
+What you are listening for is not the story but the self-awareness. Does this person understand their own patterns? Do they take ownership of things without being defensive? Do they demonstrate genuine curiosity and willingness to learn? Those qualities matter across almost every technical role and almost every team culture.
+
+The debrief structure matters as much as the interview itself. A common failure mode is the unstructured debrief where the first person to speak sets the frame and everyone else anchors to their opinion. This is how groupthink gets baked into hiring decisions.
+
+A better approach: everyone writes their evaluation independently before the debrief begins. Not a detailed report, just a hire or no-hire recommendation and a few bullet points on the key evidence for each dimension you were evaluating. Then in the debrief, go around the room before any open discussion. Once everyone has shared their read, then you discuss disagreements.
+
+This surfaces more honest signal and makes disagreements more productive. When two interviewers have very different reads on the same candidate, that disagreement is itself information worth understanding. Sometimes it means the candidate gave different answers to different people. Sometimes it means the interviewers were evaluating for different things. Either way, working through it leads to a better decision.
+
+Define your evaluation rubric before the process starts, not after. Dimensions like technical depth, communication clarity, problem-solving approach, and ownership mindset should have concrete descriptions of what strong, acceptable, and weak looks like for the role in question. Rubrics are not bureaucratic overhead. They are the thing that makes your process defensible and improvable.
+
+Onboarding is the part of the hiring process that most engineering managers treat as someone else's responsibility. It is not. The way you integrate a new engineer into the team in their first sixty days has a direct effect on how quickly they become productive, how connected they feel to the team, and whether they stay past the twelve-month mark.
+
+A good engineering onboarding plan has a few consistent elements. It starts before day one: send the new hire an onboarding doc before they start so they know what to expect in week one. Not a firehose of information, just an overview of what the first few weeks look like and who they will be meeting.
+
+In the first week, the goal is orientation not productivity. Get their environment set up, walk them through the architecture at a high level, introduce them to the key people they will work with, and give them something small but real to ship. That first commit or merged PR is important for psychological reasons; it makes the new hire feel like a contributor rather than an observer.
+
+In weeks two through four, graduate the complexity. Give them increasingly meaningful work with explicit context about why it matters and what good looks like. Run a proper one-on-one at the end of week one, week two, and week four specifically to check in on how the onboarding is going and surface any confusion or friction early.
+
+Assign a buddy. Not a formal mentor relationship, just someone on the team who has been around for a while and is available to answer the questions the new hire is too self-conscious to ask their manager. Questions like "where does this documentation actually live" or "is it normal that this service takes fifteen minutes to build" are exactly the kind of thing a buddy handles well and that a new hire will not raise in a one-on-one for fear of seeming underprepared.
+
+At the sixty-day mark, have an explicit conversation about how the onboarding has gone. What worked? What was confusing? What would have helped to know earlier? This is partly for the new hire's benefit and partly for yours. The feedback you get from new engineers about your onboarding process is some of the most valuable signal you have for improving it, because they just experienced it with fresh eyes.
+
+One broader principle worth naming: the hiring process is a product. It has users (candidates and interviewers), it produces an output (a hiring decision), and it can be improved iteratively based on data. Treat it that way.
+- Track your offer acceptance rate.
+- Track time-to-hire.
+- Talk to candidates who declined your offers and find out why.
+- Talk to new hires at the sixty-day mark and find out where the process was unclear or misleading.
+- Run a retrospective on your process once a quarter.
+
+Most engineering teams never do any of this. They run the same hiring process for years without measuring whether it works, then wonder why their candidate pool is shallow or their offer acceptance rate is low. A small amount of deliberate iteration goes a long way.
+
+The last thing I want to say about hiring is about honesty. Be honest with candidates about the role, the team, and the company. Tell them what is genuinely hard about working there. If your codebase has serious technical debt, say so. If the team is going through a restructuring, say so. If the role requires a lot of on-call, say so clearly and early.
+
+This feels counterintuitive because you want to sell the role. But candidates who join with an accurate picture of what they are getting into are better retained and faster to trust you than candidates who discover the gap between the pitch and the reality in their first month. The best hiring conversations I have seen treat the candidate like an intelligent adult who deserves real information, not a polished brand narrative.
+
+That respect carries forward into the relationship if they join. And it saves everyone a painful offboarding conversation six months later.
+
+*Next in the series: Scaling Engineering Teams Without Losing Velocity - org design, hiring cycles, and avoiding the bottlenecks that slow teams down as they grow.*
