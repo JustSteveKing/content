@@ -5,67 +5,71 @@ import addFormats from 'ajv-formats';
 import matter from 'gray-matter';
 import { Glob } from "bun";
 
-// Load schema
-const schemaPath = join(process.cwd(), 'schema.json');
-const schema = JSON.parse(readFileSync(schemaPath, 'utf8'));
-
-// Initialize Ajv
-const ajv = new Ajv({ allErrors: true, strict: false });
-addFormats(ajv);
-
-// Map of directory to schema definition name
-const dirToSchema: Record<string, string> = {
-  'api-guides': 'apiGuide',
-  'articles': 'article',
-  'testimonials': 'testimonial',
-  'videos': 'video',
-  'contributions': 'contribution',
-  'packages': 'package',
-  'talks': 'talk',
-  'podcasts': 'podcast',
-};
-
-// Directories containing plain JSON files (no frontmatter)
-const jsonDirToSchema: Record<string, string> = {
-  'tools': 'toolCategory',
-};
-
-// Create a map of validators
-const validators: Record<string, any> = {};
-for (const [dir, defName] of Object.entries({ ...dirToSchema, ...jsonDirToSchema })) {
-  const definition = schema.$defs[defName];
-  if (definition) {
-    validators[dir] = ajv.compile(definition);
+export async function verifySchemaCommand() {
+  // Load schema
+  const schemaPath = join(process.cwd(), 'schema.json');
+  if (!existsSync(schemaPath)) {
+    console.error(`❌ Schema file not found: ${schemaPath}`);
+    process.exit(1);
   }
-}
+  const schema = JSON.parse(readFileSync(schemaPath, 'utf8'));
 
-/**
- * Recursively convert Date objects to YYYY-MM-DD strings.
- * This is needed because gray-matter (via js-yaml) parses dates as Date objects,
- * but the JSON schema expects strings.
- */
-function transformDates(obj: any): any {
-  if (obj instanceof Date) {
-    // Use ISO string and take the date part (YYYY-MM-DD)
-    return obj.toISOString().split('T')[0];
+  // Initialize Ajv
+  const ajv = new Ajv({ allErrors: true, strict: false });
+  addFormats(ajv);
+
+  // Map of directory to schema definition name
+  const dirToSchema: Record<string, string> = {
+    'api-guides': 'apiGuide',
+    'articles': 'article',
+    'testimonials': 'testimonial',
+    'videos': 'video',
+    'contributions': 'contribution',
+    'packages': 'package',
+    'talks': 'talk',
+    'podcasts': 'podcast',
+  };
+
+  // Directories containing plain JSON files (no frontmatter)
+  const jsonDirToSchema: Record<string, string> = {
+    'tools': 'toolCategory',
+  };
+
+  // Create a map of validators
+  const validators: Record<string, any> = {};
+  for (const [dir, defName] of Object.entries({ ...dirToSchema, ...jsonDirToSchema })) {
+    const definition = schema.$defs[defName];
+    if (definition) {
+      validators[dir] = ajv.compile(definition);
+    }
   }
-  if (Array.isArray(obj)) {
-    return obj.map(transformDates);
+
+  /**
+   * Recursively convert Date objects to YYYY-MM-DD strings.
+   * This is needed because gray-matter (via js-yaml) parses dates as Date objects,
+   * but the JSON schema expects strings.
+   */
+  function transformDates(obj: any): any {
+    if (obj instanceof Date) {
+      // Use ISO string and take the date part (YYYY-MM-DD)
+      return obj.toISOString().split('T')[0];
+    }
+    if (Array.isArray(obj)) {
+      return obj.map(transformDates);
+    }
+    if (obj !== null && typeof obj === 'object') {
+      return Object.fromEntries(
+        Object.entries(obj).map(([k, v]) => [k, transformDates(v)])
+      );
+    }
+    return obj;
   }
-  if (obj !== null && typeof obj === 'object') {
-    return Object.fromEntries(
-      Object.entries(obj).map(([k, v]) => [k, transformDates(v)])
-    );
-  }
-  return obj;
-}
 
-let totalFiles = 0;
-let totalErrors = 0;
+  let totalFiles = 0;
+  let totalErrors = 0;
 
-console.log('🔍 Verifying frontmatter schema...\n');
+  console.log('🔍 Verifying frontmatter schema...\n');
 
-async function run() {
   for (const dir of Object.keys(dirToSchema)) {
     const dirPath = join(process.cwd(), dir);
     if (!existsSync(dirPath)) {
@@ -165,5 +169,3 @@ async function run() {
     console.log('✅ All frontmatter is valid!');
   }
 }
-
-run();

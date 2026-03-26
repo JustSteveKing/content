@@ -1,21 +1,25 @@
 {
-  "name": "content",
+  "name": "@juststeveking/content",
+  "version": "1.0.0",
   "module": "index.ts",
   "type": "module",
   "private": true,
   "devDependencies": {
+    "@crustjs/plugins": "^0.0.20",
     "@types/bun": "latest"
   },
   "peerDependencies": {
     "typescript": "^5"
   },
   "scripts": {
-    "verify-schema": "bun scripts/verify-schema.ts",
-    "stats": "bun scripts/stats.ts",
-    "sync-youtube": "bun scripts/sync-youtube.ts",
-    "sync-packages": "bun scripts/sync-packages.ts"
+    "build": "bun build ./src/cli.ts --outfile ./dist/content-cli --compile",
+    "verify-schema": "bun src/cli.ts verify",
+    "stats": "bun src/cli.ts stats",
+    "sync-youtube": "bun src/cli.ts sync:youtube",
+    "sync-packages": "bun src/cli.ts sync:packages"
   },
   "dependencies": {
+    "@crustjs/core": "^0.0.15",
     "ajv": "^8.18.0",
     "ajv-formats": "^3.0.1",
     "gray-matter": "^4.0.3"
