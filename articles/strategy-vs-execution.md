@@ -1,0 +1,67 @@
+---
+title: "Strategy vs. Execution: How Leaders Set Technical Vision"
+description: "Why technical vision matters, how to set it, and how to maintain it over time in the face of changing circumstances and competing priorities."
+category: Management
+pubDate: 2026-03-29
+minRead: 12
+author:
+  name: Steve McDougall
+  avatar:
+    src: https://avatars.githubusercontent.com/u/6368379?v=4
+    alt: Steve McDougall
+tags: ["remote-work", "engineering-management", "leadership", "team-culture"]
+---
+
+There is a version of technical leadership that looks like this: you are deep in a sprint, your team is shipping, the product roadmap is clear, and everyone knows what they are building. Everything is humming. You feel productive. You feel useful.
+
+And then six months later you look up and realise you have been executing against a direction that no longer makes sense. The architectural decisions made eighteen months ago are now actively fighting the product requirements coming in today. The platform you are running on does not support the scale you need. The technical debt you kept deferring is now the reason your velocity has halved.
+
+This is what happens when execution runs ahead of strategy. And in my experience, it is one of the most common failure modes in technical leadership, because the short-term feedback loop for execution is so much tighter and more satisfying than the long-term feedback loop for strategy.
+
+Execution tells you immediately whether it worked. Strategy takes months or years to validate, and by then the leader who made the call may not even be around to learn from it. That asymmetry creates a natural gravitational pull toward doing over thinking, shipping over planning, tactical clarity over strategic ambiguity. Understanding that pull is the first step toward resisting it when you need to.
+
+This article is about the work that sits above execution: how senior engineering leaders set technical direction, how you align that direction with product and business goals, how you communicate it to the people building against it, and how you maintain it over time as circumstances change.
+
+Setting technical vision starts with a question that sounds simple but is actually quite hard to answer well: what problem is this engineering organisation trying to solve? Not "ship features quickly" -- that is a capability, not a purpose. Not "build a reliable platform" -- that is a property, not a direction. The real answer connects technical work to business outcomes and to user needs in a specific and falsifiable way.
+
+Something like: we are building a data infrastructure that lets our analysts answer any product question within four hours without engineering support. Or: we are rebuilding our checkout system to reduce payment failure rates below one percent so we can expand to markets where card infrastructure is unreliable. Or: we are investing in observability tooling so that the time between a production anomaly and a diagnosis is under fifteen minutes.
+
+These are statements that have a clear definition of success attached to them. They tell engineers not just what to build but why, and they connect technical decisions to outcomes that the business actually cares about. When your technical vision has that kind of specificity, it becomes a useful decision-making tool. Engineers can look at a proposed piece of work and ask: does this move us toward the goal? If the answer is no, it does not necessarily mean the work is wrong, but it raises a question that is worth answering.
+
+Without that specificity, technical vision tends to drift into vague aspiration. "We want a clean, scalable, well-tested codebase" is aspirational, but it does not tell anyone what to prioritise when they have to choose between three competing things. Vision that cannot guide a tradeoff is not really vision. It is decoration.
+
+Aligning technical direction with product and business goals is where most of the actual work of technical leadership happens, and it is messier than the frameworks make it sound. Product and engineering are not always pulling in the same direction. Business stakeholders have timeframes and objectives that do not always map cleanly onto technical realities. There are genuine tensions that have to be surfaced and worked through, not papered over.
+
+The most effective technical leaders I have observed spend a disproportionate amount of their time in conversations that are not with their engineering team. They are in product reviews. They are in quarterly planning sessions. They are talking to the finance team about what the infrastructure cost structure actually looks like. They are in customer calls listening to the friction points that end up becoming product requirements six months from now. They are building enough context about the business that their technical direction is grounded in something real rather than purely in engineering instinct.
+
+This matters because technical decisions made in isolation from business context tend to be technically elegant and practically wrong. A beautiful microservices architecture might be the right long-term call, but if the business needs to move fast in the next twelve months and your team has four engineers, it might be the wrong short-term one. The technical leader who understands the business well enough to make that call explicitly, rather than defaulting to the architecturally "correct" answer, is significantly more valuable than one who does not.
+
+Roadmap ownership is the operational expression of technical vision. A technical roadmap is not a feature list. It is a sequenced set of investments that tell a coherent story about how the system is evolving and why. The sequencing matters as much as the content, because it reflects your actual prioritisation under real constraints rather than an idealised list of everything you want to do.
+
+When I think about what makes a good technical roadmap, a few properties matter. It is honest about current state. It does not pretend that the existing system is further along than it is, because that dishonesty creates misleading expectations. It distinguishes between investments that enable future capability and investments that address current risk. Those are different categories with different urgency profiles. It has explicit tradeoffs documented. When you chose to sequence thing A before thing B, there was a reason. Write it down so that when circumstances change and someone asks "can we move B up?", you have the context to answer that question thoughtfully rather than from gut instinct.
+
+And crucially, the roadmap is a living document, not a contract. One of the most common problems I see with technical roadmaps is that they get published once and then decay. The codebase evolves, the product requirements shift, new information comes in -- and the roadmap that was accurate six months ago is now quietly misleading anyone who reads it. Treat your roadmap as something that needs regular maintenance, not something that needs a polished quarterly reveal.
+
+Communicating technical direction is a distinct skill from having it, and it is one that engineers who move into senior leadership roles often underestimate. The way you talk about technical strategy to your engineering team is different from how you talk about it to your product counterparts, which is different again from how you talk about it to executive stakeholders.
+
+To your engineering team, the goal is to give people enough context that they can make good local decisions without needing to escalate everything. You want them to understand the direction well enough that when they encounter an ambiguous situation, they can reason about what the right call is rather than waiting for guidance. That means going deep on the why: why is this the direction, what are the tradeoffs we considered, what would make us revisit this. Engineers who understand the reasoning behind a decision are better positioned to execute against it and to flag when something they are seeing in the work suggests the reasoning might be wrong.
+
+To product and business stakeholders, the translation layer is about outcomes and risk, not architecture. "We are building a service boundary between the payments system and the billing system" is not a compelling framing for a product conversation. "We are making a structural change that will let us run payment experiments independently of billing changes, which should cut our experiment cycle time by about half" is a compelling framing, because it connects the technical work to something product actually cares about.
+
+Getting good at this translation is not about dumbing things down. It is about understanding what the other person actually needs to know to make good decisions or to trust that you are making good decisions. That is a different question than "what do I know about this topic."
+
+One of the tensions that comes up consistently in technical leadership is the relationship between strategic investment and near-term delivery pressure. There is almost always more pressure to ship features than there is to invest in the platform, pay down debt, or make structural improvements that will pay off over time. That pressure is legitimate -- the business has real needs -- but if it never gets balanced against platform investment, you end up in a state where the platform is actively fighting your ability to deliver.
+
+The framing that I have found most useful for navigating this tension is to treat platform investment not as something that competes with delivery but as something that enables delivery over a longer time horizon. The argument is not "we need to stop shipping features to fix the platform." The argument is "here is what the platform investment unlocks, here is the timeline on which it pays off, and here is the cost we are currently paying by deferring it." That framing, with specific numbers attached when possible, tends to land better with business stakeholders than an abstract argument about technical health.
+
+It also requires you to do the work of actually knowing what the cost of the current state is. That means having data. How much engineering time per sprint is going to work that would not be necessary if the platform were in better shape? What is the approximate blast radius of the current debt in terms of velocity impact? How many incidents in the last quarter were attributable to the areas you are proposing to invest in? This is the kind of evidence that turns a technical argument into a business argument.
+
+There is a version of technical leadership that is mostly reactive: responding to product requests, triaging incidents, making tactical calls as they come up. That version can look like strong leadership from the outside because things are moving. But it does not create the conditions for the team to do its best work over time. The conditions for sustained, high-quality engineering output require a clear technical direction, explicit prioritisation, and the kind of structural investment that only happens when someone with enough context and enough authority is thinking more than one quarter ahead.
+
+That is what technical vision is actually for. Not the vision document, not the architecture diagram, not the quarterly roadmap review. The underlying habit of mind that keeps asking: given everything we know about where this product and this business are going, are we building the system that will get us there? And if the honest answer is no, being willing to say so and to do something about it.
+
+That willingness is what separates technical leaders from technical managers. And it is more about courage than it is about technical knowledge.
+
+---
+
+*Next in the series: The Engineering Manager as Coach -- practical techniques for performance conversations, growth planning, and career development.*
