@@ -5,11 +5,13 @@
     "": {
       "name": "content",
       "dependencies": {
+        "@crustjs/core": "^0.0.15",
         "ajv": "^8.18.0",
         "ajv-formats": "^3.0.1",
         "gray-matter": "^4.0.3",
       },
       "devDependencies": {
+        "@crustjs/plugins": "^0.0.20",
         "@types/bun": "latest",
       },
       "peerDependencies": {
@@ -18,6 +20,12 @@
     },
   },
   "packages": {
+    "@crustjs/core": ["@crustjs/core@0.0.15", "", { "peerDependencies": { "typescript": "^5" } }, "sha512-dgR1hSNj202a3IUfdj2S7QEG6Wd/2v24aq0Iz45NGTQxxNbBs6j2ENQSJTZeYkaeXjj+hnNrIZ1PiLnHuDxYaA=="],
+
+    "@crustjs/plugins": ["@crustjs/plugins@0.0.20", "", { "dependencies": { "@crustjs/style": "0.0.6" }, "peerDependencies": { "@crustjs/core": "0.0.15", "typescript": "^5" } }, "sha512-bXH67QK7fnV7Ko2dqgbZjsdbGrEHTF99fi92/gyXYcVY+ZKd61MVN1BDWCdTL0hC/11uYWHE3Qh9TgKVq4panQ=="],
+
+    "@crustjs/style": ["@crustjs/style@0.0.6", "", { "peerDependencies": { "typescript": "^5" } }, "sha512-GB15j1g/IeOa+ZhacHOzEj9D7TKDFJ2axdwvTCyyfl3U1c+tbi+gBs+2HWmExDjEDhuN3ABwuUlLMljTUlxI4w=="],
+
     "@types/bun": ["@types/bun@1.3.11", "", { "dependencies": { "bun-types": "1.3.11" } }, "sha512-5vPne5QvtpjGpsGYXiFyycfpDF2ECyPcTSsFBMa0fraoxiQyMJ3SmuQIGhzPg2WJuWxVBoxWJ2kClYTcw/4fAg=="],
 
     "@types/node": ["@types/node@25.5.0", "", { "dependencies": { "undici-types": "~7.18.0" } }, "sha512-jp2P3tQMSxWugkCUKLRPVUpGaL5MVFwF8RDuSRztfwgN1wmqJeMSbKlnEtQqU8UrhTmzEmZdu2I6v2dpp7XIxw=="],
