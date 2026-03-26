@@ -1,34 +1,127 @@
 import { join } from 'path';
 import { Glob } from 'bun';
 import matter from 'gray-matter';
+import { spinner } from '@crustjs/prompts';
+import { BaseCommand } from './base-command';
+import type { CrustCommandContext } from '@crustjs/core';
 
-export async function syncYoutubeCommand() {
-  const CHANNEL_ID = process.env.YOUTUBE_CHANNEL_ID ?? 'UCBnj7HfncAygGeyymgydZxQ';
-  const API_KEY = process.env.YOUTUBE_API_KEY;
-  const MAX_VIDEOS = parseInt(process.env.MAX_VIDEOS ?? '500');
-  const VIDEOS_DIR = join(process.cwd(), 'videos');
-  const YT = 'https://www.googleapis.com/youtube/v3';
+export class SyncYoutubeCommand extends BaseCommand<any, any, any> {
+  public name = 'sync:youtube';
+  public description = 'Sync videos from YouTube';
 
-  const args = process.argv.slice(2);
-  const DRY_RUN = args.includes('--dry-run');
-  const NEW_ONLY = args.includes('--new-only');
+  public override flags = {
+    'dry-run': { type: 'boolean', description: 'No files will be written.' },
+    'new-only': { type: 'boolean', description: 'Only sync new videos.' },
+    'fetch': { type: 'string', description: 'Limit the number of videos to fetch.' },
+  } as const;
 
-  const fetchArg = args.find(a => a.startsWith('--fetch='));
-  const FETCH_LIMIT = fetchArg ? parseInt(fetchArg.slice('--fetch='.length)) : MAX_VIDEOS;
+  private readonly CHANNEL_ID = process.env.YOUTUBE_CHANNEL_ID ?? 'UCBnj7HfncAygGeyymgydZxQ';
+  private readonly API_KEY = process.env.YOUTUBE_API_KEY;
+  private readonly MAX_VIDEOS = parseInt(process.env.MAX_VIDEOS ?? '500');
+  private readonly VIDEOS_DIR = join(process.cwd(), 'videos');
+  private readonly YT = 'https://www.googleapis.com/youtube/v3';
 
-  if (!API_KEY) {
-    console.error('Error: YOUTUBE_API_KEY environment variable is required.');
-    process.exit(1);
+  public async handle(ctx: CrustCommandContext<any, typeof this.flags>) {
+    const { flags } = ctx;
+    const DRY_RUN = flags['dry-run'];
+    const NEW_ONLY = flags['new-only'];
+    const FETCH_LIMIT = flags['fetch'] ? parseInt(flags['fetch']) : this.MAX_VIDEOS;
+
+    if (!this.API_KEY) {
+      console.error('Error: YOUTUBE_API_KEY environment variable is required.');
+      process.exit(1);
+    }
+
+    if (DRY_RUN) console.log('[dry-run] No files will be written.\n');
+
+    const uploadsPlaylistId = await spinner('Fetching uploads playlist ID...', async (s) => {
+      const id = await this.getUploadsPlaylistId();
+      s.updateMessage('Uploads playlist ID fetched.');
+      return id;
+    });
+
+    const videoIds = await spinner(`Fetching video IDs (max ${FETCH_LIMIT})...`, async (s) => {
+      const ids = await this.getPlaylistVideoIds(uploadsPlaylistId, FETCH_LIMIT);
+      s.updateMessage(`${ids.length} video IDs found.`);
+      return ids;
+    });
+
+    const videos = await spinner('Fetching video details...', async (s) => {
+      const details = await this.getVideoDetails(videoIds);
+      s.updateMessage(`${details.length} video details fetched.`);
+      return details;
+    });
+
+    const existing = await spinner('Scanning existing files...', async (s) => {
+      const index = await this.buildExistingIndex();
+      s.updateMessage(`${index.size} existing videos indexed.`);
+      return index;
+    });
+
+    let created = 0;
+    let updated = 0;
+    let skipped = 0;
+
+    for (const video of videos) {
+      await spinner(`Syncing ${video.id}...`, async (s) => {
+        const duration = this.parseDuration(video.contentDetails.duration);
+        const views = this.formatViews(video.statistics.viewCount);
+        const type = this.determineType(video);
+
+        const existingPath = existing.get(video.id);
+
+        if (existingPath) {
+          if (NEW_ONLY) {
+            s.updateMessage(`Skipped ${video.id} (exists)`);
+            skipped++;
+            return;
+          }
+
+          const content = await Bun.file(existingPath).text();
+          const { data } = matter(content);
+
+          const unchanged =
+            data.views === views &&
+            data.duration === duration &&
+            data.type === type;
+
+          if (unchanged) {
+            s.updateMessage(`No changes for ${video.id}`);
+            skipped++;
+            return;
+          }
+
+          let patched = content
+            .replace(/^views: ".*"$/m, `views: "${views}"`)
+            .replace(/^duration: ".*"$/m, `duration: "${duration}"`)
+            .replace(/^type: ".*"$/m, `type: "${type}"`);
+
+          patched = patched.replace(/(views=")[^"]*(")/g, `$1${views}$2`);
+          patched = patched.replace(/(duration=")[^"]*(")/g, `$1${duration}$2`);
+
+          if (!DRY_RUN) await Bun.write(existingPath, patched);
+          s.updateMessage(`Updated: ${existingPath.split('/').pop()}`);
+          updated++;
+        } else {
+          const slug = this.slugify(video.snippet.title);
+          const filename = slug ? `${slug}.mdx` : `${video.id}.mdx`;
+          const filepath = join(this.VIDEOS_DIR, filename);
+
+          if (!DRY_RUN) await Bun.write(filepath, this.buildMdx(video));
+          s.updateMessage(`Created: ${filename}`);
+          created++;
+        }
+      });
+    }
+
+    const dryTag = DRY_RUN ? ' (dry run)' : '';
+    console.log(`\nDone${dryTag}. Created: ${created}, Updated: ${updated}, Skipped: ${skipped}`);
   }
 
-  // ---------------------------------------------------------------------------
-  // API helpers
-  // ---------------------------------------------------------------------------
-
-  async function ytFetch(endpoint: string, params: Record<string, string>): Promise<any> {
-    const url = new URL(`${YT}/${endpoint}`);
+  private async ytFetch(endpoint: string, params: Record<string, string>): Promise<any> {
+    const url = new URL(`${this.YT}/${endpoint}`);
     for (const [k, v] of Object.entries(params)) url.searchParams.set(k, v);
-    url.searchParams.set('key', API_KEY!);
+    url.searchParams.set('key', this.API_KEY!);
 
     const res = await fetch(url);
     if (!res.ok) {
@@ -38,14 +131,14 @@ export async function syncYoutubeCommand() {
     return res.json();
   }
 
-  async function getUploadsPlaylistId(): Promise<string> {
-    const data = await ytFetch('channels', { part: 'contentDetails', id: CHANNEL_ID });
+  private async getUploadsPlaylistId(): Promise<string> {
+    const data = await this.ytFetch('channels', { part: 'contentDetails', id: this.CHANNEL_ID });
     const id = data.items?.[0]?.contentDetails?.relatedPlaylists?.uploads;
-    if (!id) throw new Error('Could not find uploads playlist for channel: ' + CHANNEL_ID);
+    if (!id) throw new Error('Could not find uploads playlist for channel: ' + this.CHANNEL_ID);
     return id;
   }
 
-  async function getPlaylistVideoIds(playlistId: string, limit: number): Promise<string[]> {
+  private async getPlaylistVideoIds(playlistId: string, limit: number): Promise<string[]> {
     const ids: string[] = [];
     let pageToken: string | undefined;
 
@@ -57,7 +150,7 @@ export async function syncYoutubeCommand() {
       };
       if (pageToken) params.pageToken = pageToken;
 
-      const data = await ytFetch('playlistItems', params);
+      const data = await this.ytFetch('playlistItems', params);
       for (const item of data.items ?? []) {
         const videoId = item.contentDetails?.videoId;
         if (videoId) ids.push(videoId);
@@ -68,12 +161,12 @@ export async function syncYoutubeCommand() {
     return ids.slice(0, limit);
   }
 
-  async function getVideoDetails(videoIds: string[]): Promise<any[]> {
+  private async getVideoDetails(videoIds: string[]): Promise<any[]> {
     const videos: any[] = [];
 
     for (let i = 0; i < videoIds.length; i += 50) {
       const batch = videoIds.slice(i, i + 50);
-      const data = await ytFetch('videos', {
+      const data = await this.ytFetch('videos', {
         part: 'snippet,statistics,contentDetails',
         id: batch.join(','),
       });
@@ -83,7 +176,7 @@ export async function syncYoutubeCommand() {
     return videos;
   }
 
-  function parseDuration(iso: string): string {
+  private parseDuration(iso: string): string {
     const m = iso.match(/PT(?:(\d+)H)?(?:(\d+)M)?(?:(\d+)S)?/);
     if (!m) return '0:00';
     const h = parseInt(m[1] ?? '0');
@@ -93,7 +186,7 @@ export async function syncYoutubeCommand() {
     return `${min}:${String(sec).padStart(2, '0')}`;
   }
 
-  function formatViews(raw: string | undefined): string {
+  private formatViews(raw: string | undefined): string {
     const n = parseInt(raw ?? '0');
     if (isNaN(n)) return '0';
     if (n >= 1_000_000) return `${Math.round(n / 100_000) / 10}M`;
@@ -101,7 +194,7 @@ export async function syncYoutubeCommand() {
     return String(n);
   }
 
-  function determineType(video: any): 'video' | 'shorts' | 'livestream' {
+  private determineType(video: any): 'video' | 'shorts' | 'livestream' {
     if (video.snippet.liveBroadcastContent === 'live') return 'livestream';
 
     const title = video.snippet.title.toLowerCase();
@@ -119,7 +212,7 @@ export async function syncYoutubeCommand() {
     return 'video';
   }
 
-  function slugify(title: string): string {
+  private slugify(title: string): string {
     return title
       .toLowerCase()
       .replace(/[\p{Emoji_Presentation}\p{Extended_Pictographic}]/gu, '')
@@ -129,7 +222,7 @@ export async function syncYoutubeCommand() {
       .replace(/^-+|-+$/g, '');
   }
 
-  function extractTags(title: string, description: string, ytTags: string[] = []): string[] {
+  private extractTags(title: string, description: string, ytTags: string[] = []): string[] {
     const map: Record<string, string> = {
       laravel: 'Laravel',
       php: 'PHP',
@@ -159,7 +252,7 @@ export async function syncYoutubeCommand() {
     return [...tags].slice(0, 10);
   }
 
-  function extractCategories(title: string, description: string): string[] {
+  private extractCategories(title: string, description: string): string[] {
     const cats = new Set<string>();
     const text = `${title} ${description}`.toLowerCase();
 
@@ -177,7 +270,7 @@ export async function syncYoutubeCommand() {
     return [...cats];
   }
 
-  function yamlEscape(s: string): string {
+  private yamlEscape(s: string): string {
     return s
       .replace(/\\/g, '\\\\')
       .replace(/"/g, '\\"')
@@ -185,7 +278,7 @@ export async function syncYoutubeCommand() {
       .trim();
   }
 
-  function mdxEscape(s: string): string {
+  private mdxEscape(s: string): string {
     return s
       .replace(/</g, '&lt;')
       .replace(/>/g, '&gt;')
@@ -193,7 +286,7 @@ export async function syncYoutubeCommand() {
       .replace(/\}/g, '\\}');
   }
 
-  function buildMdx(video: any): string {
+  private buildMdx(video: any): string {
     const { snippet, statistics, contentDetails } = video;
 
     const cleanTitle = snippet.title
@@ -205,11 +298,11 @@ export async function syncYoutubeCommand() {
     const shortDesc = (desc.split('\n')[0] ?? '').substring(0, 200).trim();
     const bodyDesc = desc.split('\n\n')[0] || 'No description available.';
 
-    const duration = parseDuration(contentDetails.duration);
-    const views = formatViews(statistics.viewCount);
-    const type = determineType(video);
-    const tags = extractTags(snippet.title, snippet.description, snippet.tags);
-    const categories = extractCategories(snippet.title, snippet.description);
+    const duration = this.parseDuration(contentDetails.duration);
+    const views = this.formatViews(statistics.viewCount);
+    const type = this.determineType(video);
+    const tags = this.extractTags(snippet.title, snippet.description, snippet.tags);
+    const categories = this.extractCategories(snippet.title, snippet.description);
 
     const publishedDate = snippet.publishedAt.split('T')[0];
     const publishedFormatted = new Date(snippet.publishedAt).toLocaleDateString('en-US', {
@@ -223,12 +316,12 @@ export async function syncYoutubeCommand() {
       snippet.thumbnails.high?.url ??
       `https://img.youtube.com/vi/${video.id}/maxresdefault.jpg`;
 
-    const tagYaml = tags.map(t => `"${yamlEscape(t)}"`).join(', ');
-    const catYaml = categories.map(c => `"${yamlEscape(c)}"`).join(', ');
+    const tagYaml = tags.map(t => `"${this.yamlEscape(t)}"`).join(', ');
+    const catYaml = categories.map(c => `"${this.yamlEscape(c)}"`).join(', ');
 
     return `---
-title: "${yamlEscape(cleanTitle)}"
-description: "${yamlEscape(shortDesc)}"
+title: "${this.yamlEscape(cleanTitle)}"
+description: "${this.yamlEscape(shortDesc)}"
 videoId: "${video.id}"
 publishedDate: ${publishedDate}
 duration: "${duration}"
@@ -245,7 +338,7 @@ transcript: false
 
 # ${cleanTitle}
 
-${mdxEscape(bodyDesc)}
+${this.mdxEscape(bodyDesc)}
 
 <VideoStats
   publishedDate="${publishedFormatted}"
@@ -264,12 +357,12 @@ ${mdxEscape(bodyDesc)}
 `;
   }
 
-  async function buildExistingIndex(): Promise<Map<string, string>> {
+  private async buildExistingIndex(): Promise<Map<string, string>> {
     const index = new Map<string, string>();
     const glob = new Glob('*.{md,mdx}');
 
-    for await (const file of glob.scan(VIDEOS_DIR)) {
-      const filepath = join(VIDEOS_DIR, file);
+    for await (const file of glob.scan(this.VIDEOS_DIR)) {
+      const filepath = join(this.VIDEOS_DIR, file);
       try {
         const content = await Bun.file(filepath).text();
         const { data } = matter(content);
@@ -283,81 +376,4 @@ ${mdxEscape(bodyDesc)}
 
     return index;
   }
-
-  // ---------------------------------------------------------------------------
-  // Sync logic
-  // ---------------------------------------------------------------------------
-
-  if (DRY_RUN) console.log('[dry-run] No files will be written.\n');
-
-  process.stdout.write('Fetching uploads playlist ID... ');
-  const uploadsPlaylistId = await getUploadsPlaylistId();
-  console.log('done');
-
-  process.stdout.write(`Fetching video IDs (max ${FETCH_LIMIT})... `);
-  const videoIds = await getPlaylistVideoIds(uploadsPlaylistId, FETCH_LIMIT);
-  console.log(`${videoIds.length} found`);
-
-  process.stdout.write('Fetching video details... ');
-  const videos = await getVideoDetails(videoIds);
-  console.log(`${videos.length} fetched`);
-
-  process.stdout.write('Scanning existing files... ');
-  const existing = await buildExistingIndex();
-  console.log(`${existing.size} indexed\n`);
-
-  let created = 0;
-  let updated = 0;
-  let skipped = 0;
-
-  for (const video of videos) {
-    const duration = parseDuration(video.contentDetails.duration);
-    const views = formatViews(video.statistics.viewCount);
-    const type = determineType(video);
-
-    const existingPath = existing.get(video.id);
-
-    if (existingPath) {
-      if (NEW_ONLY) {
-        skipped++;
-        continue;
-      }
-
-      const content = await Bun.file(existingPath).text();
-      const { data } = matter(content);
-
-      const unchanged =
-        data.views === views &&
-        data.duration === duration &&
-        data.type === type;
-
-      if (unchanged) {
-        skipped++;
-        continue;
-      }
-
-      let patched = content
-        .replace(/^views: ".*"$/m, `views: "${views}"`)
-        .replace(/^duration: ".*"$/m, `duration: "${duration}"`)
-        .replace(/^type: ".*"$/m, `type: "${type}"`);
-
-      patched = patched.replace(/(views=")[^"]*(")/g, `$1${views}$2`);
-      patched = patched.replace(/(duration=")[^"]*(")/g, `$1${duration}$2`);
-
-      if (!DRY_RUN) await Bun.write(existingPath, patched);
-      console.log(`Updated: ${existingPath.split('/').pop()}`);
-      updated++;
-    } else {
-      const slug = slugify(video.snippet.title);
-      const filename = slug ? `${slug}.mdx` : `${video.id}.mdx`;
-      const filepath = join(VIDEOS_DIR, filename);
-
-      if (!DRY_RUN) await Bun.write(filepath, buildMdx(video));
-      console.log(`Created: ${filename}`);
-      created++;
-    }
-  }
-
-  const dryTag = DRY_RUN ? ' (dry run)' : '';
-  console.log(`\nDone${dryTag}. Created: ${created}, Updated: ${updated}, Skipped: ${skipped}`);
 }

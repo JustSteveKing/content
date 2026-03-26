@@ -20,6 +20,7 @@
   },
   "dependencies": {
     "@crustjs/core": "^0.0.15",
+    "@crustjs/prompts": "^0.0.10",
     "ajv": "^8.18.0",
     "ajv-formats": "^3.0.1",
     "gray-matter": "^4.0.3"
