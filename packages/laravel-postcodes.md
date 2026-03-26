@@ -3,11 +3,11 @@ name: "juststeveking/laravel-postcodes"
 description: "A service wrapper around postcodes.io"
 packagist: "https://packagist.org/packages/juststeveking/laravel-postcodes"
 github: "https://github.com/JustSteveKing/LaravelPostcodes"
-downloads: 113484
-monthlyDownloads: 7793
+downloads: 113663
+monthlyDownloads: 7688
 stars: 81
 version: "V1.5.0"
-updatedAt: "2026-03-25"
+updatedAt: "2026-03-26"
 ---
 
 <p align="center">

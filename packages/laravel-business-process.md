@@ -4,10 +4,10 @@ description: "Laravel Business Process is a simple and clean way to run business
 packagist: "https://packagist.org/packages/juststeveking/laravel-business-process"
 github: "https://github.com/JustSteveKing/laravel-business-process"
 downloads: 3436
-monthlyDownloads: 135
+monthlyDownloads: 131
 stars: 66
 version: "0.0.1"
-updatedAt: "2026-03-25"
+updatedAt: "2026-03-26"
 ---
 
 # Laravel Business Process

@@ -3,11 +3,11 @@ name: "juststeveking/laravel-feature-flags"
 description: "A simple to use Feature Flags package for Laravel"
 packagist: "https://packagist.org/packages/juststeveking/laravel-feature-flags"
 github: "https://github.com/JustSteveKing/laravel-feature-flags"
-downloads: 50686
-monthlyDownloads: 279
+downloads: 50708
+monthlyDownloads: 293
 stars: 177
 version: "1.4.0"
-updatedAt: "2026-03-25"
+updatedAt: "2026-03-26"
 ---
 
 # Laravel Feature Flags

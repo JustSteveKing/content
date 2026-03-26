@@ -3,11 +3,11 @@ name: "juststeveking/laravel-transporter"
 description: "Transporter is a futuristic way to send API requests in PHP. This is an OOP approach to handle API requests."
 packagist: "https://packagist.org/packages/juststeveking/laravel-transporter"
 github: "https://github.com/JustSteveKing/laravel-transporter"
-downloads: 194523
-monthlyDownloads: 6280
+downloads: 194729
+monthlyDownloads: 6264
 stars: 480
 version: "3.2.0"
-updatedAt: "2026-03-25"
+updatedAt: "2026-03-26"
 ---
 
 # Transporter

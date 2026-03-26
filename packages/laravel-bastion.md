@@ -3,11 +3,11 @@ name: "juststeveking/laravel-bastion"
 description: "Stripe-inspired API authentication with environment isolation, granular scopes, and built-in security."
 packagist: "https://packagist.org/packages/juststeveking/laravel-bastion"
 github: "https://github.com/JustSteveKing/laravel-bastion"
-downloads: 47
-monthlyDownloads: 5
+downloads: 48
+monthlyDownloads: 6
 stars: 107
 version: "0.0.2"
-updatedAt: "2026-03-25"
+updatedAt: "2026-03-26"
 ---
 
 <p align="center">

@@ -3,11 +3,11 @@ name: "juststeveking/php-sdk"
 description: "A framework for building SDKs in PHP."
 packagist: "https://packagist.org/packages/juststeveking/php-sdk"
 github: "https://github.com/JustSteveKing/php-sdk"
-downloads: 71907
-monthlyDownloads: 673
+downloads: 71915
+monthlyDownloads: 653
 stars: 217
 version: "v2.2.0"
-updatedAt: "2026-03-25"
+updatedAt: "2026-03-26"
 ---
 
 # PHP SDK

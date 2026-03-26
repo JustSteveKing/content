@@ -3,11 +3,11 @@ name: "juststeveking/laravel-envoyer-sdk"
 description: "A simple to use PHP class to work with the Laravel Envoyer API"
 packagist: "https://packagist.org/packages/juststeveking/laravel-envoyer-sdk"
 github: "https://github.com/JustSteveKing/laravel-envoyer-sdk"
-downloads: 58695
-monthlyDownloads: 517
+downloads: 58701
+monthlyDownloads: 495
 stars: 39
 version: "v2.0.0"
-updatedAt: "2026-03-25"
+updatedAt: "2026-03-26"
 ---
 
 # Laravel Envoyer SDK

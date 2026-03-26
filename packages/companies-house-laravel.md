@@ -4,10 +4,10 @@ description: "A Laravel wrapper to get companies house information and validate 
 packagist: "https://packagist.org/packages/juststeveking/companies-house-laravel"
 github: "https://github.com/JustSteveKing/companies-house-laravel"
 downloads: 4092
-monthlyDownloads: 11
+monthlyDownloads: 10
 stars: 22
 version: "v1.2.0"
-updatedAt: "2026-03-25"
+updatedAt: "2026-03-26"
 ---
 
 # Laravel Companies House

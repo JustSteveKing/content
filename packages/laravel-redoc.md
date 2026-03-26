@@ -3,11 +3,11 @@ name: "juststeveking/laravel-redoc"
 description: "A simple API documentation package for Laravel using OpenAPI and Redoc"
 packagist: "https://packagist.org/packages/juststeveking/laravel-redoc"
 github: "https://github.com/JustSteveKing/laravel-redoc"
-downloads: 289335
-monthlyDownloads: 10613
+downloads: 289496
+monthlyDownloads: 9928
 stars: 92
 version: "2.1.0"
-updatedAt: "2026-03-25"
+updatedAt: "2026-03-26"
 ---
 
 # Laravel Redoc

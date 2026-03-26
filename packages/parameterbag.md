@@ -3,11 +3,11 @@ name: "juststeveking/parameterbag"
 description: "A flexible parameter bag in place of standard arrays on PHP classes"
 packagist: "https://packagist.org/packages/juststeveking/parameterbag"
 github: "https://github.com/JustSteveKing/ParameterBag"
-downloads: 294185
-monthlyDownloads: 7142
+downloads: 294386
+monthlyDownloads: 7089
 stars: 4
 version: "v1.2.0"
-updatedAt: "2026-03-25"
+updatedAt: "2026-03-26"
 ---
 
 # Parameter Bag

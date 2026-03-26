@@ -4,10 +4,10 @@ description: "A toolkit for creating APIs in Laravel"
 packagist: "https://packagist.org/packages/juststeveking/laravel-api-toolkit"
 github: "https://github.com/JustSteveKing/laravel-api-toolkit"
 downloads: 455
-monthlyDownloads: 15
+monthlyDownloads: 13
 stars: 25
 version: "v1.0.0"
-updatedAt: "2026-03-25"
+updatedAt: "2026-03-26"
 ---
 
 # A toolkit for creating APIs in Laravel

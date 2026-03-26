@@ -3,11 +3,11 @@ name: "juststeveking/sdk-tools"
 description: "A set of tools you can use to help make better SDKs."
 packagist: "https://packagist.org/packages/juststeveking/sdk-tools"
 github: "https://github.com/JustSteveKing/sdk-tools"
-downloads: 7376
-monthlyDownloads: 438
+downloads: 7379
+monthlyDownloads: 415
 stars: 20
 version: "0.0.5"
-updatedAt: "2026-03-25"
+updatedAt: "2026-03-26"
 ---
 
 # JustSteveKing SDK Tools

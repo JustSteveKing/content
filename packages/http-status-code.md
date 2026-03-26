@@ -3,11 +3,11 @@ name: "juststeveking/http-status-code"
 description: "A simple class to return correct status codes for http responses"
 packagist: "https://packagist.org/packages/juststeveking/http-status-code"
 github: "https://github.com/JustSteveKing/http-status-code"
-downloads: 296167
-monthlyDownloads: 8617
+downloads: 296465
+monthlyDownloads: 8632
 stars: 49
 version: "v1.0"
-updatedAt: "2026-03-25"
+updatedAt: "2026-03-26"
 ---
 
 # Http Status Codes

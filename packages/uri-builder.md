@@ -3,11 +3,11 @@ name: "juststeveking/uri-builder"
 description: "A simple URI builder in PHP that is slightly opinionated"
 packagist: "https://packagist.org/packages/juststeveking/uri-builder"
 github: "https://github.com/JustSteveKing/uri-builder"
-downloads: 284866
-monthlyDownloads: 7057
+downloads: 285152
+monthlyDownloads: 7089
 stars: 20
 version: "v1.1.0"
-updatedAt: "2026-03-25"
+updatedAt: "2026-03-26"
 ---
 
 <p align="center">

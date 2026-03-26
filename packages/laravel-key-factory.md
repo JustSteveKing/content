@@ -3,11 +3,11 @@ name: "juststeveking/laravel-key-factory"
 description: "A simple package to generate Eloquent Model Keys"
 packagist: "https://packagist.org/packages/juststeveking/laravel-key-factory"
 github: "https://github.com/JustSteveKing/laravel-key-factory"
-downloads: 1344
-monthlyDownloads: 156
+downloads: 1355
+monthlyDownloads: 166
 stars: 6
 version: "1.1.0"
-updatedAt: "2026-03-25"
+updatedAt: "2026-03-26"
 ---
 
 # A simple package to generate Eloquent Model Keys

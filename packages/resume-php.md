@@ -4,10 +4,10 @@ description: "A PHP library for building and working with the JSON resume schema
 packagist: "https://packagist.org/packages/juststeveking/resume-php"
 github: "https://github.com/JustSteveKing/resume-php"
 downloads: 169
-monthlyDownloads: 13
+monthlyDownloads: 12
 stars: 105
 version: "0.0.2"
-updatedAt: "2026-03-25"
+updatedAt: "2026-03-26"
 ---
 
 # Resume PHP

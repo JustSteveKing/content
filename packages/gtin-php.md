@@ -3,11 +3,11 @@ name: "juststeveking/gtin-php"
 description: "A PHP package for validating GTIN codes"
 packagist: "https://packagist.org/packages/juststeveking/gtin-php"
 github: "https://github.com/JustSteveKing/gtin-php"
-downloads: 125835
-monthlyDownloads: 12174
+downloads: 126430
+monthlyDownloads: 12263
 stars: 5
 version: "v1.0.1"
-updatedAt: "2026-03-25"
+updatedAt: "2026-03-26"
 ---
 
 # A PHP Validator for the GTIN standard

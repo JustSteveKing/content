@@ -3,11 +3,11 @@ name: "juststeveking/laravel-stoplight-elements"
 description: "A simple API documentation package for Laravel using OpenAPI and Stoplight Elements"
 packagist: "https://packagist.org/packages/juststeveking/laravel-stoplight-elements"
 github: "https://github.com/JustSteveKing/laravel-stoplight-elements"
-downloads: 72662
-monthlyDownloads: 2887
+downloads: 72731
+monthlyDownloads: 2858
 stars: 43
 version: "3.0.1"
-updatedAt: "2026-03-25"
+updatedAt: "2026-03-26"
 ---
 
 # Laravel Stoplight Elements
