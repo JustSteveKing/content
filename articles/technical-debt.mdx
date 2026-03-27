@@ -1,0 +1,71 @@
+---
+title: "Technical Debt: When to Fix, When to Ship"
+description: "Technical debt is inevitable. What matters is whether you manage it deliberately. A practical framework for prioritisation and stakeholder communication"
+category: Management
+pubDate: 2026-03-31
+minRead: 12
+author:
+  name: Steve McDougall
+  avatar:
+    src: https://avatars.githubusercontent.com/u/6368379?v=4
+    alt: Steve McDougall
+tags: ["engineering-management", "leadership", "career-transition", "team-culture", "management-skills"]
+---
+
+Every engineering team carries debt. The question is never whether you have it. The question is whether you understand it well enough to make deliberate decisions about it, or whether you are just hoping it does not become a crisis before you get around to dealing with it.
+
+Most teams are in the second camp. Not because the engineers do not care, and not because the managers are incompetent, but because technical debt is genuinely hard to reason about. It is invisible to most stakeholders. It compounds quietly. Its costs show up as friction and slowness rather than as clean line items on a budget. And the tradeoff between addressing it now versus shipping something now is almost always under time pressure, which means the default is almost always to ship.
+
+I want to give you a framework for thinking about debt more deliberately - one that helps you decide when fixing is the right call, when shipping is the right call, and how to communicate either decision to the people who care about outcomes rather than architecture.
+
+Before we get into the framework, it is worth being precise about what technical debt actually is, because the term gets used loosely in ways that muddle the decision-making.
+
+Ward Cunningham's original metaphor was specific: technical debt is the extra work created when you take a shortcut to ship faster, with the understanding that you will come back and do it properly later. The key word is deliberate. You knew it was a shortcut. You made a conscious tradeoff. That is very different from code that is just poorly written because someone did not know better, or a design that seemed correct at the time but was invalidated by requirements that could not have been anticipated.
+
+In practice, most engineering teams use "technical debt" to describe all three of those things, which is fine for casual conversation but creates confusion when you are trying to prioritise. Deliberate shortcuts have a specific remorse profile - you know what you did, you know roughly what fixing it would take, and you can reason about when the tradeoff tips toward fixing. Legacy code that was written under different assumptions, or architectural decisions that made sense at a previous scale, are harder to reason about because the original context is often lost and the cost of addressing them is harder to estimate.
+
+For the purposes of decision-making, the useful distinction is not between types of debt by origin but between debt by impact. Specifically: is this debt actively costing you velocity right now, or is it a latent risk that has not yet materially affected your ability to work?
+
+High-impact debt - the kind that is actively slowing the team down, generating frequent bugs, making changes in a certain area disproportionately risky, or creating cognitive overhead every time someone has to work near it - that is debt with a measurable present cost. You can point to it in sprint data: this area of the codebase takes three times as long to change as comparable areas, and it accounts for a disproportionate share of production incidents.
+
+Latent debt - the kind that is messy and uncomfortable but not yet materially impacting delivery - is real, but it has a different urgency profile. Addressing it might still be the right call for other reasons, but it is harder to justify against immediate delivery needs without a clear and specific articulation of the risk.
+
+The framework I use for debt prioritisation has three dimensions: velocity impact, risk profile, and strategic alignment.
+
+Velocity impact is the question of whether the debt is actually costing you delivery speed right now. If you can measure it - and often you can, in cycle time data, bug rates by subsystem, or engineer time estimates on adjacent work - use the numbers. "This service generates forty percent of our incidents but represents ten percent of our codebase" is a compelling velocity impact argument. "This code is messy and would be nicer if it were cleaner" is not.
+
+Risk profile is the question of what happens if the debt is not addressed. Some debt sits in a part of the system that is unlikely to change significantly - it is messy but it is also relatively stable and not under active development. That debt has a low risk profile even if it is aesthetically uncomfortable. Other debt sits in a critical path that is about to receive significant investment, or in a part of the system where a failure would be disproportionately damaging. That debt has a high risk profile even if it is not currently causing visible problems.
+
+Strategic alignment is the question of whether the work that would fix this debt is work that matters for where the product is going anyway. Sometimes the most efficient path is to address debt as part of a larger piece of work that is already planned - you are rebuilding the payments flow anyway, so cleaning up the debt in the payment service is low incremental cost. Sometimes the debt is in a part of the system that is likely to be deprecated or replaced entirely, in which case investing in it now is a waste.
+
+When you look at a piece of debt through all three of those lenses, the decision often becomes cleaner. High velocity impact, high risk profile, and in a strategically important area: address it, and address it soon. Low velocity impact, low risk profile, in an area the product is moving away from: leave it, and stop feeling guilty about it.
+
+The harder cases are the mixed ones - debt with moderate velocity impact and moderate risk, competing with genuine product priorities for engineering time. This is where the "fix it in pieces" approach often makes sense. Not a dedicated debt sprint that product stakeholders will resent and that rarely fully succeeds anyway, but a standing allocation of capacity toward high-priority debt items worked into every sprint. Ten to twenty percent is the range I see working in practice. Enough that meaningful progress gets made, not so much that it creates constant friction with delivery commitments.
+
+There is a case against the dedicated debt sprint that is worth making explicitly because the instinct to batch debt work into a single concentrated effort is very common and very understandable. The problem is that it creates a boom-bust cycle. You accumulate debt under delivery pressure, you hit a tipping point, you negotiate a debt sprint, you clean up the worst of it, and then you go back to accumulating. The underlying rate of accumulation does not change because the sprint did not change the culture or the incentives - it just cleared the queue.
+
+A standing allocation changes the culture more durably because it normalises debt management as a continuous practice rather than an emergency response. It also keeps engineers closer to the debt, which means they are better positioned to identify which parts of it are actually costing velocity and which are just aesthetically uncomfortable. That distinction matters a lot for prioritisation.
+
+Now let's talk about stakeholder communication, because this is where a lot of technically strong engineering leaders stumble.
+
+The engineers on your team understand why debt matters. They live with it. They feel it every time they work in a slow, fragile, or confusing part of the codebase. But the product managers, business stakeholders, and executives you need to align with do not feel that friction, and they are not going to be persuaded by architectural arguments. They are going to be persuaded by arguments about outcomes.
+
+That means translating the debt conversation into the language of risk and velocity. Not "we have a lot of legacy code in the payment service" but "our payment service currently takes our engineers three times as long to change as comparable services, and it generates more than a third of our production incidents. That is costing us roughly two sprint cycles per quarter in incident response and rework, and it is the main reason we keep missing our estimated delivery dates on anything that touches payments."
+
+That framing gives the stakeholder something to weigh. It turns a vague technical discomfort into a specific cost, and it makes the tradeoff legible: we can invest capacity here and expect these benefits over this timeframe, or we can continue deferring and expect to keep paying this ongoing cost.
+
+Be honest about uncertainty in those estimates. If you are saying it costs two sprint cycles per quarter, that should be a real estimate based on real data, not a number you made up to make the argument more compelling. Stakeholders who get burned by overconfident technical estimates stop trusting technical estimates, which makes every subsequent conversation harder.
+
+The inverse is also true for shipping decisions. When the right call is to ship with known debt rather than delay to fix it, say so explicitly and document it. "We are shipping this with a known shortcut in the session handling code. It is fine for our current traffic levels but will need to be addressed before we scale past X. Estimated cost to address: one engineer week. Suggested timeline: before Q3 scaling work." That kind of explicit acknowledgment does two things: it keeps the debt visible rather than letting it quietly become background noise, and it demonstrates the deliberate reasoning that builds trust with stakeholders that you are managing these decisions thoughtfully rather than just letting things slide.
+
+The most important habit you can build around technical debt is measuring it. Not in some comprehensive, difficult-to-maintain debt registry, but in the practical proxy metrics that tell you whether it is getting better or worse over time. Cycle time by area of the codebase. Incident frequency by service. Change failure rate. Time to onboard new engineers to different parts of the system. These are imperfect proxies but they are real data, and they give you something to point to when the debt conversation gets abstract.
+
+They also give you a way to demonstrate progress. "The work we did on the payment service over the last two quarters has reduced incident frequency in that area by sixty percent and cut the average cycle time for payment changes from four days to one and a half" is a compelling narrative. It makes the case for ongoing investment in debt reduction more credibly than any theoretical framework could, because it shows that the investment actually worked.
+
+Technical debt is not a failure of engineering discipline. Every team that has ever shipped software under real constraints has it. The teams that manage it well are not the ones that have less of it - they are the ones that are honest about it, deliberate about prioritising it, and fluent enough in the business language to communicate about it in terms that the people making resource decisions can actually use.
+
+The goal is not a debt-free codebase. The goal is a codebase where the debt you carry is debt you chose, debt you understand, and debt you are managing toward a specific outcome. That is a much more achievable and much more useful standard.
+
+---
+
+*Next in the series: Leading Through Uncertainty - decision-making under pressure, communication cadence, and maintaining team morale when the path forward is not clear.*
