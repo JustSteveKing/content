@@ -1,0 +1,69 @@
+---
+title: "Leading Through Uncertainty: Crisis Management for Tech Teams"
+description: "How engineering leaders make decisions under pressure, communicate through uncertainty, and keep teams focused when the path forward is not clear."
+category: Management
+pubDate: 2026-04-01
+minRead: 12
+author:
+  name: Steve McDougall
+  avatar:
+    src: https://avatars.githubusercontent.com/u/6368379?v=4
+    alt: Steve McDougall
+tags: ["remote-work", "engineering-management", "leadership", "team-culture"]
+---
+
+The hardest moments in engineering leadership are not the ones where the problem is clear and the path forward is obvious. They are the ones where something has gone seriously wrong, or is about to, and you do not yet know exactly what it is, how bad it will get, or what the right response looks like.
+
+Those moments reveal something about a leader that ordinary work does not. Not technical skill. Not planning ability. Something closer to character - how you behave when the information is incomplete, the pressure is high, and the people around you are watching to see what you do next.
+
+This article is about leading through that kind of uncertainty. Not crisis management in the abstract, but the specific practical skills that matter when a tech team is under pressure:
+- How to make decisions without full information.
+- How to communicate when you do not have all the answers.
+- How to maintain team morale through periods of sustained stress.
+- How to come out the other side with your team's trust intact.
+
+Let's start with decision-making, because it is where most leaders either stabilise a situation or make it worse.
+
+The instinct under pressure is to wait for more information before deciding. This is understandable and sometimes correct - there are situations where the cost of a wrong decision is high enough that waiting for better data is worth the delay. But more often in tech leadership, the instinct to wait is driven less by genuine strategic reasoning and more by discomfort with uncertainty. The decision gets deferred not because waiting will produce meaningfully better information but because making a call with incomplete information feels risky in a way that waiting does not.
+
+The problem is that waiting is itself a decision, and it usually has costs. A production incident that is not being actively addressed is getting worse or at minimum staying bad. A team that does not have a clear direction is spending energy on speculation rather than work. A stakeholder who is not hearing anything from you is filling the silence with their own narrative, which is almost always more negative than the reality.
+
+The more useful frame is to ask: what is the cost of being wrong here, and is that cost recoverable? Most decisions in engineering leadership - including most crisis decisions - are recoverable. You try an approach, it does not work, you try something else. The cost of a wrong decision that can be reversed is almost always lower than the cost of continuing to not decide. The decisions where waiting genuinely makes sense are the ones where the wrong call is not easily reversible - major architectural changes, significant personnel decisions, public communications that cannot be taken back.
+
+For everything else, make the best call you can with the information you have, be explicit that it is your current best read and not certainty, and set a clear time at which you will reassess. "We are going to try X for the next two hours and then regroup" is a much better posture than "let's wait until we know more." It gives the team something to act on, it sets a reassessment cadence, and it signals that you are in control of the situation rather than being controlled by it.
+
+Speed of decision matters especially in production incidents, where every minute of ambiguity has a direct cost. The teams that handle incidents well almost always have one thing in common: a clear incident commander who has explicit authority to make calls. Not authority by default - authority that is declared at the start of the incident. "I am running this incident. Give me updates, surface concerns, but let's not have five people making independent decisions." That clarity reduces the coordination overhead that makes incidents worse and creates the conditions for faster, more coherent response.
+
+Communication during uncertainty is where the gap between good and mediocre leaders is most visible. And the most common mistake is the same one in almost every context I have seen: saying nothing while you figure things out.
+
+The logic is understandable. You do not want to communicate something that turns out to be wrong. You do not want to alarm people unnecessarily. You do not want to make promises you cannot keep. So you wait until you have something definitive to say.
+
+The problem is that silence reads as incompetence or indifference to almost everyone receiving it. Your engineers, your stakeholders, your customers if they are affected - they are not thinking "the leader must be carefully gathering information before communicating." They are thinking "nobody is telling us anything" and drawing their own conclusions.
+
+The solution is to communicate with explicit uncertainty. Not "I do not know what is happening" as an endpoint, but "here is what we know so far, here is what we are doing about it, and here is when you will hear from us again." That structure - current state, current action, next update - can be repeated even when the current state is "we still do not fully understand the problem." It signals that someone is attending to the situation and that information is flowing, which is most of what people actually need when things are uncertain.
+
+Set a communication cadence and stick to it. In a production incident, that might be an update every thirty minutes even if the update is "we are still investigating and have no new information to share." In a more sustained period of organisational uncertainty, it might be a weekly written update from the engineering leader that acknowledges the uncertainty directly and shares whatever context can be shared. The cadence itself is part of the message. Regular communication signals stability. Erratic communication signals instability, regardless of what the content says.
+
+Be honest about what you do not know. This is counterintuitive because leaders are supposed to have answers, and admitting you do not have them can feel like admitting incompetence. But engineers in particular tend to be very good at detecting when someone is performing confidence they do not have, and when they detect it, trust erodes fast. Honest uncertainty - "I do not know yet, but here is how we are going to find out" - is much more credible than false certainty that gets revised the next day.
+
+There is a specific communication failure worth naming separately: the update that contains only information about what is being done, with no acknowledgment of what that means for the people receiving it. "We are working on a new deployment strategy" is informative. "We are working on a new deployment strategy - this means the release schedule for the next two sprints will likely shift, and I will have more specific timelines for you by Thursday" is useful. The difference is whether the communication translates from activity to implication for the audience. Most people, in most circumstances, care more about the implication than the activity.
+
+Maintaining morale under sustained pressure is a different challenge from managing a single acute crisis. A production incident has a natural end - the system comes back up, the incident is resolved, life returns to normal. Sustained uncertainty - a company restructuring, a major project that is significantly behind, a period of rapid change where the direction keeps shifting - has no natural endpoint, and it creates a different kind of drain on the team.
+
+The first thing to understand about sustained pressure is that it affects people differently and on different timescales. Some engineers thrive in high-intensity periods, at least initially. Others find it depleting from the start. The ones who seem fine in week two may be the ones who hit a wall in week six. Watching for that variation - and checking in with people individually rather than just reading the room in team meetings - is important.
+
+Protect the basics. When things are intense, the first things to go are usually the practices that maintain connection and wellbeing - one-on-ones get skipped, retrospectives get cancelled, the team social gets pushed. Those are exactly the wrong things to cut. They are more valuable under pressure than in normal conditions, not less. A fifteen-minute one-on-one during a hard week where you ask someone how they are actually doing and genuinely mean it is worth more in trust and morale terms than almost anything else you could do with those fifteen minutes.
+
+Give the team agency where you can. One of the most demoralising aspects of organisational uncertainty is the feeling of being subject to forces outside your control. You often cannot change the external circumstances, but you can look for the places where engineers have genuine choice - about how to approach a problem, about what to prioritise within their scope, about how the team runs its own processes. That agency, even in small doses, counters the helplessness that sustained uncertainty can create.
+
+Be honest about the limits of what you know and can share. Engineers who are going through a hard period want to understand the situation. They will ask questions you may not be able to answer fully - about the company's direction, about headcount, about product strategy. Give them as much honest context as you can, acknowledge clearly when you cannot share more, and do not fill the gap with reassurance that is not grounded in anything real. "Everything is going to be fine" when you do not actually know that is not reassurance. It is a withdrawal from the trust account that you will have to repay later.
+
+The hardest situation is when the uncertainty involves the team's own future - potential restructuring, scope changes, role eliminations. The ethical imperative here is to share information as soon as you are permitted to share it, and to advocate internally for your team having access to that information earlier rather than later. Sitting on information that significantly affects people's lives because it is organisationally inconvenient to share it is a form of disrespect, regardless of how it is rationalised. Engineers who find out about decisions that affected them after the fact, when their manager knew earlier, tend not to forget it.
+
+What teams remember about hard periods is rarely the hardness itself. It is how they were led through it. Were they kept informed? Were they treated like adults? Did the person responsible for the team make clear decisions, communicate honestly, and protect the team's ability to do good work even under pressure? Or did they go quiet, manage up, and leave the team to figure out what was happening on their own?
+
+The answer to those questions shapes the culture of a team for years after the crisis is over. Engineers who went through something hard together, led well, tend to come out with stronger trust in each other and in their leader than teams that never faced pressure at all. That is not an argument for seeking out crisis. It is an argument for taking seriously how you show up when it arrives, because it will.
+
+---
+
+*Final article in the series: Career Growth - From Junior to Staff Engineer. Skill ladders, promotion criteria, and the conversations that actually move careers forward.*
