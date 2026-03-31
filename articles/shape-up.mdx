@@ -1,0 +1,71 @@
+---
+title: "Shape Up: A Practical Introduction"
+description: "A practical introduction to Shape Up - the planning methodology built on appetite over estimation, fixed time with flexible scope, and small autonomous teams."
+category: Project Management
+series: "building-software-with-ai"
+pubDate: 2026-04-04
+devTo: "https://dev.to/juststevemcd/why-sprints-are-broken-483f"
+minRead: 12
+author:
+  name: Steve McDougall
+  avatar:
+    src: https://avatars.githubusercontent.com/u/6368379?v=4
+    alt: Steve McDougall
+tags: ["project-management", "ai", "modern-software"]
+---
+
+If you read the previous article and found yourself nodding along to the diagnosis, the natural next question is: so what do we do instead?
+
+Shape Up is the most coherent answer I have found. Not because it is perfect, and not because it solves every problem that sprint methodology creates, but because it starts from more honest assumptions about how complex software work actually happens. It was developed at Basecamp over many years of building their own products, written up by Ryan Singer, and released publicly in 2019. It has since been adopted by teams well beyond Basecamp, in contexts ranging from small startups to larger product organisations.
+
+This article is a practical introduction to how it works. Not a summary of the book - read the book, it is worth your time - but an explanation of the core ideas, why they matter, and what they look like in practice for an engineering team making the shift.
+
+The central problem Shape Up is trying to solve is different from the problem sprints were trying to solve. Sprints were designed to create accountability and feedback loops in a process that had too little of both. Shape Up is designed to solve a different failure mode: teams that are always busy, always shipping something, but never quite doing the work that actually moves the product forward in a meaningful way. The endless backlog. The feature that takes six months because it keeps getting interrupted. The important architectural work that never quite makes it into a sprint because there is always something more urgent.
+
+Shape Up addresses that by changing the fundamental unit of planning from the task to the bet.
+
+The appetite is the first concept worth understanding deeply, because it reframes the relationship between time and scope in a way that sounds simple but has significant practical implications.
+
+In sprint planning, the question is typically: how long will this take? You scope the work, estimate the effort, and try to fit it into available capacity. The problem is that for anything genuinely novel or complex, that question is almost impossible to answer accurately. You do not know how long it will take until you have done it, and by then it does not matter anymore.
+
+Shape Up inverts the question. Instead of asking how long the work will take, it asks: how much time are we willing to spend on this? That is the appetite. It is a deliberate, upfront decision about the value of the work relative to the time it would consume. If the answer is two weeks, you design a solution that fits two weeks. If the answer is six weeks, you design a solution that fits six weeks. The time is fixed. The scope is flexible.
+
+This inversion matters because it puts the design constraint where it belongs - on the people doing the work - rather than pretending that scope can be fixed and time will follow. Every experienced engineer knows that scope creep is real and that the work expands to fill the time available. Fixing the time and making scope the variable is a more honest model of how software development actually works.
+
+The pitch is the artifact that captures this thinking before work begins. A pitch is not a product requirements document and it is not a ticket. It is a written proposal, typically one to two pages, that describes a problem worth solving, proposes a shaped solution at the right level of abstraction, defines the appetite, and identifies the no-gos - the things explicitly out of scope for this cycle. The pitch is written by whoever is doing the shaping, which might be a product manager, a senior engineer, a designer, or some combination. It is not written by committee.
+
+What makes a good pitch is that it shapes the problem rather than specifying the solution. There is an important distinction there. Shaping means thinking through the problem carefully enough to identify the meaningful constraints and the rough approach, without pre-designing every detail in a way that removes creative latitude from the team doing the implementation. A good pitch gives the team a clear direction and clear boundaries, and then trusts them to figure out the best way to execute within those boundaries.
+
+We will go much deeper on pitch writing in the next article. For now the important thing is that the pitch is how appetite gets translated into something a team can work against.
+
+The betting table is where pitches go to be evaluated. In Shape Up, there is a fixed cadence of planning cycles - typically six weeks of building followed by two weeks of cooldown - and before each building cycle there is a betting table where the people with decision-making authority look at the available pitches and decide which ones to bet on for the upcoming cycle.
+
+The betting table is deliberately not a backlog grooming session. Nothing carries over automatically. Pitches that were not selected in the previous cycle do not automatically return to the queue - they have to be re-pitched if they are still worth doing, which forces a useful re-evaluation of whether the work is still the right work given what has been learned since the pitch was written. This sounds harsh but it serves an important function: it prevents the backlog from becoming a graveyard of old commitments that nobody has the courage to formally abandon.
+
+The betting table is also where the circuit breaker lives. In Shape Up, if a project is not done at the end of its cycle, the default is not to extend the cycle. The default is to stop, evaluate what happened, and decide whether to re-pitch a modified version in a future cycle. This is one of the more counterintuitive aspects of the methodology and one of the more powerful. The threat of a hard stop at the end of the cycle creates a forcing function for scope management during the cycle. Teams that know the deadline is real tend to make better decisions about what to cut when the work reveals itself to be larger than the pitch anticipated.
+
+The cooldown period is two weeks between building cycles where no new projects are assigned. Engineers use this time to fix bugs, explore ideas, do the small improvements that never make it into a shaped project, write documentation, and recover from the intensity of a six-week building cycle. This is not slack time in the pejorative sense - it is structured breathing room that serves several important functions.
+
+It prevents the accumulation of small technical debts that sprint teams often carry indefinitely because there is never a moment where it is clearly appropriate to address them. It gives engineers time to think without an immediate delivery pressure, which is where a lot of good ideas actually come from. And it means the team arrives at the next building cycle genuinely ready rather than already depleted from the previous one.
+
+The cooldown is also where the betting table for the next cycle is prepared, which means the people doing the shaping have time to write and refine pitches without competing with active delivery work for their attention.
+
+Small autonomous teams are how the building work gets done. In Shape Up, a project is typically assigned to a small team - often two or three people, a designer and one or two engineers - who have full responsibility for the work within the cycle. They figure out how to implement the pitch, they make the day-to-day decisions, and they are trusted to manage their own time and approach within the fixed deadline.
+
+This autonomy is important and it is one of the bigger cultural shifts for teams coming from sprint methodology. Sprint teams often have a product manager or scrum master who is closely involved in day-to-day decisions about how the work is executed. In Shape Up, that involvement happens at the shaping stage, not the building stage. Once the pitch is accepted and the team is working, the expectation is that they manage themselves. That requires a level of trust and a level of engineering maturity that not every team has immediately, but it also tends to develop those qualities faster than a more managed approach does.
+
+How does this map onto teams working with LLMs? Better than sprint methodology does, for a specific reason. LLM-assisted development changes the implementation rhythm in ways that make fixed two-week cycles particularly awkward. A task that might have been a three-day implementation job can now be a three-hour implementation job, but the thinking work that surrounds it - understanding the problem, designing the approach, reviewing the output critically, integrating it into the larger system - does not compress in the same way.
+
+Shape Up's appetite model handles this more gracefully because it does not try to predict implementation time in the first place. The appetite is set based on the value and strategic importance of the work, not on an estimate of how long the implementation will take. When implementation time compresses because of LLM assistance, the team has more room within the fixed appetite to do the thinking and review work thoroughly rather than rushing it to hit a velocity target.
+
+The cooldown period also creates natural space for the kind of work that LLM-assisted development generates more of - reviewing generated code carefully, refactoring output that works but is not clean, writing the documentation and tests that bring generated code up to production standard. Sprint methodology has no structural home for that work. It either displaces feature work, gets skipped under delivery pressure, or accumulates as a different kind of technical debt.
+
+None of this means Shape Up is easy to introduce. Teams that have been running sprints for years have built habits, expectations, and stakeholder relationships around the sprint model. Changing those takes time and requires managing the transition carefully. The rest of this series covers the specific skills and practices that make Shape Up work in practice - how to write pitches, how to run a betting table, how to handle the stakeholder conversations that come with changing how you plan.
+
+But before any of that, the most important thing is to be honest about why you are making the change and what you expect it to accomplish. Shape Up is not a magic methodology that fixes broken teams. It is a planning model that gives good teams a better structure to work within. If your team has deeper issues - poor communication, unclear product direction, lack of technical skill - Shape Up will not solve those. It will just give them a different frame to appear in.
+
+Start with the diagnosis. Then build the model that fits the reality.
+
+---
+
+*Next in the series: Writing Pitches That Work - how to shape a problem at the right level of abstraction and write a pitch that gives a team genuine clarity without over-specifying the solution.*
