@@ -1,0 +1,65 @@
+---
+title: "Why Sprints Are Broken"
+description: "Technical debt is inevitable. What matters is whether you manage it deliberately. A practical framework for prioritisation and stakeholder communication"
+category: Project Management
+series: "building-software-with-ai"
+pubDate: 2026-04-02
+shouldCrossPost: true
+minRead: 12
+author:
+  name: Steve McDougall
+  avatar:
+    src: https://avatars.githubusercontent.com/u/6368379?v=4
+    alt: Steve McDougall
+tags: ["project-management", "ai", "modern-software"]
+---
+
+Let me say something that a lot of engineering teams are thinking but not saying out loud: **sprints are not working anymore**.
+
+Not for everyone, and not in every context. There are still teams running two-week cycles who are genuinely productive and who find the structure useful. But for a growing number of engineering organisations - particularly those working with modern tooling, AI-assisted development, and complex product problems - the sprint model has become more of a performance than a practice. The rituals continue. The points get estimated. The velocity gets tracked. And underneath all of it, the actual work is happening on a completely different rhythm that the sprint structure is not capturing and is actively getting in the way of.
+
+This article is not about bashing agile as a philosophy. The core ideas behind agile - iterative development, responding to change, close collaboration, shipping working software - are sound and remain relevant. This is about the specific implementation of those ideas that most teams landed on in the 2000s and have been running ever since, and why that implementation is increasingly misaligned with the way software actually gets built today.
+
+Understanding why requires going back to where the sprint model came from and what problem it was designed to solve.
+
+Scrum and the two-week sprint emerged in a specific context. Teams were building software in long waterfall cycles, requirements were being locked down months in advance, and by the time software shipped it was often solving a problem that had evolved or disappeared entirely. The sprint was a corrective mechanism. By forcing teams to ship something demonstrable every two weeks, it created a feedback loop that waterfall lacked. You could not hide in a six-month planning phase. You had to show your work regularly and respond to what you learned.
+
+That was genuinely valuable. In that context, the sprint was the right tool.
+
+The context has changed substantially. The feedback loops that sprints were designed to create now exist through other means. You can deploy multiple times a day. You can run experiments with feature flags. You can get user feedback through analytics, session recording, and direct research on a continuous basis. The forcing function that made two-week cycles useful - the need to create artificial checkpoints in a process that otherwise had none - is less necessary when the process itself has become more continuous.
+
+At the same time, the nature of the work has changed. The problems engineering teams are solving are more complex, more interconnected, and more ambiguous than the typical CRUD application work that sprint methodology was largely optimised for. A two-week sprint works reasonably well when the work is decomposable into discrete, estimable tasks. It works much less well when you are doing exploratory technical work, building systems with significant unknown unknowns, or working on problems where the right solution only becomes visible partway through the attempt.
+
+And then there is the AI dimension, which is changing the shape of engineering work faster than any methodology has adapted to.
+
+LLMs have not made engineering easier in a simple, linear sense. What they have done is collapse the time required for certain categories of work - boilerplate implementation, test generation, documentation, straightforward feature development - while leaving other categories largely unchanged or in some cases more complex. The cognitive work of understanding a problem deeply, designing the right system, making good architectural tradeoffs, reviewing generated output critically - that work has not gotten faster. In some ways it has gotten harder, because the volume of code being produced has increased while the time available to reason carefully about it has not.
+
+The result is a strange asymmetry. A task that might have taken three days of implementation work two years ago might now take three hours of implementation work but still requires the same two days of thinking, scoping, and review. The sprint model, which was built around implementation time as the primary unit of work, does not have a good way to account for this. Story points were always a flawed proxy for effort, but they were at least correlated with something real. That correlation is breaking down as implementation time becomes less representative of total work involved.
+
+There is also a rhythm problem. Two-week sprints create a specific cadence that assumes work fits neatly into two-week containers. Some work does. A lot of important work does not. A significant architectural investigation might need six weeks of focused effort from a small group. A genuinely novel feature might need a cycle of building, learning, and rebuilding that does not map onto fixed sprint boundaries. When teams try to force that kind of work into two-week containers, one of two things happens: either the work gets artificially scoped down to fit the container, which means the team is never doing the full problem, or the work spills across sprint boundaries in ways that make the sprint structure meaningless as a planning tool.
+
+The ceremony overhead compounds this. A typical sprint includes planning, a daily standup, a mid-sprint check-in, a review, and a retrospective. For a team of eight engineers, that is easily four to six hours of synchronous meeting time per sprint, and that is before you count the async overhead of updating tickets, writing sprint reports, and maintaining the backlog. For some teams the ratio of ceremony to actual engineering work is genuinely alarming.
+
+I am not arguing that coordination and reflection have no value - they obviously do. I am arguing that the specific forms those things take in sprint methodology were designed for a world without the communication tools, deployment infrastructure, and development tooling that most teams now have. The overhead is not proportionate to the value it creates in the modern context.
+
+The estimation problem deserves its own moment because it is the place where the dysfunction is most visible and most demoralising. Story point estimation exists to give teams and stakeholders a sense of how much work fits into a sprint and to track velocity over time. In practice, it produces numbers that are unreliable enough to be misleading while being precise enough to feel meaningful.
+
+Engineers know this. They know that their estimates are often wrong, that the factors that make estimates wrong are largely outside their control, and that the velocity metrics derived from those estimates are being used by stakeholders to make decisions that the underlying data does not actually support. The result is a quiet cynicism about planning that spreads through engineering teams and makes genuine engagement with the process harder to sustain.
+
+The deeper problem with estimation is not that engineers are bad at it. It is that software estimation is genuinely hard in a way that no methodology fully resolves. The work that is easiest to estimate accurately is the work that is most similar to work you have done before. The work that matters most - the novel problems, the architectural decisions, the exploratory investigations - is hardest to estimate because it is by definition unlike what you have done before. Forcing that work through an estimation process optimised for familiar, decomposable tasks produces confident-looking numbers that do not mean very much.
+
+What does a better model look like? That is what the rest of this series is about. But the short version is this: instead of asking "how long will this take," ask "how much appetite do we have for this problem." Instead of filling a backlog with everything that might conceivably get done someday, make explicit bets on the things that matter most in the next cycle. Instead of running a continuous treadmill of two-week sprints with no structural breathing room, build in time for the team to actually think, clean up, and reset.
+
+Those ideas come from **Shape Up**, the methodology developed at Basecamp and written up by Ryan Singer. It is not a perfect system and it is not right for every team. But it starts from a more honest set of assumptions about how complex software work actually happens, and it has a more realistic model of the relationship between time, scope, and quality than sprint methodology does.
+
+Before we get into the specifics of how Shape Up works and how to introduce it, it is worth sitting with the diagnosis a little longer. Because the failure mode I see most often is teams that recognise something is broken, adopt a new methodology as a fix, and then find that the new methodology is not working either - because they changed the process without changing the underlying assumptions about what software development is and how it should be managed.
+
+The assumption worth examining most carefully is the idea that engineering work is fundamentally a production process - that the job is to take a backlog of defined requirements and process them as efficiently as possible into shipped software. That model has its uses and its contexts. But it is a poor fit for the kind of work that matters most in most engineering organisations: the work of figuring out the right thing to build, the work of solving problems that do not have obvious solutions, the work of building systems that need to evolve over time rather than just be completed.
+
+Sprints were a significant improvement on what came before them. The question is not whether they were a good idea in their time - they were. The question is whether they are still the right tool for the work most teams are doing now. For a growing number of teams, the honest answer is no.
+
+Recognising that is the first step. Building a better model is the work.
+
+---
+
+*Next in the series: Shape Up - a practical introduction to the planning methodology that starts from more honest assumptions about how complex software work actually gets done.*

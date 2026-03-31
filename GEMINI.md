@@ -30,6 +30,8 @@ This repository is the central content source for [juststeveking.com](https://ww
   Interactive CLI to create new articles, guides, or other content types with pre-filled frontmatter.
 - **Check Links**: `bun src/cli.ts check:links`
   Verifies that links within the content are valid.
+- **Cross-post to dev.to**: `bun cross-post-devto`
+  Cross-posts articles marked with `shouldCrossPost: true` to dev.to. Requires `DEVTO_API_KEY`.
 - **View Statistics**: `bun stats`
   Displays counts and metrics for the repository's content.
 - **Sync External Data**:

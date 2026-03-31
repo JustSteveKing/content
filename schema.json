@@ -122,6 +122,16 @@
           "type": "string",
           "format": "uri"
         },
+        "devTo": {
+          "type": "string",
+          "format": "uri",
+          "description": "URL of the cross-posted article on dev.to"
+        },
+        "shouldCrossPost": {
+          "type": "boolean",
+          "default": false,
+          "description": "Whether this article is ready to be cross-posted"
+        },
         "author": {
           "type": "object",
           "required": ["name"],

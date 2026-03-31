@@ -16,7 +16,8 @@
     "verify-schema": "bun src/cli.ts verify",
     "stats": "bun src/cli.ts stats",
     "sync-youtube": "bun src/cli.ts sync:youtube",
-    "sync-packages": "bun src/cli.ts sync:packages"
+    "sync-packages": "bun src/cli.ts sync:packages",
+    "cross-post-devto": "bun src/cli.ts cross-post:devto"
   },
   "dependencies": {
     "@crustjs/core": "^0.0.15",

@@ -7,6 +7,7 @@ import { SyncYoutubeCommand } from "./commands/sync-youtube";
 import { SyncAllCommand } from "./commands/sync-all";
 import { MakeContentCommand } from "./commands/make-content";
 import { CheckLinksCommand } from "./commands/check-links";
+import { CrossPostDevtoCommand } from "./commands/cross-post-devto";
 
 const main = new Crust("content")
   .meta({ description: "Content CLI for JustSteveKing" })
@@ -19,6 +20,7 @@ const main = new Crust("content")
   .command(new SyncYoutubeCommand().build())
   .command(new SyncAllCommand().build())
   .command(new MakeContentCommand().build())
-  .command(new CheckLinksCommand().build());
+  .command(new CheckLinksCommand().build())
+  .command(new CrossPostDevtoCommand().build());
 
 await main.execute();
