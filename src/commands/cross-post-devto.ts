@@ -1,7 +1,6 @@
 import { join } from 'path';
 import { Glob } from 'bun';
 import matter from 'gray-matter';
-import { spinner } from '@crustjs/prompts';
 import { BaseCommand } from './base-command';
 import type { CrustCommandContext } from '@crustjs/core';
 
@@ -37,33 +36,28 @@ export class CrossPostDevtoCommand extends BaseCommand<any, any, any> {
     console.log(`Found ${articles.length} article(s) to cross-post.\n`);
 
     for (const article of articles) {
-      await spinner(`Cross-posting ${article.title}...`, async (s) => {
-        if (DRY_RUN) {
-          s.updateMessage(`[dry-run] Would cross-post ${article.title}`);
-          return;
-        }
+      console.log(`🚀 Processing: ${article.title}`);
+      
+      if (DRY_RUN) {
+        console.log(`   [dry-run] Would cross-post to dev.to`);
+        continue;
+      }
 
-        try {
-          const res = await this.postToDevto(article);
-          const devToUrl = res.url;
+      try {
+        const res = await this.postToDevto(article);
+        const devToUrl = res.url;
 
-          // Update the file: remove shouldCrossPost, add devTo
-          let content = await Bun.file(article.path).text();
-          
-          // Use regex to update frontmatter carefully
-          // We look for shouldCrossPost: true and replace it with devTo: "url"
-          // We also try to maintain some formatting
-          content = content
-            .replace(/^shouldCrossPost:\s*true\s*$/m, `devTo: "${devToUrl}"`)
-            .replace(/^shouldCrossPost:\s*"true"\s*$/m, `devTo: "${devToUrl}"`);
+        let content = await Bun.file(article.path).text();
+        
+        content = content
+          .replace(/^shouldCrossPost:\s*true\s*$/m, `devTo: "${devToUrl}"`)
+          .replace(/^shouldCrossPost:\s*"true"\s*$/m, `devTo: "${devToUrl}"`);
 
-          await Bun.write(article.path, content);
-          s.updateMessage(`Successfully cross-posted to ${devToUrl}`);
-        } catch (e: any) {
-          s.updateMessage(`❌ Error: ${e.message}`);
-          console.error(e);
-        }
-      });
+        await Bun.write(article.path, content);
+        console.log(`   ✅ Successfully cross-posted to ${devToUrl}`);
+      } catch (e: any) {
+        console.error(`   ❌ Error: ${e.message}`);
+      }
     }
 
     console.log('\nDone.');
@@ -96,13 +90,26 @@ export class CrossPostDevtoCommand extends BaseCommand<any, any, any> {
   }
 
   private async postToDevto(article: any) {
-    // Clean up body for dev.to
-    // 1. Remove the first H1 if it matches the title or is just an H1
     const lines = article.body.trim().split('\n');
-    if (lines[0].startsWith('# ')) {
+    if (lines[0] && lines[0].startsWith('# ')) {
       lines.shift();
     }
     const body = lines.join('\n').trim();
+
+    const payload: any = {
+      article: {
+        title: article.title,
+        published: true,
+        body_markdown: body,
+        tags: article.tags.slice(0, 4).map((t: string) => t.toLowerCase().replace(/[^a-z0-9]/g, '')),
+        canonical_url: article.canonical,
+        description: article.description,
+      },
+    };
+
+    if (article.series && typeof article.series === 'string') {
+      payload.article.series = article.series;
+    }
 
     const res = await fetch('https://dev.to/api/articles', {
       method: 'POST',
@@ -110,17 +117,7 @@ export class CrossPostDevtoCommand extends BaseCommand<any, any, any> {
         'Content-Type': 'application/json',
         'api-key': this.API_KEY!,
       },
-      body: JSON.stringify({
-        article: {
-          title: article.title,
-          published: true,
-          body_markdown: body,
-          tags: article.tags.slice(0, 4).map((t: string) => t.toLowerCase().replace(/[^a-z0-9]/g, '')),
-          canonical_url: article.canonical,
-          description: article.description,
-          series: article.series,
-        },
-      }),
+      body: JSON.stringify(payload),
     });
 
     if (!res.ok) {
