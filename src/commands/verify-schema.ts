@@ -34,6 +34,7 @@ export class VerifySchemaCommand extends BaseCommand {
       'packages': 'package',
       'talks': 'talk',
       'podcasts': 'podcast',
+      'series': 'series',
     };
 
     // Directories containing plain JSON files (no frontmatter)

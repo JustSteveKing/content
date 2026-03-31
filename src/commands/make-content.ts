@@ -15,6 +15,7 @@ export class MakeContentCommand extends BaseCommand {
     { label: 'Podcast', value: 'podcasts', def: 'podcast', ext: 'md' },
     { label: 'Testimonial', value: 'testimonials', def: 'testimonial', ext: 'md' },
     { label: 'Contribution', value: 'contributions', def: 'contribution', ext: 'md' },
+    { label: 'Series', value: 'series', def: 'series', ext: 'md' },
   ];
 
   public async handle(_ctx: CrustCommandContext) {

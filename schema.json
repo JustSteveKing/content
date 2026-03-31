@@ -81,6 +81,10 @@
           "type": "string",
           "default": "Uncategorized"
         },
+        "series": {
+          "type": "string",
+          "description": "Slug of the series this article belongs to"
+        },
         "tags": {
           "type": "array",
           "items": { "type": "string" },
@@ -409,6 +413,21 @@
         "url": {
           "type": "string",
           "format": "uri"
+        },
+        "description": {
+          "type": "string"
+        }
+      }
+    },
+    "series": {
+      "title": "Series",
+      "description": "Frontmatter for files in series/",
+      "type": "object",
+      "required": ["title"],
+      "additionalProperties": false,
+      "properties": {
+        "title": {
+          "type": "string"
         },
         "description": {
           "type": "string"
