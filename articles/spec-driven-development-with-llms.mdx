@@ -1,0 +1,69 @@
+---
+title: "Spec Driven Development With LLMs"
+description: "How to write specifications that produce useful LLM output, covering interface definitions, edge cases, and why the spec is your highest-leverage artifact."
+category: Project Management
+series: "building-software-with-ai"
+pubDate: 2026-04-05
+shouldCrossPost: true
+minRead: 12
+author:
+  name: Steve McDougall
+  avatar:
+    src: https://avatars.githubusercontent.com/u/6368379?v=4
+    alt: Steve McDougall
+tags: ["project-management", "ai", "modern-software"]
+---
+
+There is a pattern that almost every engineer who has worked seriously with LLMs eventually discovers, usually after a few frustrating experiences: the quality of what you get out is determined almost entirely by the quality of what you put in.
+
+This is not a new observation. Every tool reflects the clarity of the instruction given to it. But with LLMs the relationship is more direct and more consequential than most engineers initially expect, because the model is capable enough to produce something plausible regardless of how good your input is. A vague prompt produces confident, coherent, and subtly wrong output. A precise prompt produces something you can actually use. The difference between those two outcomes is the spec.
+
+Spec-driven development is not a new concept either. Writing a clear specification before implementation has been good engineering practice for as long as engineering has existed. What is new is the leverage. When a well-written spec is the input to an LLM, the implementation work that follows is faster, more accurate, and requires significantly less correction than when you start from a rough idea and iterate. The spec is now the highest-leverage thing an engineer writes, and most engineering teams are not treating it that way.
+
+This article is about how to write specifications that work well as LLM inputs - what they need to contain, how to structure them, where the common failure modes are, and how spec-driven development connects to the pitch-based planning approach we covered in the previous article.
+
+Let's start with what a spec is not in this context, because there are a few things it gets confused with.
+
+A spec is not a pitch. The pitch operates at the level of the problem and the shaped solution. It is strategic - it communicates direction and appetite to a team. A spec operates at the level of implementation. It is tactical - it tells you and your tools what to actually build in enough detail that the output can be evaluated against clear criteria. A pitch might describe a notification management feature and its general approach. A spec describes a specific component of that feature: its interface, its behaviour, its error states, its constraints.
+
+A spec is not a ticket. A ticket in most engineering systems is a unit of tracking, not a unit of thinking. "Add notification preferences screen" is a ticket. A spec describes what that screen does, how it behaves under different conditions, what data it works with, what the edge cases are, and what success looks like. The thinking that goes into a good spec is what makes the ticket meaningful rather than just a pointer to work that still needs to be figured out.
+
+A spec is not documentation after the fact. It is a thinking tool that exists before implementation begins, and its value is precisely that it forces the difficult questions to surface before they become expensive problems mid-build.
+
+What a good spec contains depends somewhat on the type of work - a spec for a UI component looks different from a spec for a backend service or a data migration - but there are properties that apply across all of them.
+
+Clarity about what is being built is the foundation. This sounds obvious but it is where most specs fail first. "A service that handles notifications" is not clarity. "A notification delivery service that accepts events from upstream producers via a message queue, applies user preference filters, and dispatches to one or more delivery channels with at-least-once delivery guarantees and idempotency handling on the consumer side" is clarity. The second version tells you what the thing does, how it connects to other things, and what its operational properties are. An LLM given the first version will make decisions about all of those things on your behalf, and some of those decisions will be wrong in ways that are not immediately visible.
+
+Explicit interface definitions matter more than almost anything else when you are using LLM assistance. If you are building a function, describe its signature, its inputs, its outputs, and its error behaviour. If you are building an API endpoint, describe its path, its method, its request shape, its response shape, and its failure modes. If you are building a UI component, describe its props, its states, and the events it emits. The more precisely you define the interface before the LLM generates the implementation, the less time you spend correcting an implementation that works internally but connects incorrectly to everything around it.
+
+This matters specifically for LLM-assisted development because models are very good at implementing something that satisfies an internally consistent spec and very bad at inferring the correct interface from context. If you leave the interface underspecified, the model will make choices that are locally reasonable but that do not match the rest of your system. You will not always catch this immediately, and when you do catch it the fix often requires more rework than if you had specified the interface correctly upfront.
+
+Behaviour under edge cases and error conditions is the part of a spec that most engineers skip and most LLMs handle poorly when left to their own devices. A model given an underspecified prompt will often generate happy-path implementation that handles the common case correctly and ignores everything else. If your spec does not explicitly describe what happens when the input is malformed, when the upstream dependency is unavailable, when the user does not have permission, or when the data is in an unexpected state, you will get an implementation that does not handle those cases - not because the model cannot handle them, but because you did not ask it to.
+
+Write out the edge cases explicitly. Not as an exhaustive list of every possible failure mode, but as a clear description of the categories of error and the expected behaviour for each. "Returns a 422 with a structured error body describing the validation failure" is a useful edge case description. "Handles errors appropriately" is not.
+
+Constraints and non-functional requirements belong in the spec too. Performance expectations, security requirements, dependency versions, coding conventions, testing expectations - these are things that an LLM will make default choices about if you do not specify them, and those default choices may not match your system's actual requirements. If you have a response time budget, say so. If you need the implementation to work with a specific version of a library, say so. If your team has a convention around error handling or logging, describe it. The model has no way to know these things from context unless you tell it.
+
+A practical structure that works well across most implementation specs looks something like this. Start with a brief context section - two or three sentences that place this component in the larger system and explain why it exists. Then the interface definition - inputs, outputs, dependencies. Then the behaviour description - what it does in the normal case, broken down into the meaningful sub-cases. Then the error handling - what happens when things go wrong. Then the constraints - performance, security, conventions. Then the testing expectations - what kinds of tests should exist and what they should verify.
+
+That structure is not a rigid template. Adapt it to the work. A simple utility function does not need a full context section. A complex service with multiple integration points might need more detail in the interface section than the template suggests. The point is to have a consistent habit of thinking that ensures the important things are covered rather than accidentally omitted.
+
+The connection between spec-driven development and the Shape Up methodology from the previous articles is tighter than it might initially appear. In Shape Up, the pitch shapes the problem and the approach at a strategic level. The spec is what happens when a team member takes a piece of the shaped work and thinks through the implementation details before writing code. The two artifacts operate at different levels of abstraction and serve different purposes, but they are part of the same discipline of thinking before building.
+
+One of the things that Shape Up's autonomous team model enables is the kind of focused thinking that good spec writing requires. When a team has six weeks and genuine ownership of a scoped problem, they have the time and the context to write specs that are actually grounded in the real constraints of the work. When a team is running two-week sprints and picking up tickets from a shared backlog, the pressure is toward starting implementation quickly, and the spec is the thing that gets skipped.
+
+There is a version of LLM-assisted development that skips the spec entirely. You describe what you want conversationally, the model generates something, you correct it, it regenerates, and you iterate toward a solution. This works for small, simple, self-contained pieces of work. For anything significant it is slower and produces worse output than writing a clear spec upfront and generating against it. The conversational iteration loop is essentially doing the spec work implicitly, one correction at a time, but without the benefit of having the full picture in one place where you can review it before implementation begins.
+
+Write the spec first. Then generate. Then review the output against the spec rather than against your intuition about what looks right. That review step is important and we will go deeper on it in the next article. For now the key point is that the spec is what makes the review possible - without an explicit description of what the implementation should do, you are reviewing against a fuzzy mental model that is easy to satisfy superficially and hard to hold precisely.
+
+There is also a team benefit to spec writing that is separate from the LLM angle. A spec that exists as a written artifact before implementation begins is something other team members can read, critique, and contribute to. It surfaces disagreements and misunderstandings before they are embedded in code. It creates a shared understanding of what is being built that the implementation alone does not provide. And it is a useful reference during code review - rather than evaluating whether the implementation looks right, reviewers can evaluate whether it satisfies the spec, which is a more precise and more productive question.
+
+This is the aspect of spec-driven development that I think is most undervalued right now. The conversation about LLMs in engineering tends to focus on individual productivity - how much faster can one engineer move with AI assistance. The spec-driven approach creates team-level benefits that compound across the cycle, because it moves the alignment work to the beginning of the implementation rather than distributing it across dozens of review comments and conversations.
+
+Think of the spec as the design review that happens before the code exists rather than after. It is much cheaper to fix a misunderstanding at the spec stage than at the implementation stage, and dramatically cheaper than at the integration stage when the misunderstanding has propagated into multiple parts of the system.
+
+Write the spec. Then build. In that order, every time.
+
+---
+
+*Next in the series: Reviewing AI-Generated Work - how to evaluate code, architecture, and quality when a meaningful portion of your codebase was not written by a human.*
