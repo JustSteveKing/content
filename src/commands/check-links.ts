@@ -1,121 +1,127 @@
-import { join, relative } from 'path';
+import { join } from 'path';
 import { readFileSync, existsSync } from 'fs';
 import { Glob } from 'bun';
+import matter from 'gray-matter';
 import { BaseCommand } from './base-command';
 import type { CrustCommandContext } from '@crustjs/core';
-import { spinner } from '@crustjs/prompts';
 
 export class CheckLinksCommand extends BaseCommand {
   public name = 'check:links';
-  public description = 'Check for broken internal and external links';
+  public description = 'Check for broken links in content';
 
   public override flags = {
-    'external': { type: 'boolean', description: 'Check external links (slow)' },
+    'external': { type: 'boolean', description: 'Also check external links (slow)' },
   } as const;
 
-  private readonly DIRS = [
-    'api-guides',
+  private readonly CONTENT_DIRS = [
     'articles',
-    'testimonials',
-    'videos',
-    'contributions',
+    'api-guides',
     'packages',
-    'talks',
-    'podcasts',
+    'series',
   ];
 
   public async handle(ctx: CrustCommandContext<any, typeof this.flags>) {
-    const checkExternal = ctx.flags.external;
-    const allFiles: string[] = [];
+    const { flags } = ctx;
+    const checkExternal = flags['external'];
 
-    await spinner({
-      message: 'Scanning for files...',
-      task: async () => {
-        for (const dir of this.DIRS) {
-          const dirPath = join(process.cwd(), dir);
-          if (!existsSync(dirPath)) continue;
-          const glob = new Glob(`${dir}/*.{md,mdx}`);
-          for await (const file of glob.scan()) {
-            allFiles.push(file);
+    let totalFiles = 0;
+    let totalLinks = 0;
+    let brokenLinks = 0;
+
+    console.log(`🔍 Checking links in ${this.CONTENT_DIRS.join(', ')}...`);
+    if (checkExternal) console.log('🌐 Including external links (this will be slower)\n');
+
+    for (const dir of this.CONTENT_DIRS) {
+      const dirPath = join(process.cwd(), dir);
+      if (!existsSync(dirPath)) continue;
+
+      const glob = new Glob(`${dir}/*.{md,mdx}`);
+      const files = Array.from(glob.scanSync());
+
+      for (const file of files) {
+        totalFiles++;
+        console.log(`📄 Checking ${file}...`);
+        const { count, broken } = await this.checkLinksInFile(file, checkExternal);
+        totalLinks += count;
+        brokenLinks += broken;
+      }
+    }
+
+    console.log(`\n✨ Finished checking ${totalFiles} files.`);
+    console.log(`🔗 Total links found: ${totalLinks}`);
+    
+    if (brokenLinks > 0) {
+      console.log(`🚨 Found ${brokenLinks} broken links!`);
+      process.exit(1);
+    } else {
+      console.log('✅ No broken links found!');
+    }
+  }
+
+  private async checkLinksInFile(file: string, checkExternal: boolean): Promise<{ count: number, broken: number }> {
+    const content = readFileSync(join(process.cwd(), file), 'utf8');
+    const { content: body } = matter(content);
+
+    // Basic markdown link regex: [text](url)
+    const linkRegex = /\[([^\]]+)\]\(([^)]+)\)/g;
+    let match;
+    let count = 0;
+    let broken = 0;
+
+    while ((match = linkRegex.exec(body)) !== null) {
+      count++;
+      const url = match[2];
+
+      if (url.startsWith('http')) {
+        if (checkExternal) {
+          try {
+            const res = await fetch(url, { method: 'HEAD', signal: AbortSignal.timeout(5000) });
+            if (!res.ok) {
+              console.error(`   ❌ Broken external link: ${url} (${res.status})`);
+              broken++;
+            }
+          } catch (e: any) {
+            console.error(`   ❌ Failed to reach external link: ${url} (${e.message})`);
+            broken++;
           }
         }
-      },
-    });
-
-    console.log(`🔍 Checking links in ${allFiles.length} files...\n`);
-
-    let brokenInternal = 0;
-    let brokenExternal = 0;
-    let totalChecked = 0;
-
-    for (const file of allFiles) {
-      const content = readFileSync(join(process.cwd(), file), 'utf8');
-      
-      // Basic regex for markdown links [text](url)
-      const linkRegex = /\[([^\]]+)\]\(([^)]+)\)/g;
-      let match;
-
-      while ((match = linkRegex.exec(content)) !== null) {
-        totalChecked++;
-        const url = match[2];
-
-        if (url.startsWith('http')) {
-          if (checkExternal) {
-            await spinner({
-              message: `Checking external link in ${file}: ${url}`,
-              task: async (s) => {
-                try {
-                  const res = await fetch(url, { method: 'HEAD', signal: AbortSignal.timeout(5000) });
-                  if (!res.ok) {
-                    brokenExternal++;
-                    console.error(`❌ Broken External: ${file} -> ${url} (${res.status})`);
-                  }
-                } catch (e: any) {
-                  brokenExternal++;
-                  console.error(`❌ External Error: ${file} -> ${url} (${e.message})`);
-                }
-              }
-            });
+      } else if (url.startsWith('/')) {
+        // Internal link check (assuming standard patterns)
+        // This is a simplified check
+        const slug = url.split('/').pop()?.split('#')[0];
+        if (slug) {
+          const exists = this.findSlugInContent(slug);
+          if (!exists) {
+            console.error(`   ❌ Broken internal link: ${url}`);
+            broken++;
           }
-        } else if (url.startsWith('/') || url.startsWith('./') || url.startsWith('../')) {
-          // Internal link
-          // Simple heuristic: if it doesn't have an extension, it's likely a route.
-          // In this repo, content files are usually at the root of their type dir.
-          let targetPath = url;
-          if (url.startsWith('/')) {
-            targetPath = join(process.cwd(), url.slice(1));
-          } else {
-            targetPath = join(process.cwd(), file, '..', url);
-          }
-
-          // Check if file exists (with common extensions if not provided)
-          const extensions = ['', '.md', '.mdx', '.json'];
-          let found = false;
-          for (const ext of extensions) {
-            if (existsSync(targetPath + ext)) {
-              found = true;
-              break;
-            }
-          }
-
-          if (!found) {
-            brokenInternal++;
-            console.error(`❌ Broken Internal: ${file} -> ${url}`);
-          }
+        }
+      } else if (url.startsWith('#') || url.startsWith('mailto:')) {
+        // Skip anchors and mailto for now
+      } else if (!url.includes(':')) {
+        // Relative link check
+        const dir = file.split('/')[0];
+        const targetPath = join(process.cwd(), dir, url.split('#')[0]);
+        if (!existsSync(targetPath)) {
+          console.error(`   ❌ Broken relative link: ${url}`);
+          broken++;
         }
       }
     }
 
-    console.log(`\n✨ Finished checking ${totalChecked} links.`);
-    console.log(`- Broken Internal: ${brokenInternal}`);
-    if (checkExternal) {
-      console.log(`- Broken External: ${brokenExternal}`);
-    } else {
-      console.log('- External links skipped (use --external to check)');
-    }
+    return { count, broken };
+  }
 
-    if (brokenInternal > 0 || brokenExternal > 0) {
-      process.exit(1);
+  private findSlugInContent(slug: string): boolean {
+    // Check in all content directories for a file with this slug
+    for (const dir of this.CONTENT_DIRS) {
+      const extensions = ['mdx', 'md'];
+      for (const ext of extensions) {
+        if (existsSync(join(process.cwd(), dir, `${slug}.${ext}`))) {
+          return true;
+        }
+      }
     }
+    return false;
   }
 }

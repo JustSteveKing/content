@@ -1,6 +1,6 @@
 import { join } from 'path';
 import { existsSync, readFileSync } from 'fs';
-import { input, select, spinner } from '@crustjs/prompts';
+import { input, select } from '@crustjs/prompts';
 import { BaseCommand } from './base-command';
 import type { CrustCommandContext } from '@crustjs/core';
 
@@ -118,14 +118,9 @@ ${yaml}
 Write your content here...
 `;
 
-    await spinner({
-      message: `Writing ${filename}...`,
-      task: async () => {
-        await Bun.write(filePath, content);
-      },
-    });
-
-    console.log(`\n✅ Created: ${filePath}`);
+    console.log(`\n✍️  Writing ${filename}...`);
+    await Bun.write(filePath, content);
+    console.log(`✅ Created: ${filePath}`);
   }
 
   private slugify(s: string): string {

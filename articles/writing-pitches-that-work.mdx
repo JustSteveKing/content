@@ -1,0 +1,79 @@
+---
+title: "Writing Pitches That Work"
+description: "How to write Shape Up pitches that give engineering teams real clarity - problem definition, appetite, solution shaping, rabbit holes, and no-gos explained."
+category: Project Management
+series: "building-software-with-ai"
+pubDate: 2026-04-04
+devTo: "https://dev.to/juststevemcd/why-sprints-are-broken-483f"
+minRead: 12
+author:
+  name: Steve McDougall
+  avatar:
+    src: https://avatars.githubusercontent.com/u/6368379?v=4
+    alt: Steve McDougall
+tags: ["project-management", "ai", "modern-software"]
+---
+
+The pitch is the atomic unit of Shape Up. Get it right and the team has everything they need to do good work within the cycle. Get it wrong and you will feel it for six weeks - in misaligned expectations, scope debates that should have happened before the work started, and solutions that technically satisfy the brief but miss the actual problem.
+
+Most teams that adopt Shape Up underinvest in pitch writing. They treat it as a lighter version of a product requirements document, or they go the other direction and write something so vague it gives the team no useful direction at all. Both failure modes are common and both are avoidable once you understand what a pitch is actually trying to do.
+
+A pitch is not a specification. It is not a list of requirements. It is not a design document. It is a shaped proposal - a written artifact that has done enough thinking about a problem to give a team genuine clarity on what they are solving and why, without pre-solving it for them in a way that removes the creative and technical latitude they need to do the work well.
+
+That distinction between shaping and specifying is the most important thing to understand about pitch writing, so let us spend some time on it before getting into the mechanics.
+
+When you specify, you are deciding what the solution looks like before the team has had a chance to engage with the problem. You are drawing wireframes, writing detailed acceptance criteria, and describing behaviour at the level of individual interactions. This feels thorough. It feels like you are setting the team up for success by removing ambiguity. What it actually does is remove the team's ability to find a better solution than the one you already thought of, and it often embeds assumptions that only become visible as problems once implementation starts.
+
+When you shape, you are doing something different. You are thinking hard enough about the problem to understand its boundaries, its constraints, and the general direction of a solution - but stopping short of specifying the details. You are identifying the risks and unknowns that matter, the no-gos that would take the work in the wrong direction, and the properties a good solution needs to have without dictating exactly what form it takes.
+
+The test of whether you have shaped rather than specified is whether the team still has meaningful decisions to make. If you hand the pitch to the team and they essentially have a to-do list to execute, you have over-specified. If you hand them the pitch and they understand the problem, the appetite, the constraints, and the direction, but still need to figure out the best approach - that is a well-shaped pitch.
+
+Now let's get into what a pitch actually contains.
+
+Every pitch worth the name has five components: the problem, the appetite, the solution at the right level of abstraction, the rabbit holes, and the no-gos. These do not have to appear in a rigid template format - a well-written pitch reads more like a short essay than a form - but all five need to be present.
+
+The problem is where most pitches are weakest and where the most leverage is. A vague problem statement produces vague solutions. A precise problem statement - one that describes a specific situation, a specific friction, a specific gap between what exists and what should exist - gives the team something to build against that they can evaluate their work against throughout the cycle.
+
+A weak problem statement: "Users need a better way to manage their notifications."
+
+A stronger problem statement: "Users who receive more than twenty notifications per day are disabling notifications entirely rather than managing them, which means they are missing time-sensitive alerts that affect their workflow. We need a way to let users manage notification volume without losing access to the alerts that actually matter to them."
+
+The difference is not just length. The stronger version identifies who the problem affects, what they are doing as a result of the problem, and what the actual cost of that behaviour is. It gives the team a specific situation to solve for and a way to evaluate whether the solution they build actually addresses it.
+
+The appetite is the honest statement of how much time this work is worth. Not how long you expect it to take - how much time you are willing to spend on it given what you know about its value and strategic importance. Two weeks for a small improvement. Six weeks for something more significant. Be direct and be honest. If the appetite is two weeks, write two weeks and mean it. The appetite is not a soft target that expands when the work turns out to be more complex than expected. It is a constraint that shapes the scope of the solution.
+
+Stating the appetite explicitly also forces an important conversation before the cycle begins. If the team reads the pitch and immediately thinks the problem cannot be meaningfully addressed in the stated appetite, that is a conversation worth having before six weeks of work happens, not after.
+
+The solution section is where the shaping work lives, and it is the hardest part of a pitch to write well. You are trying to communicate enough about the direction and the approach that the team is not starting from zero, without designing the solution so completely that you have made all the meaningful decisions for them.
+
+A few techniques that help here. Breadboarding is the practice of sketching the key components and connections of a solution without specifying its visual design - think of it as a schematic rather than a mockup. You might sketch that there is a notification preferences screen with three distinct categories, that categories can be muted rather than all notifications being turned off, and that there is an activity log so users can see what they missed. That communicates direction without locking in the visual design, the exact interaction model, or the technical implementation.
+
+Fat marker sketches serve a similar purpose for more visual problems. Rough, low-fidelity drawings that capture the general layout and flow without the kind of detail that a real wireframe contains. The roughness is intentional - it signals to the team that the sketch is directional, not prescriptive, and it leaves room for them to find better solutions within the general approach.
+
+The key is to work at the level of components and relationships rather than the level of pixels and interactions. What are the meaningful parts of this solution? How do they connect? What does someone move through as they use it? Those are the questions a good solution section answers without over-answering.
+
+Rabbit holes deserve more attention than they usually get in discussions of Shape Up. A rabbit hole is a part of the problem that looks tractable but might turn out to be much more complex than it appears - the kind of thing that could consume most of a cycle if the team is not explicitly warned about it.
+
+Identifying rabbit holes in a pitch is one of the highest-value things a shaper can do, because it requires actually thinking through the implementation risks before the work starts rather than discovering them mid-cycle when there is less time to respond. It also signals to the team that you have thought about the problem seriously rather than just describing it from a high level.
+
+A rabbit hole might be a technical dependency that is less stable than it appears. It might be an edge case in the data model that looks simple on the surface but branches into complexity once you dig in. It might be an interaction with an existing feature that creates unexpected constraints. Whatever it is, naming it explicitly in the pitch gives the team permission to timebox their investigation of it rather than going deep in search of a perfect solution.
+
+The no-gos are the explicit scope boundaries - the things that are specifically out of scope for this cycle even if they seem related. No-gos are important because they prevent scope creep from a specific direction: the well-intentioned team member who sees adjacent work and pulls it into the cycle because it seems related and they have the context to do it.
+
+No-gos also do something less obvious: they signal that the shaper has thought about what this work is not, which is often as clarifying as knowing what it is. "This does not include email notification preferences, which will be addressed in a separate cycle" is a useful statement because it tells the team where the boundary is and why, and it heads off a conversation that would otherwise happen at an inconvenient moment during implementation.
+
+There is a question that comes up when teams start writing pitches with LLM assistance, which is increasingly common: how do you use a tool like this in the shaping process without ending up with something that is technically complete but fundamentally generic?
+
+The honest answer is that LLMs are useful for some parts of pitch writing and not others. They are useful for refining language, checking that a problem statement is clear to someone without context, generating a list of rabbit holes to consider, and structuring a rough draft that you have already thought through. They are not useful for the actual thinking work of shaping - understanding the specific problem in its specific context, identifying the constraints that matter, and making the judgment calls about where the scope boundary should be.
+
+The pitches that work are the ones where the thinking happened before the writing. If you use an LLM to generate a pitch from a one-line prompt, you will get something that looks like a pitch but lacks the depth of understanding that makes a pitch actually useful. The team will feel that absence during the cycle, even if they cannot always articulate where it is coming from.
+
+Write the hard parts yourself. Use the tools for everything else.
+
+One last thing about pitch writing that does not get said enough: a pitch that does not get selected at the betting table is not a failed pitch. It is a well-spent investment in understanding the problem. The thinking you did to write the pitch - the problem definition, the constraint identification, the risk mapping - is valuable regardless of whether this specific version of the work happens this cycle. If the pitch comes back at the next betting table, the thinking is still there and the pitch can be refined rather than rewritten. If the problem turns out to have changed or resolved itself, the thinking helped you understand that faster than you would have otherwise.
+
+Treat pitches as a practice, not a transaction. Write them carefully, get better at writing them over time, and use the betting table's response to them as feedback on whether you are shaping at the right level of abstraction. That feedback loop, over several cycles, is what turns pitch writing from an uncomfortable new process into one of the most clarifying things an engineering organisation can do.
+
+---
+
+*Next in the series: Spec-Driven Development with LLMs - how to write specifications that produce useful output from AI tools, and why the quality of your spec is now the highest-leverage thing an engineer writes.*

@@ -1,7 +1,6 @@
 import { join } from 'path';
 import { Glob } from 'bun';
 import matter from 'gray-matter';
-import { spinner } from '@crustjs/prompts';
 import { BaseCommand } from './base-command';
 import type { CrustCommandContext } from '@crustjs/core';
 
@@ -33,185 +32,110 @@ export class SyncPackagesCommand extends BaseCommand<any, any, any> {
 
     if (DRY_RUN) console.log('[dry-run] No files will be written.\n');
 
-    const packageNames = await spinner(`Fetching packages for vendor ${this.VENDOR}...`, async (s) => {
-      const packages = await this.getVendorPackages(this.VENDOR);
-      s.updateMessage(`${packages.length} packages found for vendor ${this.VENDOR}.`);
-      return packages;
-    });
+    console.log(`📦 Fetching packages for vendor ${this.VENDOR}...`);
+    const packageNames = await this.getVendorPackages(this.VENDOR);
+    console.log(`✅ ${packageNames.length} packages found.\n`);
 
-    const existing = await spinner('Scanning existing files...', async (s) => {
-      const index = await this.buildExistingIndex();
-      s.updateMessage(`${index.size} existing packages indexed.`);
-      return index;
-    });
+    console.log('🔍 Scanning existing files...');
+    const existing = await this.buildExistingIndex();
+    console.log(`✅ ${existing.size} existing packages indexed.\n`);
 
     let created = 0;
     let updated = 0;
     let skipped = 0;
 
     for (const name of packageNames) {
-      await spinner(`Syncing ${name}...`, async (s) => {
-        try {
-          const pkg = await this.getPackageDetails(name);
-          const existingPath = existing.get(name);
+      console.log(`🚀 Syncing ${name}...`);
+      try {
+        const pkg = await this.getPackageDetails(name);
+        const existingPath = existing.get(name);
 
-          if (existingPath && NEW_ONLY) {
-            s.updateMessage(`Skipped ${name} (exists)`);
-            skipped++;
-            return;
-          }
-
-          const readme = await this.getGitHubReadme(pkg.repository);
-
-          if (existingPath) {
-            const content = await Bun.file(existingPath).text();
-            const { data } = matter(content);
-
-            const latestVersion = this.getLatestVersion(pkg.versions);
-            
-            const unchanged =
-              data.downloads === pkg.downloads.total &&
-              data.monthlyDownloads === pkg.downloads.monthly &&
-              data.stars === pkg.github_stars &&
-              data.version === latestVersion;
-
-            if (unchanged) {
-              s.updateMessage(`No changes for ${name}`);
-              skipped++;
-              return;
-            }
-
-            const newContent = this.buildMarkdown(pkg, readme);
-            if (!DRY_RUN) await Bun.write(existingPath, newContent);
-            s.updateMessage(`Updated ${name}`);
-            updated++;
-          } else {
-            const slug = this.slugify(name);
-            const filename = `${slug}.md`;
-            const filepath = join(this.PACKAGES_DIR, filename);
-
-            if (!DRY_RUN) await Bun.write(filepath, this.buildMarkdown(pkg, readme));
-            s.updateMessage(`Created ${name}`);
-            created++;
-          }
-        } catch (err: any) {
-          s.updateMessage(`Failed to sync ${name}: ${err.message}`);
+        if (existingPath && NEW_ONLY) {
+          console.log(`   ⏭️  Skipped ${name} (exists)`);
+          skipped++;
+          continue;
         }
-      });
+
+        const readme = await this.getGitHubReadme(pkg.repository);
+
+        if (existingPath) {
+          const content = await Bun.file(existingPath).text();
+          const { data } = matter(content);
+
+          const latestVersion = this.getLatestVersion(pkg.versions);
+          
+          const unchanged =
+            data.downloads === pkg.downloads.total &&
+            data.monthlyDownloads === pkg.downloads.monthly &&
+            data.stars === pkg.github_stars &&
+            data.version === latestVersion;
+
+          if (unchanged) {
+            console.log(`   ⏭️  No changes for ${name}`);
+            skipped++;
+            continue;
+          }
+
+          const newContent = this.buildMarkdown(pkg, readme);
+          if (!DRY_RUN) await Bun.write(existingPath, newContent);
+          console.log(`   ✅ Updated ${name}`);
+          updated++;
+        } else {
+          const slug = this.slugify(name);
+          const filename = `${slug}.md`;
+          const filepath = join(this.PACKAGES_DIR, filename);
+
+          if (!DRY_RUN) await Bun.write(filepath, this.buildMarkdown(pkg, readme));
+          console.log(`   ✅ Created ${name}`);
+          created++;
+        }
+      } catch (err: any) {
+        console.error(`   ❌ Failed to sync ${name}: ${err.message}`);
+      }
     }
 
     const dryTag = DRY_RUN ? ' (dry run)' : '';
     console.log(`\nDone${dryTag}. Created: ${created}, Updated: ${updated}, Skipped: ${skipped}`);
   }
 
-  private async packagistFetch(endpoint: string): Promise<any> {
-    const res = await fetch(`${this.PACKAGIST_API}/${endpoint}`);
-    if (!res.ok) {
-      throw new Error(`Packagist API ${endpoint} ${res.status}: ${await res.text()}`);
-    }
-    return res.json();
-  }
-
-  private async githubFetch(endpoint: string): Promise<any> {
-    const res = await fetch(`${this.GITHUB_API}/${endpoint}`, {
-      headers: {
-        Authorization: `token ${GITHUB_TOKEN}`,
-        Accept: 'application/vnd.github.v3+json',
-        'User-Agent': 'juststeveking-sync-script',
-      },
-    });
-    if (!res.ok) {
-      if (res.status === 404) return null;
-      throw new Error(`GitHub API ${endpoint} ${res.status}: ${await res.text()}`);
-    }
-    return res.json();
-  }
-
   private async getVendorPackages(vendor: string): Promise<string[]> {
-    const data = await this.packagistFetch(`packages/list.json?vendor=${vendor}`);
-    return data.packageNames ?? [];
+    const res = await fetch(`${this.PACKAGIST_API}/packages/list.json?vendor=${vendor}`);
+    if (!res.ok) throw new Error(`Packagist API ${res.status}: ${await res.text()}`);
+    const data = await res.json();
+    return data.packageNames;
   }
 
-  private async getPackageDetails(packageName: string): Promise<any> {
-    const data = await this.packagistFetch(`packages/${packageName}.json`);
+  private async getPackageDetails(name: string): Promise<any> {
+    const res = await fetch(`${this.PACKAGIST_API}/packages/${name}.json`);
+    if (!res.ok) throw new Error(`Packagist API ${res.status}: ${await res.text()}`);
+    const data = await res.json();
     return data.package;
   }
 
+  private async getGitHubReadme(repoUrl: string): Promise<string> {
+    const repo = repoUrl.replace('https://github.com/', '').replace('.git', '');
+    const res = await fetch(`${this.GITHUB_API}/repos/${repo}/readme`, {
+      headers: {
+        'Authorization': `token ${GITHUB_TOKEN}`,
+        'Accept': 'application/vnd.github.v3.raw',
+      },
+    });
+    if (!res.ok) return '';
+    return await res.text();
+  }
+
   private getLatestVersion(versions: Record<string, any>): string {
-    const versionKeys = Object.keys(versions);
-    const stable = versionKeys
-      .filter(v => !v.startsWith('dev-') && !v.includes('-dev'))
-      .sort((a, b) => b.localeCompare(a, undefined, { numeric: true, sensitivity: 'base' }));
-
-    return stable[0] ?? versionKeys[0] ?? 'unknown';
-  }
-
-  private async getGitHubReadme(repoUrl: string): Promise<string | null> {
-    const match = repoUrl.match(/github\.com\/([^/]+)\/([^/.]+)/);
-    if (!match) return null;
-    const [_, owner, repo] = match;
-    
-    const data = await this.githubFetch(`repos/${owner}/${repo}/readme`);
-    if (!data || !data.download_url) return null;
-
-    const res = await fetch(data.download_url);
-    if (!res.ok) return null;
-    return res.text();
-  }
-
-  private yamlEscape(s: string): string {
-    return (s ?? '')
-      .replace(/\\/g, '\\\\')
-      .replace(/"/g, '\\"')
-      .replace(/\r?\n/g, ' ')
-      .trim();
-  }
-
-  private slugify(name: string): string {
-    return name
-      .split('/')
-      .pop()!
-      .toLowerCase()
-      .replace(/[^a-z0-9\s-]/g, '')
-      .replace(/\s+/g, '-')
-      .replace(/-+/g, '-')
-      .replace(/^-+|-+$/g, '');
-  }
-
-  private buildMarkdown(pkg: any, readme: string | null): string {
-    const latestVersion = this.getLatestVersion(pkg.versions);
-    const updatedAt = new Date().toISOString().split('T')[0];
-
-    const frontmatter = {
-      name: pkg.name,
-      description: pkg.description,
-      packagist: `https://packagist.org/packages/${pkg.name}`,
-      github: pkg.repository.replace('.git', ''),
-      downloads: pkg.downloads.total,
-      monthlyDownloads: pkg.downloads.monthly,
-      stars: pkg.github_stars,
-      version: latestVersion,
-      updatedAt: updatedAt,
-    };
-
-    const yaml = Object.entries(frontmatter)
-      .map(([k, v]) => {
-        if (typeof v === 'string') return `${k}: "${this.yamlEscape(v)}"`;
-        return `${k}: ${v}`;
-      })
-      .join('\n');
-
-    return `---
-${yaml}
----
-
-${readme ?? pkg.description}
-`;
+    const sorted = Object.keys(versions).sort((a, b) => {
+      if (a === 'dev-master') return 1;
+      if (b === 'dev-master') return -1;
+      return b.localeCompare(a);
+    });
+    return sorted[0] || 'unknown';
   }
 
   private async buildExistingIndex(): Promise<Map<string, string>> {
     const index = new Map<string, string>();
-    const glob = new Glob('*.{md,mdx}');
+    const glob = new Glob('*.md');
 
     for await (const file of glob.scan(this.PACKAGES_DIR)) {
       const filepath = join(this.PACKAGES_DIR, file);
@@ -227,5 +151,40 @@ ${readme ?? pkg.description}
     }
 
     return index;
+  }
+
+  private slugify(name: string): string {
+    return name.split('/')[1] || name;
+  }
+
+  private buildMarkdown(pkg: any, readme: string): string {
+    const latestVersion = this.getLatestVersion(pkg.versions);
+    const ver = pkg.versions[latestVersion] || {};
+    
+    const tech = new Set<string>();
+    if (ver.require) {
+      if (ver.require.php) tech.add('PHP');
+      if (ver.require['illuminate/support']) tech.add('Laravel');
+    }
+
+    const techYaml = [...tech].map(t => `"${t}"`).join(', ');
+
+    return `---
+name: "${pkg.name}"
+description: "${pkg.description.replace(/"/g, '\\"')}"
+packagist: "https://packagist.org/packages/${pkg.name}"
+github: "${pkg.repository}"
+link: "${pkg.repository}"
+tech: [${techYaml}]
+featured: false
+downloads: ${pkg.downloads.total}
+monthlyDownloads: ${pkg.downloads.monthly}
+stars: ${pkg.github_stars}
+version: "${latestVersion}"
+updatedAt: "${new Date().toISOString().split('T')[0]}"
+---
+
+${readme}
+`;
   }
 }
