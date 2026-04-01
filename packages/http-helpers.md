@@ -3,24 +3,14 @@ name: "juststeveking/http-helpers"
 description: "A collection of helpers to use when working with HTTP."
 packagist: "https://packagist.org/packages/juststeveking/http-helpers"
 github: "https://github.com/JustSteveKing/http-helpers"
+link: "https://github.com/JustSteveKing/http-helpers"
+tech: ["PHP", "Laravel"]
+featured: false
 downloads: 9209
 monthlyDownloads: 0
 stars: 6
-version: "0.0.3"
-updatedAt: "2026-03-25"
+version: "dev-main"
+updatedAt: "2026-04-01"
 ---
 
-# HTTP Helpers
-
-A collection of helpers to use when working with HTTP.
-
-## Installation
-
-```bash
-composer require juststeveking/http-helpers
-```
-
-## Usage
-
-Coming soon.
 
