@@ -1,0 +1,73 @@
+---
+title: "Reviewing AI Generated Work"
+description: "How to review AI-generated code effectively, what failure modes to watch for, and how to maintain quality standards as code volume increases."
+category: Project Management
+series: "building-software-with-ai"
+pubDate: 2026-04-07
+shouldCrossPost: true
+minRead: 12
+author:
+  name: Steve McDougall
+  avatar:
+    src: https://avatars.githubusercontent.com/u/6368379?v=4
+    alt: Steve McDougall
+tags: ["project-management", "ai", "modern-software"]
+---
+
+Code review has always been one of the most important practices in engineering. It is where mistakes get caught, where knowledge transfers between team members, where standards get enforced, and where the collective understanding of a system gets built and maintained over time. None of that has changed with AI-assisted development. What has changed is the volume, the nature of the output being reviewed, and the specific failure modes that reviewers need to be watching for.
+
+A team that adopts LLM-assisted development without adapting its review practices is a team that is accruing risk faster than it realises. The code looks fine. It passes the tests. It does what was asked of it. And underneath that surface coherence there are patterns, assumptions, and subtle problems that only become visible when something goes wrong in production or when the next engineer tries to extend the code and finds it significantly harder than it should be.
+
+This article is about how to review AI-generated work well - what to look for, how to structure the review process, what the specific failure modes of generated code are, and how to maintain meaningful quality standards when the volume of code being produced has increased significantly.
+
+Let's start with the most important shift in mindset, because without it the tactical advice does not land correctly.
+
+When you review code written by a human colleague, you are reviewing the output of a reasoning process that you can interrogate. If something looks wrong, you can ask why they did it that way. If something is missing, you can assume it was either overlooked or there is a reason they left it out that they can explain. The review is a conversation between two people who share context and who are both trying to make the code better.
+
+When you review AI-generated code, you are reviewing the output of a pattern-matching process that has no understanding of your specific system, your team's conventions, your operational context, or the strategic direction of the product. The model produced something that satisfies the prompt statistically. It has no stake in whether that output is actually correct, actually maintainable, or actually appropriate for your context. There is no reasoning to interrogate, no intent to infer, no colleague to ask for clarification.
+
+That difference changes what a reviewer's job is. With human-written code, the reviewer is a second pair of eyes on a reasoning process that is mostly trustworthy. With AI-generated code, the reviewer is the only reasoning process in the chain. That is a heavier responsibility and it requires a different level of engagement.
+
+The practical implication is that AI-generated code deserves more scrutiny than equivalent human-written code, not less. The temptation is to go the other way - the code looks clean, it is well-structured, it does not have the obvious rough edges that signal a rushed implementation, so it gets a lighter review. That temptation is one of the more reliable ways to introduce subtle problems into a codebase at scale.
+
+The specific failure modes of AI-generated code are worth knowing in detail, because they are different from the failure modes of human-written code and they require different things from reviewers.
+
+Plausible but incorrect logic is the most dangerous failure mode because it is the hardest to catch in a standard review. The model generates code that looks correct, follows the right patterns, and handles the obvious cases - but contains a subtle error in a conditional, an off-by-one in a loop, or a misunderstanding of how a library function behaves in an edge case. The code passes the tests that were generated alongside it because the model made the same incorrect assumption in the test as in the implementation. This is the failure mode that makes test-driven review - evaluating the tests as carefully as the implementation - essential rather than optional.
+
+Context blindness shows up when the generated code technically satisfies the spec but does not fit the larger system it is being integrated into. The model chose a data structure that is inconsistent with how the rest of the codebase handles similar data. It introduced a dependency that duplicates one already in the project. It implemented a pattern that the team has explicitly moved away from. The code is not wrong in isolation - it is wrong in context. Catching this requires reviewers who know the codebase well enough to recognise the inconsistency, which is an argument for ensuring that AI-generated code is reviewed by engineers with genuine system knowledge rather than just whoever is available.
+
+Hallucinated APIs and library behaviour are a known LLM failure mode that is particularly dangerous in code review because the code may work correctly in testing and only fail in specific runtime conditions. The model generates a call to a library method that does not exist, or that exists but does not behave the way the model assumed it does. If the test suite does not exercise that specific path, the error is invisible until production. Reviewing for this means actually checking that the library calls made in generated code correspond to the actual API of the library at the version your project uses - not assuming that because the call looks plausible it is correct.
+
+Security vulnerabilities in AI-generated code follow patterns that are worth understanding. Models trained on large bodies of existing code have absorbed the insecure patterns that exist in that code alongside the secure ones. They will generate SQL queries that are vulnerable to injection if the prompt does not explicitly require parameterised queries. They will generate authentication code that has subtle flaws. They will handle user input without adequate sanitisation if the spec does not explicitly require it. Security review of AI-generated code needs to be treated as a first-class concern, not an afterthought.
+
+Over-engineering is a failure mode that is easy to miss because it does not produce immediate problems. The model generates a solution that is more complex than the problem requires - abstract factory patterns for a problem that needed a simple function, elaborate class hierarchies where a flat module would do, configuration systems where hardcoded values are appropriate for the current stage of the product. The code works but it is harder to understand, harder to modify, and harder to debug than it needed to be. Reviewing for over-engineering means asking whether the complexity of the solution is proportionate to the complexity of the problem, which is a judgment that requires understanding both.
+
+Reviewing against the spec rather than against intuition is the single most important practice change for teams doing AI-assisted development. When you have a well-written spec - and Article 4 in this series was about how to write one - the review question becomes: does this implementation do what the spec says it should do? That is a more precise and more productive question than: does this look right to me?
+
+Reviewing against a spec means going through the spec section by section and verifying that the implementation satisfies each part of it. Interface definitions - does the implementation match the specified interface exactly? Behaviour description - does the implementation handle each case the spec describes? Error handling - does the implementation handle each error condition the spec defines, in the way the spec defines it? Constraints - does the implementation respect the specified performance, security, and convention requirements?
+
+This kind of structured review takes longer than a standard pass but it catches significantly more. It also creates a clear record of what was reviewed and against what criteria, which is useful when a problem surfaces later and you need to understand how it got through.
+
+Testing deserves specific attention in the context of AI-generated code because the tests are often generated alongside the implementation and share the same assumptions. This means the tests can pass while the implementation is wrong, if the wrongness is in an assumption the model made consistently across both.
+
+The response to this is not to distrust tests but to review them as carefully as the implementation - arguably more carefully. Are the tests actually testing the right things? Do they cover the edge cases specified in the spec? Are they testing behaviour or implementation details? Would they catch the failure modes specific to this kind of implementation? A test suite that was generated to match a generated implementation is not the same as a test suite written by someone who understood the expected behaviour independently.
+
+Adding tests that were not generated - tests written by a human reviewer who has read the spec and is thinking about what could go wrong - is one of the most valuable things a reviewer can contribute to an AI-assisted development workflow. It closes the loop that generated tests leave open, and it creates a more robust verification layer that does not share the model's blind spots.
+
+Architectural review is a category of review that most teams treat separately from code review, but which becomes more important as AI-assisted development increases the volume of code being added to a system. An LLM generating implementation code has no visibility into the architectural direction of the system. It will make locally reasonable decisions that can compound into architectural drift if they are not reviewed at a higher level than the individual PR.
+
+Establishing a practice of periodic architectural review - not for every PR but for any significant piece of work that comes out of an AI-assisted cycle - is worth the overhead. The question is not whether each piece of code is correct but whether the collection of decisions made across a cycle is moving the architecture in the right direction. This is a judgment that requires human understanding of the system's current state and intended direction, and it is one that no amount of AI assistance can substitute for.
+
+The human knowledge question is one worth sitting with directly, because it has implications for how teams develop and maintain engineering capability in an AI-assisted world. If the majority of implementation work is being done by AI tools, the engineers who review that work need to have deep enough knowledge of the system to catch the problems those tools introduce. That knowledge comes from doing implementation work, from debugging problems, from building and extending systems over time. If engineers are reviewing AI-generated code without maintaining that implementation depth themselves, the quality of the review will degrade over time as their practical understanding of the system becomes more abstract.
+
+This is not an argument against AI-assisted development. It is an argument for being deliberate about where human engineers invest their implementation effort even when AI tools are available. The engineers who will be most valuable as AI tools become more capable are not the ones who offload the most implementation work but the ones who maintain the deepest understanding of the systems they are responsible for. Review is one of the primary ways that understanding gets built and maintained. Take it seriously.
+
+The volume problem is real and worth acknowledging. When AI-assisted development increases the rate at which code is produced, the review capacity of the team becomes the constraint. More code, same reviewers, same hours. Something has to give, and what usually gives is review quality.
+
+The right response is not to lower the bar for review. It is to be more selective about what gets reviewed at what depth. Significant new functionality, anything touching security or data integrity, anything in a critical path, anything that introduces new patterns to the codebase - these get full spec-based review. Small, self-contained, low-risk changes can move faster. Developing that judgment as a team - being explicit about what warrants deep review rather than leaving it to each reviewer's discretion - is part of building a review practice that scales alongside AI-assisted development.
+
+Review is not overhead. It is the quality control layer that makes AI-assisted development safe to practice at scale. Treat it accordingly.
+
+---
+
+*Next in the series: Redefining Engineering Roles - what senior, mid-level, and junior engineers actually do when LLMs handle a growing share of implementation work, and what that means for how teams hire and develop talent.*
