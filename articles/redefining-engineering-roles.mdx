@@ -1,0 +1,71 @@
+---
+title: "Redefining Engineering Roles in the AI Era"
+description: "AI makes implementation cheaper and judgment more valuable. Learn how engineering roles, hiring, and team design are changing."
+category: Project Management
+series: "building-software-with-ai"
+pubDate: 2026-04-08
+shouldCrossPost: true
+minRead: 12
+author:
+  name: Steve McDougall
+  avatar:
+    src: https://avatars.githubusercontent.com/u/6368379?v=4
+    alt: Steve McDougall
+tags: ["project-management", "ai", "modern-software"]
+---
+
+There is a version of the AI-in-engineering conversation that goes like this: LLMs write the code now, so junior engineers are redundant, senior engineers become prompt engineers, and the whole talent pyramid inverts overnight. This version is wrong, but it is wrong in ways that are worth unpacking rather than just dismissing, because the underlying question it is gesturing at is real and important.
+
+How do engineering roles actually change when AI tools handle a meaningful and growing share of implementation work? What does a junior engineer do when the boilerplate they used to write is now generated in seconds? What does a senior engineer do when the implementation work that used to demonstrate their value is increasingly automated? What does a team look like when the relationship between headcount and output has fundamentally shifted?
+
+These are not hypothetical questions. They are questions that engineering leaders and individual engineers are navigating right now, often without a clear framework for thinking about them. This article is an attempt to provide one.
+
+The starting point is understanding what has actually changed and what has not, because the temptation to either overstate or understate the impact of AI tools on engineering work is strong and both directions lead to bad decisions.
+
+What has changed is the cost of implementation. Certain categories of work - scaffolding, boilerplate, straightforward CRUD operations, standard patterns, test generation for well-specified behaviour, documentation of existing code - are significantly cheaper to produce than they were two years ago. An engineer who knows how to use these tools well can produce more of this kind of output in less time. That is real and the implications are real.
+
+What has not changed is the cost of understanding. Understanding a problem deeply enough to know what to build. Understanding a system well enough to know where a new piece of work fits and what constraints it needs to respect. Understanding the product and the users well enough to know whether the thing being built will actually solve the right problem. Understanding the codebase well enough to review AI-generated output critically and catch the failure modes described in the previous article. None of that has gotten cheaper. In some ways it has gotten more expensive, because the volume of output that needs to be understood and evaluated has increased.
+
+This distinction - cheap implementation, expensive understanding - is the key to thinking clearly about how roles change.
+
+Junior engineers have historically learned the craft of software development by doing implementation work. Writing the boilerplate, building the CRUD endpoints, implementing the well-specified feature - these were not just tasks to be completed, they were the primary mechanism through which a junior engineer built up the mental models, the pattern recognition, and the system understanding that eventually made them valuable at a higher level of abstraction.
+
+If that implementation work is increasingly automated, the learning pathway changes. Not disappears - changes. The work that junior engineers now need to do more of is the work of understanding: reading code carefully, reasoning about systems, writing specs and reviewing the output generated against them, debugging the subtle problems that AI tools introduce, and building the deep familiarity with the codebase that makes all of the above possible.
+
+This is genuinely harder to structure than the old model. "Here is a well-defined ticket, implement it" is a clear learning assignment with clear feedback. "Build your understanding of this system by reading, speccing, and reviewing" is a less structured path that requires more active investment from the engineers around the junior person - more pairing, more explanation, more deliberate teaching rather than just assigning implementation tasks and reviewing the output.
+
+Engineering leaders who assume that junior engineers will figure this out on their own will find that their junior engineers are not developing the depth of understanding they need. The learning environment has to be actively redesigned for the new context, not just left to adjust naturally.
+
+Mid-level engineers are where the role change is most significant and, in some ways, most uncomfortable. The mid-level engineer in the traditional model was primarily distinguished by their ability to own implementation work end-to-end - take a complex feature from requirement through deployment with limited guidance. That capability remains valuable, but it is table stakes rather than a differentiator when AI tools can handle the implementation mechanics.
+
+What distinguishes a strong mid-level engineer now is the quality of their judgment. Can they write a spec that is precise enough to produce useful generated output? Can they review that output critically enough to catch the problems it contains? Can they make good architectural decisions about where a new piece of work fits in the system? Can they identify when a generated solution is technically correct but strategically wrong for the product? Can they translate a shaped pitch into a clear implementation plan that a team can execute against?
+
+Those are judgment capabilities, and they develop through a combination of implementation experience, deliberate reflection, and exposure to the kinds of decisions that require them. The path to strong mid-level engineering judgment still runs through doing real implementation work - you cannot develop good judgment about code you have never written. But the weight of the role is shifting from implementation output to implementation judgment, and mid-level engineers who do not make that shift will find their careers plateauing in ways that are hard to articulate.
+
+Senior engineers are experiencing a version of this shift too, but at a different level. The senior engineer's traditional differentiator was technical depth - the ability to solve the hard problems that junior and mid-level engineers could not, to make the architectural decisions that required broad system knowledge, to do the complex implementation that required years of experience to get right.
+
+Technical depth remains essential. What is changing is where it gets applied. The senior engineer who is most valuable in an AI-assisted team is not the one who writes the most code. It is the one who shapes the hardest problems, writes the most precise specs, conducts the most rigorous reviews, and maintains the clearest architectural vision for the systems they are responsible for. Their implementation output may decrease. Their leverage over the team's output should increase.
+
+There is a version of the senior engineer role that does not make this shift - the engineer who continues to measure their contribution primarily by their own implementation output and who uses AI tools to increase that individual output without investing in the team-level leverage that the tools make possible. That engineer becomes less valuable over time, not more, because the team's ability to produce output at scale does not depend on any individual's implementation speed.
+
+The staff engineer role in an AI-assisted engineering organisation looks more important than ever, not less. The work of identifying the right problems, building the technical strategy, maintaining the architectural coherence of systems that are now being extended faster than before, setting the quality and review standards that make AI-assisted development safe - that work is more consequential when the pace of development has increased, not less. Staff engineers who lean into this are well-positioned. Staff engineers who are worried about AI making their expertise obsolete are probably not engaging deeply enough with where their actual leverage is.
+
+Hiring changes in ways that are worth thinking through explicitly, because the attributes that predict success in an AI-assisted engineering team are different from the attributes that traditional engineering interviews are designed to identify.
+
+The ability to write clean code quickly under time pressure - the thing whiteboard interviews and many take-home assessments measure - is less predictive of success than it used to be. The ability to reason clearly about a problem, write a precise spec, ask the right questions, identify what is wrong with a plausible-looking solution, and make good judgment calls under ambiguity - those are more predictive and they are harder to assess in traditional interview formats.
+
+The practical implication is that hiring processes need to change. Technical assessments that ask candidates to implement something from scratch tell you less than assessments that ask candidates to review a piece of generated code and identify its problems, or to take a vague problem description and write a spec that would produce useful generated output. The skills you are hiring for have shifted and the assessments need to reflect that.
+
+Culture fit in an AI-assisted team has a specific dimension worth assessing explicitly: how does this person relate to work they did not do themselves? Engineers who have a strong identity attachment to their individual implementation output - who measure their value by the code they personally wrote - tend to struggle more with AI-assisted development than engineers who identify more with the outcomes they are responsible for. That is not a character flaw, it is a disposition that was actively rewarded in traditional engineering environments. But it is worth understanding before you hire someone into a team where the work looks meaningfully different.
+
+Team structure implications follow from the role changes. If the implementation bottleneck is less constraining than it used to be, the bottlenecks that matter most are understanding, judgment, and review. Those scale differently from implementation. A team of five engineers with strong judgment and review capability can now do the implementation work that previously required ten, but they cannot review and make sense of more output than their collective understanding can handle. Adding more engineers who generate more output without increasing the team's review and judgment capacity makes things worse, not better.
+
+The right shape of an AI-assisted engineering team is probably smaller than the equivalent team from five years ago, with a higher average seniority and a stronger emphasis on the understanding and judgment capabilities described above. That has significant implications for how engineering organisations are sized and structured, and for what the career path looks like for engineers who are entering the field now.
+
+None of this means that engineering as a discipline is becoming less important. It means the most important parts of engineering - the thinking, the judgment, the deep system understanding - are becoming more central rather than less, while the parts that were always somewhat mechanical are being automated. That is probably a good thing for the quality of the work, even if the transition is uncomfortable for people whose identity and compensation are tied to the parts that are changing fastest.
+
+The engineers who will thrive in this environment are the ones who double down on the things that cannot be automated: genuine curiosity about systems, strong judgment about tradeoffs, rigorous thinking about problems, and the ability to maintain deep understanding of complex codebases over time. Those capabilities have always mattered. They now matter more than everything else.
+
+---
+
+*Next in the series: Running a Betting Table - the operational mechanics of Shape Up planning, how to run the cycle, protect the cooldown, and push back on the urgency that is almost never as urgent as it appears.*
