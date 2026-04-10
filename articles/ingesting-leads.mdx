@@ -1,0 +1,499 @@
+---
+title: "Building Modern Laravel APIs: Ingesting Leads"
+description: ""
+category: Laravel
+series: "modern-laravel-apis"
+shouldCrossPost: true
+pubDate: 2026-04-10
+minRead: 12
+author:
+  name: Steve McDougall
+  avatar:
+    src: https://avatars.githubusercontent.com/u/6368379?v=4
+    alt: Steve McDougall
+tags: ["laravel", "api-design", "api-architecture", "rest-api"]
+---
+
+This is where Pulse-Link starts to feel real. In the previous two articles we laid the foundation - project structure, routing, versioning, and Scribe for documentation. Now we are going to build the first actual feature: lead ingestion.
+
+By the end of this article, the stub controllers are gone. We will have a working endpoint that accepts a lead payload, validates it, transforms it into a typed DTO, runs it through an Action, and returns a JSON:API formatted response. Every layer of the architecture we talked about in Article 1 will have real code in it.
+
+Let me walk you through how it fits together.
+
+## The Shape of a Lead Ingestion Request
+
+Before writing a single class, it is worth being clear about what a valid lead ingestion request looks like. A client sends a JSON body to `POST /v1/leads` with the raw lead data. Some fields are required - email, first name, last name, and the source of the lead. Everything else is optional context that enriches the record if it is present.
+
+```json
+{
+    "email": "jane.smith@acme.io",
+    "first_name": "Jane",
+    "last_name": "Smith",
+    "company": "Acme Corp",
+    "job_title": "Head of Engineering",
+    "phone": "+441234567890",
+    "source": "web-form"
+}
+```
+
+That shape drives everything we are about to build. The Form Request validates it. The payload DTO carries it. The Action persists it. The JSON:API resource serialises the result.
+
+## The Payload DTO
+
+I always start with the DTO. It is the simplest class in the chain and defining it first forces clarity about what data actually needs to move between layers.
+
+Create `app/Http/Payloads/Leads/StoreLeadPayload.php`:
+
+```php
+<?php
+
+declare(strict_types=1);
+
+namespace App\Http\Payloads\Leads;
+
+final readonly class StoreLeadPayload
+{
+    public function __construct(
+        public string $email,
+        public string $firstName,
+        public string $lastName,
+        public ?string $company,
+        public ?string $jobTitle,
+        public ?string $phone,
+        public string $source,
+    ) {}
+
+    public function toArray(): array
+    {
+        return [
+            'email' => $this->email,
+            'first_name' => $this->firstName,
+            'last_name' => $this->lastName,
+            'company' => $this->company,
+            'job_title' => $this->jobTitle,
+            'phone' => $this->phone,
+            'source' => $this->source,
+        ];
+    }
+}
+```
+
+A few things I want to highlight here. The class is `final` and `readonly` - it cannot be extended and its properties cannot be mutated after construction. That is exactly what we want from a DTO. The data goes in once, through the constructor, and stays consistent for the lifetime of the object.
+
+The property names use camelCase (`firstName`, `jobTitle`) while `toArray()` maps back to snake_case for persistence. This keeps the PHP side of the code idiomatic while respecting the database column naming convention. It is a small thing, but it removes the jarring mismatch you get when you pepper PHP code with `snake_case` property names everywhere.
+
+## The Form Request
+
+The Form Request has two jobs: validate the incoming payload and produce the typed DTO. Neither job bleeds into the other.
+
+Create `app/Http/Requests/Leads/V1/StoreLeadRequest.php`:
+
+```php
+<?php
+
+declare(strict_types=1);
+
+namespace App\Http\Requests\Leads\V1;
+
+use App\Http\Payloads\Leads\StoreLeadPayload;
+use Illuminate\Foundation\Http\FormRequest;
+
+final class StoreLeadRequest extends FormRequest
+{
+    public function rules(): array
+    {
+        return [
+            'email' => ['required', 'string', 'email', 'max:255'],
+            'first_name' => ['required', 'string', 'max:255'],
+            'last_name' => ['required', 'string', 'max:255'],
+            'company' => ['nullable', 'string', 'max:255'],
+            'job_title' => ['nullable', 'string', 'max:255'],
+            'phone' => ['nullable', 'string', 'max:50'],
+            'source' => ['required', 'string', 'max:255'],
+        ];
+    }
+
+    public function payload(): StoreLeadPayload
+    {
+        return new StoreLeadPayload(
+            email: $this->string('email')->toString(),
+            firstName: $this->string('first_name')->toString(),
+            lastName: $this->string('last_name')->toString(),
+            company: $this->string('company')->toString() ?: null,
+            jobTitle: $this->string('job_title')->toString() ?: null,
+            phone: $this->string('phone')->toString() ?: null,
+            source: $this->string('source')->toString(),
+        );
+    }
+}
+```
+
+The `payload()` method is what separates this from a standard Laravel Form Request. Once validation passes, the controller calls `$request->payload()` and gets back a `StoreLeadPayload` instance. From that point on, nothing in the application needs to know about the raw request - it works with the typed DTO.
+
+Notice I am using `$this->string()` to retrieve values rather than `$this->input()`. The `string()` helper returns a `Stringable` instance, which means we get the fluent string API without having to wrap values manually. Calling `->toString()` at the end gives us a plain PHP string. For nullable fields, we coerce an empty `Stringable` to `null` with the ternary.
+
+One question that comes up with this pattern: what about the `authorize()` method? For now it returns `true` - we are relying on the `auth:api` middleware at the route level to handle authentication. The `authorize()` method on a Form Request is for more granular policy checks. We will come back to that when we cover role-based access later in the series.
+
+## The Action
+
+The `IngestLead` action has one job: take a `StoreLeadPayload` and persist it as a `Lead`. That is it. No validation, no HTTP concerns, no response formatting.
+
+Create `app/Actions/Leads/IngestLead.php`:
+
+```php
+<?php
+
+declare(strict_types=1);
+
+namespace App\Actions\Leads;
+
+use App\Http\Payloads\Leads\StoreLeadPayload;
+use App\Models\Lead;
+
+final readonly class IngestLead
+{
+    public function handle(StoreLeadPayload $payload): Lead
+    {
+        return Lead::query()->create([
+            ...$payload->toArray(),
+            'raw_payload' => $payload->toArray(),
+            'status' => 'pending',
+            'score' => 0,
+        ]);
+    }
+}
+```
+
+The `raw_payload` column stores the original data exactly as it arrived. This becomes valuable in Article 9 when we build the enrichment pipeline - if enrichment fails or produces unexpected results, we can always reprocess from the original payload without losing anything.
+
+Setting `status` to `pending` and `score` to `0` here is deliberate. These are not values the client sends - they are the initial state Pulse-Link assigns to every new lead. The client provides the raw data. Pulse-Link decides the initial processing state.
+
+The `final readonly` combination on the class is a pattern worth following across all Actions. `final` prevents inheritance - there is no reason to extend a single-purpose action class. `readonly` signals that the class holds no mutable state. Actions that depend on services get them via constructor injection, and those dependencies are set once and never changed.
+
+## The JSON:API Resource
+
+Laravel 13 ships with a first-class `JsonApiResource` class that handles the JSON:API structure for us. No manual `id`, `type`, and `attributes` wiring - just define your attributes and the framework handles the rest, including setting the `Content-Type` header to `application/vnd.api+json` automatically.
+
+Generate it with the `--json-api` flag:
+
+```bash
+php artisan make:resource Leads/V1/LeadResource --json-api
+```
+
+This creates a class extending `Illuminate\Http\Resources\JsonApi\JsonApiResource`. Update it at `app/Http/Resources/Leads/V1/LeadResource.php`:
+
+```php
+<?php
+
+declare(strict_types=1);
+
+namespace App\Http\Resources\Leads\V1;
+
+use App\Models\Lead;
+use Illuminate\Http\Request;
+use Illuminate\Http\Resources\JsonApi\JsonApiResource;
+
+/**
+ * @property-read Lead $resource
+ */
+final class LeadResource extends JsonApiResource
+{
+    public function toAttributes(Request $request): array
+    {
+        return [
+            'email' => $this->resource->email,
+            'first_name' => $this->resource->first_name,
+            'last_name' => $this->resource->last_name,
+            'company' => $this->resource->company,
+            'job_title' => $this->resource->job_title,
+            'phone' => $this->resource->phone,
+            'source' => $this->resource->source,
+            'score' => $this->resource->score,
+            'status' => $this->resource->status,
+            'created_at' => $this->resource->created_at,
+            'updated_at' => $this->resource->updated_at,
+        ];
+    }
+}
+```
+
+There is quite a bit less boilerplate here compared to a standard `JsonResource`. The `type` is derived automatically from the class name - `LeadResource` becomes `leads`. The `id` resolves from the model's primary key. The `data` wrapping, the `attributes` nesting, the content type header - all handled by the framework.
+
+The `toAttributes()` method replaces the old `toArray()` approach. It returns only the attributes that live inside the `attributes` object in the JSON:API response. The result looks like this:
+
+```json
+{
+    "data": {
+        "id": "01JMKP8R2NQZ9F0XVZYS7TDCHK",
+        "type": "leads",
+        "attributes": {
+            "email": "jane.smith@acme.io",
+            "first_name": "Jane",
+            "last_name": "Smith",
+            "company": "Acme Corp",
+            "job_title": null,
+            "phone": null,
+            "source": "web-form",
+            "score": 0,
+            "status": "pending",
+            "created_at": "2026-04-10T09:00:00.000000Z",
+            "updated_at": "2026-04-10T09:00:00.000000Z"
+        }
+    }
+}
+```
+
+One thing worth updating in `AppServiceProvider` now that we are using `JsonApiResource`: remove the `JsonResource::withoutWrapping()` call. The `JsonApiResource` class manages its own response structure and the `withoutWrapping()` call can interfere with it.
+
+```php
+public function boot(): void
+{
+    Model::shouldBeStrict(! app()->isProduction());
+}
+```
+
+The `@property-read Lead $resource` docblock is still worth keeping for IDE autocompletion. A small quality-of-life detail that pays off when you have a dozen resource classes open at once.
+
+## Putting It Together: The StoreController
+
+Now we can replace the stub with the real thing.
+
+Update `app/Http/Controllers/Leads/V1/StoreController.php`:
+
+```php
+<?php
+
+declare(strict_types=1);
+
+namespace App\Http\Controllers\Leads\V1;
+
+use App\Actions\Leads\IngestLead;
+use App\Http\Requests\Leads\V1\StoreLeadRequest;
+use App\Http\Resources\Leads\V1\LeadResource;
+use Illuminate\Http\JsonResponse;
+
+/**
+ * @group Leads
+ */
+final readonly class StoreController
+{
+    public function __construct(
+        private IngestLead $ingestLead,
+    ) {}
+
+    /**
+     * Ingest a lead
+     *
+     * Accepts raw lead data, validates it, and queues it for AI enrichment.
+     *
+     * @bodyParam email string required The lead's email address. Example: jane.smith@acme.io
+     * @bodyParam first_name string required The lead's first name. Example: Jane
+     * @bodyParam last_name string required The lead's last name. Example: Smith
+     * @bodyParam company string The lead's company. Example: Acme Corp
+     * @bodyParam job_title string The lead's job title. Example: Head of Engineering
+     * @bodyParam phone string The lead's phone number. Example: +441234567890
+     * @bodyParam source string required The origin of this lead. Example: web-form
+     *
+     * @response 201 scenario="Created" {"data": {"id": "01JMKP8R2NQZ9F0XVZYS7TDCHK", "type": "leads", "attributes": {"email": "jane.smith@acme.io", "score": 0, "status": "pending"}}}
+     * @response 422 scenario="Validation error" {"type": "https://httpstatuses.com/422", "title": "Unprocessable Entity", "status": 422, "detail": "The given data was invalid.", "errors": {"email": ["The email field is required."]}}
+     * @response 401 scenario="Unauthenticated" {"type": "https://httpstatuses.com/401", "title": "Unauthenticated", "status": 401, "detail": "You are not authenticated."}
+     */
+    public function __invoke(StoreLeadRequest $request): JsonResponse
+    {
+        $lead = $this->ingestLead->handle(
+            payload: $request->payload(),
+        );
+
+        return (new LeadResource($lead))
+            ->response()
+            ->setStatusCode(201);
+    }
+}
+```
+
+The controller stays thin. Three lines of meaningful logic - receive the validated request, call the action with the typed payload, return the resource response.
+
+The `->response()->setStatusCode(201)` chain is worth understanding. `JsonApiResource` extends `JsonResource`, so calling `->response()` returns a `ResourceResponse` that correctly handles the JSON:API structure and sets the `Content-Type: application/vnd.api+json` header. We then set the status code to 201 to signal that this was a creation rather than a retrieval. Laravel's container resolves `IngestLead` via the constructor automatically - no service provider registration needed.
+
+## The Index and Show Controllers
+
+While we are here, let's complete the other two controllers so they are no longer stubs. The `IndexController` returns a paginated collection, and the `ShowController` returns a single lead.
+
+Update `app/Http/Controllers/Leads/V1/IndexController.php`:
+
+```php
+<?php
+
+declare(strict_types=1);
+
+namespace App\Http\Controllers\Leads\V1;
+
+use App\Http\Resources\Leads\V1\LeadResource;
+use App\Models\Lead;
+use Illuminate\Http\Request;
+use Illuminate\Http\Resources\Json\AnonymousResourceCollection;
+
+/**
+ * @group Leads
+ */
+final class IndexController
+{
+    /**
+     * List leads
+     *
+     * Returns a paginated list of leads ordered by score descending.
+     *
+     * @queryParam page integer Page number. Example: 1
+     * @queryParam per_page integer Results per page (max 100). Example: 25
+     * @queryParam status string Filter by status. Example: pending
+     *
+     * @response 200 scenario="Success" {"data": [], "links": {"first": "...", "last": "...", "prev": null, "next": null}, "meta": {"current_page": 1, "per_page": 25, "total": 0, "last_page": 1}}
+     * @response 401 scenario="Unauthenticated" {"type": "https://httpstatuses.com/401", "title": "Unauthenticated", "status": 401, "detail": "You are not authenticated."}
+     */
+    public function __invoke(Request $request): AnonymousResourceCollection
+    {
+        $leads = Lead::query()
+            ->when(
+                $request->string('status')->isNotEmpty(),
+                fn ($query) => $query->where('status', $request->string('status')->toString()),
+            )
+            ->orderByDesc('score')
+            ->paginate($request->integer('per_page', 25));
+
+        return LeadResource::collection($leads);
+    }
+}
+```
+
+Update `app/Http/Controllers/Leads/V1/ShowController.php`:
+
+```php
+<?php
+
+declare(strict_types=1);
+
+namespace App\Http\Controllers\Leads\V1;
+
+use App\Http\Resources\Leads\V1\LeadResource;
+use App\Models\Lead;
+
+/**
+ * @group Leads
+ */
+final class ShowController
+{
+    /**
+     * Get a lead
+     *
+     * Returns a single lead by its ULID.
+     *
+     * @urlParam lead string required The lead ULID. Example: 01JMKP8R2NQZ9F0XVZYS7TDCHK
+     *
+     * @response 200 scenario="Success" {"data": {"id": "01JMKP8R2NQZ9F0XVZYS7TDCHK", "type": "leads", "attributes": {"email": "jane.smith@acme.io", "score": 0, "status": "pending"}}}
+     * @response 404 scenario="Not found" {"type": "https://httpstatuses.com/404", "title": "Not Found", "status": 404, "detail": "The requested resource was not found."}
+     * @response 401 scenario="Unauthenticated" {"type": "https://httpstatuses.com/401", "title": "Unauthenticated", "status": 401, "detail": "You are not authenticated."}
+     */
+    public function __invoke(Lead $lead): LeadResource
+    {
+        return new LeadResource($lead);
+    }
+}
+```
+
+The `ShowController` uses Laravel's implicit route model binding - the `Lead $lead` type hint in `__invoke` tells the framework to resolve the model from the `{lead}` route parameter automatically. If the ULID does not match a record, Laravel throws a `ModelNotFoundException`, which our Problem+JSON exception handler in `bootstrap/app.php` catches and returns as a clean 404 response.
+
+The `IndexController` uses a `when()` clause to apply the status filter only when the parameter is present and non-empty. No conditional blocks, no if statements - just a clean fluent query that builds itself based on the request state.
+
+## Testing the Endpoint
+
+Let's run a quick manual test to confirm everything is wired up. First, run the migrations if you have not already:
+
+```bash
+php artisan migrate
+```
+
+Then start the server:
+
+```bash
+php artisan serve
+```
+
+Send a POST request without a token to confirm Problem+JSON is working:
+
+```bash
+curl -X POST http://localhost:8000/v1/leads \
+  -H "Content-Type: application/json" \
+  -d '{"email": "jane.smith@acme.io"}'
+```
+
+You should get a 401 Problem+JSON response. With a valid token, send an incomplete payload:
+
+```bash
+curl -X POST http://localhost:8000/v1/leads \
+  -H "Content-Type: application/json" \
+  -H "Authorization: Bearer {your-token}" \
+  -d '{"email": "jane.smith@acme.io"}'
+```
+
+This should return a 422 with the missing field errors in the `errors` object. And with a complete payload:
+
+```bash
+curl -X POST http://localhost:8000/v1/leads \
+  -H "Content-Type: application/json" \
+  -H "Authorization: Bearer {your-token}" \
+  -d '{
+    "email": "jane.smith@acme.io",
+    "first_name": "Jane",
+    "last_name": "Smith",
+    "company": "Acme Corp",
+    "source": "web-form"
+  }'
+```
+
+You should get a 201 with the JSON:API formatted lead resource:
+
+```json
+{
+    "data": {
+        "id": "01JMKP8R2NQZ9F0XVZYS7TDCHK",
+        "type": "leads",
+        "attributes": {
+            "email": "jane.smith@acme.io",
+            "first_name": "Jane",
+            "last_name": "Smith",
+            "company": "Acme Corp",
+            "job_title": null,
+            "phone": null,
+            "source": "web-form",
+            "score": 0,
+            "status": "pending",
+            "created_at": "2026-04-10T09:00:00.000000Z",
+            "updated_at": "2026-04-10T09:00:00.000000Z"
+        }
+    }
+}
+```
+
+Notice the `Content-Type: application/vnd.api+json` response header - that comes from `JsonApiResource` automatically. No extra configuration needed.
+
+Then regenerate the Scribe docs to confirm they reflect the real implementation:
+
+```bash
+php artisan scribe:generate
+```
+
+The documentation now reflects the actual Form Request validation rules, the real response shape from the `LeadResource`, and the examples from the controller annotations.
+
+## What We Have Built
+
+Three articles in and Pulse-Link is accepting real leads. Here is what the full ingestion flow looks like end-to-end:
+
+The request hits `POST /v1/leads`. The `auth:api` middleware validates the JWT. `StoreLeadRequest` validates the payload and produces a `StoreLeadPayload` DTO via `payload()`. The controller passes that DTO to `IngestLead::handle()`. The action persists the lead with initial `pending` status and a `0` score, storing the raw payload for future reprocessing. The `LeadResource` serialises the result into a JSON:API response. The controller returns it with a 201 status.
+
+Every layer has exactly one job. Nothing bleeds into anything else. The architecture we described in Article 1 is now real code.
+
+In the next article we are going to add JWT authentication properly - registration, login, token refresh, and protecting routes beyond the basic `auth:api` middleware we already have in place.
+
+---
+
+*Next: Authentication with JWT - implementing registration, login, and token refresh for Pulse-Link using php-open-source-saver/jwt-auth.*
