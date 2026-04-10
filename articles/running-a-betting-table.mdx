@@ -1,0 +1,59 @@
+---
+title: "Running A Better Table"
+description: "How to run a Shape Up betting table — the planning meeting where pitches get selected and cycles begin or quietly collapse."
+category: Project Management
+series: "building-software-with-ai"
+pubDate: 2026-04-10
+shouldCrossPost: true
+minRead: 12
+author:
+  name: Steve McDougall
+  avatar:
+    src: https://avatars.githubusercontent.com/u/6368379?v=4
+    alt: Steve McDougall
+tags: ["project-management", "ai", "modern-software"]
+---
+
+If you have read the previous articles in this series, you have the theory. You understand why sprints are breaking down, you know what Shape Up is trying to do differently, you can write a pitch, and you have a framework for spec-driven development with LLMs. Now we need to talk about the operational reality of actually running the cycle - specifically, the betting table, which is where Shape Up either works or quietly collapses back into something that looks a lot like backlog grooming with different vocabulary.
+
+The betting table is the planning meeting at the heart of Shape Up. It happens at the end of each cooldown period, before the next six-week building cycle begins. The people in the room - typically senior leadership, product, and engineering - look at the available pitches and decide which ones to bet on for the upcoming cycle. That is it. It sounds simple. It is not.
+
+The reason it is not simple is that the betting table is where all of the organisational pressure that Shape Up is designed to resist shows up at once. The urgent request that arrived last week. The stakeholder who has been waiting for their feature for two cycles. The technical work that keeps getting deferred. The sales team who need something before the end of the quarter. Every one of those pressures is real, and every one of them will be in the room with you, either explicitly or implicitly. Running the betting table well means making deliberate decisions in the face of that pressure rather than letting it make the decisions for you.
+
+So let me walk through what running it well actually looks like.
+
+The pitches need to exist before the meeting. This sounds obvious but it is the failure point for a lot of teams adopting Shape Up for the first time. The betting table is a decision meeting, not a brainstorming session. If people are arriving at the betting table without written pitches - with ideas they want to pitch verbally, with half-formed proposals, with "I have been thinking about this thing we should do" - you do not have a betting table. You have a planning meeting dressed up in Shape Up language, and the decisions you make will reflect that.
+
+The shaping work happens during the cooldown, before the betting table convenes. The people responsible for shaping - and this varies by team, but it is typically a combination of senior engineers, product managers, and whoever has the context to think through a problem at the right level of abstraction - spend the cooldown weeks writing and refining pitches. The betting table reviews finished pitches. If a pitch is not written, it does not get bet on. That constraint is a feature, not a bureaucratic hurdle. It ensures that every piece of work that enters a building cycle has been thought through properly rather than improvised.
+
+Who is in the betting table matters and is worth being deliberate about. The people in the room need to have both the authority to commit the team's time and the context to evaluate the pitches being considered. That usually means the most senior product and engineering decision-makers for the area, not a broad representative group. Betting tables that include too many people tend to make decisions by consensus in ways that dilute the quality of the bets. Betting tables that include the wrong people - people without the context or the authority to make real commitments - produce decisions that do not stick.
+
+The meeting itself should be short. Two hours at most for a team of reasonable size, often less. If your betting table is running three or four hours, something is wrong - either the pitches were not well enough shaped going in, the scope of what you are trying to decide is too large, or the decision-making authority in the room is not clear enough.
+
+Each pitch gets a focused discussion. The person who wrote it walks the group through the problem, the shaped solution, the appetite, and the no-gos. The group asks questions, surfaces concerns, and evaluates whether this is the right bet for this cycle. The decision at the end is binary - we bet on this or we do not. No "let's do a partial version of this" unless that partial version is a properly shaped pitch in its own right. No "let's add this to the sprint backlog for the engineers to pick up when they have time." Either it is a bet with a team assigned to it and a clear appetite, or it is not happening this cycle.
+
+The no-carry-over rule is the hardest part of the betting table to hold onto under pressure, and it is the part that matters most. In a traditional backlog, everything that was not done this sprint automatically moves to the next sprint. Nothing is ever explicitly abandoned. The backlog just grows. In Shape Up, a pitch that was not selected at the betting table does not automatically return. If it is still worth doing, it needs to be re-evaluated and probably re-shaped in light of what has been learned since it was first written. If it is not worth re-pitching, it probably was not worth doing in the first place.
+
+This feels brutal when you first encounter it. It feels like good ideas are being lost. What it actually does is force an honest evaluation of whether the work is still the right work, rather than letting it persist in a queue based on the momentum of having been there before. The best teams I have seen running Shape Up treat a pitch that did not get selected not as a failure but as a useful signal - either the shaping needs more work, the timing is not right, or the problem is not as important as it seemed when the pitch was written.
+
+The circuit breaker deserves its own moment because it is the mechanism that makes the appetite constraint real rather than aspirational. In Shape Up, if a project is not done at the end of the six-week cycle, the default is to stop. Not to extend the timeline, not to carry it into the next cycle automatically, but to stop and evaluate. What happened? Was the appetite wrong? Was the pitch under-shaped? Did something unexpected surface during implementation that changed the calculus?
+
+That evaluation might result in a new pitch for a scoped-down version of the work. It might result in a decision that the work is not worth pursuing further. It might result in the same pitch being brought back to the next betting table with the understanding that the appetite needs to be larger. What it does not result in is an automatic extension, because automatic extensions destroy the credibility of the appetite as a constraint and turn the betting table back into a planning meeting where timelines are aspirational rather than real.
+
+In practice, the circuit breaker is one of the more difficult things to hold firm on because there is always a compelling case for why this particular project should be the exception. It is mostly done. The team has context. Stopping now means losing that context and throwing away work. These arguments are usually true and usually irrelevant. The value of the circuit breaker comes precisely from its unconditional nature. An appetite that is sometimes extended is not an appetite. It is an estimate with extra steps.
+
+Protecting the cooldown is the other operational discipline that makes Shape Up work, and it is the one that comes under the most pressure from the outside. Two weeks of cooldown looks, to anyone not inside the methodology, like two weeks of engineering capacity not being fully utilised. The pressure to fill it with urgent requests, to pull engineers onto support tasks, to use it as a catch-up sprint for the things that did not get done in the building cycle - that pressure is constant and it is not entirely unreasonable from the perspective of someone who does not understand what the cooldown is for.
+
+The honest answer to that pressure is this: the cooldown is not free time. It is the time during which the next building cycle gets shaped properly, the technical debt that accumulated during the building cycle gets addressed, the engineers who just spent six weeks on focused delivery work get enough breathing room to think clearly, and the betting table has the preparation it needs to produce good decisions. Cut the cooldown and you cut all of those things. The next cycle starts worse-shaped, with more accumulated debt, with a more depleted team, and with decisions made under less time than they deserve. The cost of the cooldown is visible. The cost of cutting it is distributed across the next several cycles in ways that are harder to see directly.
+
+The question of how to handle genuinely urgent work - the production bug, the security issue, the customer commitment that cannot be moved - is the one that comes up most often when teams are adopting Shape Up. The answer is that Shape Up makes space for urgent work through the cooldown and through the explicit acknowledgment that not every piece of work fits the six-week building cycle model. Small pieces of work that take days rather than weeks can be handled outside the cycle. Genuine emergencies get treated as emergencies regardless of where you are in the cycle. What Shape Up resists is the category of work that feels urgent but is actually just unplanned - the feature that someone wants immediately but that has not been thought through, the scope addition that arrives mid-cycle because someone saw a demo and had new ideas.
+
+That category of pseudo-urgent work is where sprint teams spend a significant amount of their time, and it is one of the primary reasons sprint velocity is so hard to predict. Shape Up's response to it is structural: if it is not a shaped pitch that has been bet on, it does not go into the current cycle. That constraint will feel uncomfortable. It is supposed to. The discomfort is the point - it forces the people generating pseudo-urgent requests to either do the shaping work that would make the request legitimate, or to honestly evaluate whether the request is as urgent as it seemed.
+
+Running a betting table well is fundamentally about holding the methodology with enough conviction to let it do its job. The pressures that push against it are real. The stakeholder who is frustrated. The sales cycle that has created a commitment. The competitor who just shipped something. None of those things go away when you adopt Shape Up. What changes is that you have an explicit framework for deciding what goes into a building cycle, and the discipline to apply it even when the pressure says to make an exception.
+
+The teams that make Shape Up work are the ones that make fewer exceptions, not the ones that make the methodology more flexible. Flexibility is what you had with sprints. Conviction is what makes this different.
+
+---
+
+*Final article in the series: Managing Expectations in the AI Era - how to handle the stakeholders who believe AI makes everything ten times faster, and how to build a realistic narrative around what your team can actually deliver.*
