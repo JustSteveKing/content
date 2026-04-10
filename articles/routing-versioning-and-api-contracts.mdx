@@ -1,0 +1,383 @@
+---
+title: "Building Modern Laravel APIs: Routing, Versioning, and API Contracts"
+description: "Learn how to version Laravel API routes, signal deprecations with Sunset headers, and keep API contracts aligned with your implementation."
+category: Laravel
+series: "modern-laravel-apis"
+shouldCrossPost: true
+pubDate: 2026-04-10
+minRead: 12
+author:
+  name: Steve McDougall
+  avatar:
+    src: https://avatars.githubusercontent.com/u/6368379?v=4
+    alt: Steve McDougall
+tags: ["laravel", "api-design", "api-architecture", "rest-api"]
+---
+
+If there is one decision that will haunt you more than any other in API development, it is not picking the wrong database or choosing the wrong framework. It is shipping a v1 API without any plan for what happens when v1 needs to change.
+
+I have been on the wrong side of that decision. Endpoints that cannot be changed without breaking integrations, clients pinned to behaviour you would love to fix, and a codebase where "we cannot touch that because something depends on it" becomes a recurring conversation. It is a slow, painful kind of technical debt - the kind that compounds quietly until it is everywhere.
+
+In this article we are going to build the routing foundation for Pulse-Link properly. That means a versioned structure from day one, a clean way to signal deprecation when the time comes, and an API contract that stays in sync with the implementation rather than drifting away from it the moment someone forgets to update a YAML file.
+
+## How We Structure Routes
+
+In the previous article we set up the project skeleton and configured `bootstrap/app.php` to load our API routes. The important detail is that we set `apiPrefix: ''` - there is no `/api` prefix on our routes. Pulse-Link's endpoints live directly at `/v1/...`. That is a deliberate choice. The version prefix is enough context. Adding `/api` in front of it is redundant on an API-only application.
+
+Our route loading in `bootstrap/app.php` looks like this:
+
+```php
+->withRouting(
+    api: __DIR__ . '/../routes/api/routes.php',
+    apiPrefix: '',
+    commands: __DIR__ . '/../routes/console.php',
+    health: '/up',
+)
+```
+
+The main entry point at `routes/api/routes.php` is the version grouping layer:
+
+```php
+<?php
+
+declare(strict_types=1);
+
+use Illuminate\Support\Facades\Route;
+
+Route::prefix('v1')->as('v1:')->group(function (): void {
+    Route::prefix('leads')->as('leads:')->middleware(['auth:api'])->group(base_path('routes/api/leads.php'));
+});
+```
+
+A few things are happening here worth unpacking. The `as('v1:')` call gives every route in the group a name prefix, so our lead routes end up as `v1:leads:index`, `v1:leads:store`, and so on. Namespaced route names scale cleanly as the application grows - you can always tell where a named route lives without having to trace the route file.
+
+The `base_path()` call for loading the resource file is cleaner than `require __DIR__` chaining, especially as the number of resource files grows. And because we are applying `middleware(['auth:api'])` at the group level in `routes.php` rather than in each resource file, authentication is a routing concern, not a per-resource concern.
+
+The leads route file at `routes/api/leads.php` stays clean:
+
+```php
+<?php
+
+declare(strict_types=1);
+
+use App\Http\Controllers\Leads\V1\IndexController;
+use App\Http\Controllers\Leads\V1\ShowController;
+use App\Http\Controllers\Leads\V1\StoreController;
+use Illuminate\Support\Facades\Route;
+
+Route::get('/', IndexController::class)->name('index');
+Route::post('/', StoreController::class)->name('store');
+Route::get('/{lead}', ShowController::class)->name('show');
+```
+
+Notice these routes have no middleware, no prefix, and no auth configuration. All of that is handled by the group in `routes.php`. The resource file only cares about the HTTP method, the path, and the controller. That separation keeps resource files easy to scan and makes it obvious exactly what each route does.
+
+## Introducing V2 Without Breaking V1
+
+Let me show you what adding a second version looks like, because it is worth seeing the full picture even before we need it.
+
+When the time comes to introduce a V2 lead endpoint - maybe the response shape changes, maybe we add a new required field - we add a second group in `routes.php` and deprecate the first:
+
+```php
+<?php
+
+declare(strict_types=1);
+
+use Illuminate\Support\Facades\Route;
+
+Route::prefix('v1')->as('v1:')->group(function (): void {
+    Route::prefix('leads')
+        ->as('leads:')
+        ->middleware(['auth:api', 'sunset:2027-01-01'])
+        ->group(base_path('routes/api/leads.php'));
+});
+
+Route::prefix('v2')->as('v2:')->group(function (): void {
+    Route::prefix('leads')
+        ->as('leads:')
+        ->middleware(['auth:api'])
+        ->group(base_path('routes/api/v2/leads.php'));
+});
+```
+
+The `sunset` middleware we built in Article 1 attaches a `Sunset` header to every V1 response, signalling to clients that this version has a retirement date. V2 controllers live in their own namespace - `App\Http\Controllers\Leads\V2\` - so V1 and V2 can evolve independently without any shared state between them.
+
+This is the value of versioning from day one. When V2 arrives, adding it is additive. Nothing breaks. Nothing needs to be untangled. You just add a new group and a new set of controllers.
+
+## Stub Controllers
+
+Before we write the OpenAPI contract, let's stub out the three controllers we have referenced in the route file so the application can actually boot. We will fill these in properly in Article 3 - for now they just need to exist.
+
+```bash
+mkdir -p app/Http/Controllers/Leads/V1
+```
+
+```php
+<?php
+
+declare(strict_types=1);
+
+namespace App\Http\Controllers\Leads\V1;
+
+use Illuminate\Http\JsonResponse;
+
+final class IndexController
+{
+    public function __invoke(): JsonResponse
+    {
+        return new JsonResponse(data: [], status: 200);
+    }
+}
+```
+
+```php
+<?php
+
+declare(strict_types=1);
+
+namespace App\Http\Controllers\Leads\V1;
+
+use Illuminate\Http\JsonResponse;
+
+final class ShowController
+{
+    public function __invoke(string $lead): JsonResponse
+    {
+        return new JsonResponse(data: [], status: 200);
+    }
+}
+```
+
+```php
+<?php
+
+declare(strict_types=1);
+
+namespace App\Http\Controllers\Leads\V1;
+
+use Illuminate\Http\JsonResponse;
+use Illuminate\Http\Request;
+
+final class StoreController
+{
+    public function __invoke(Request $request): JsonResponse
+    {
+        return new JsonResponse(data: [], status: 201);
+    }
+}
+```
+
+Simple stubs. The application boots, the routes resolve, and the controllers return an empty response. That is all we need right now.
+
+## Documenting the API with Scribe
+
+A hand-written OpenAPI YAML file is a maintenance problem waiting to happen. The moment your implementation drifts from the spec - and it will, because the spec and the code are two separate things that nobody is paid to keep in sync - you have documentation that is confidently wrong. That is worse than no documentation.
+
+The approach I prefer is generating the OpenAPI spec from the code itself, using Laravel Scribe. Scribe reads your routes, controllers, Form Requests, and annotations, and produces a complete OpenAPI 3.1 spec alongside browsable HTML documentation. The spec is always a reflection of what the code actually does, not what you thought it would do when you wrote the YAML six months ago.
+
+Install it as a dev dependency:
+
+```bash
+composer require --dev knuckleswtf/scribe
+php artisan vendor:publish --tag=scribe-config
+```
+
+Then configure `config/scribe.php` for Pulse-Link. The key settings:
+
+```php
+'type' => 'external_laravel',
+
+'title' => 'Pulse-Link API',
+
+'description' => 'A high-performance lead ingestion and enrichment engine.',
+
+'base_url' => env('APP_URL'),
+
+'routes' => [
+    [
+        'match' => [
+            'prefixes' => ['v1/*'],
+            'domains' => ['*'],
+        ],
+        'apply' => [
+            'headers' => [
+                'Accept' => 'application/json',
+                'Authorization' => 'Bearer {token}',
+            ],
+        ],
+    ],
+],
+
+'auth' => [
+    'enabled' => true,
+    'default' => true,
+    'in' => 'bearer',
+    'name' => 'Authorization',
+    'use_value' => env('SCRIBE_AUTH_KEY'),
+],
+
+'examples' => [
+    'models_source' => ['factoryCreate', 'factoryMake', 'database'],
+],
+```
+
+The `external_laravel` type tells Scribe to write the generated docs to a `public/docs` directory, which means they are served directly by Laravel at `/docs`. The `routes` configuration scopes extraction to our `v1/*` prefix, so Scribe does not try to document internal or health routes.
+
+Now let's annotate the stub controllers so Scribe has enough context to generate useful output. We use PHPDoc annotations for the high-level description and PHP 8 attributes for the structured metadata.
+
+The `IndexController`:
+
+```php
+<?php
+
+declare(strict_types=1);
+
+namespace App\Http\Controllers\Leads\V1;
+
+use Illuminate\Http\JsonResponse;
+
+/**
+ * @group Leads
+ */
+final class IndexController
+{
+    /**
+     * List leads
+     *
+     * Returns a paginated list of leads ordered by score descending.
+     *
+     * @queryParam page integer Page number. Example: 1
+     * @queryParam per_page integer Results per page (max 100). Example: 25
+     * @queryParam status string Filter by status. Example: pending
+     *
+     * @response 200 scenario="Success" {"data": [], "meta": {"current_page": 1, "per_page": 25, "total": 0, "last_page": 1}}
+     * @response 401 scenario="Unauthenticated" {"type": "https://httpstatuses.com/401", "title": "Unauthenticated", "status": 401, "detail": "You are not authenticated."}
+     */
+    public function __invoke(): JsonResponse
+    {
+        return new JsonResponse(data: [], status: 200);
+    }
+}
+```
+
+The `StoreController`:
+
+```php
+<?php
+
+declare(strict_types=1);
+
+namespace App\Http\Controllers\Leads\V1;
+
+use Illuminate\Http\JsonResponse;
+use Illuminate\Http\Request;
+
+/**
+ * @group Leads
+ */
+final class StoreController
+{
+    /**
+     * Ingest a lead
+     *
+     * Accepts raw lead data, validates it, and queues it for AI enrichment.
+     *
+     * @bodyParam email string required The lead's email address. Example: jane.smith@acme.io
+     * @bodyParam first_name string required The lead's first name. Example: Jane
+     * @bodyParam last_name string required The lead's last name. Example: Smith
+     * @bodyParam company string The lead's company. Example: Acme Corp
+     * @bodyParam job_title string The lead's job title. Example: Head of Engineering
+     * @bodyParam phone string The lead's phone number. Example: +441234567890
+     * @bodyParam source string required The origin of this lead. Example: web-form
+     *
+     * @response 201 scenario="Created" {"data": {"id": "01JMKP8R2NQZ9F0XVZYS7TDCHK", "type": "leads"}}
+     * @response 422 scenario="Validation error" {"type": "https://httpstatuses.com/422", "title": "Unprocessable Entity", "status": 422, "detail": "The given data was invalid.", "errors": {"email": ["The email field is required."]}}
+     * @response 401 scenario="Unauthenticated" {"type": "https://httpstatuses.com/401", "title": "Unauthenticated", "status": 401, "detail": "You are not authenticated."}
+     */
+    public function __invoke(Request $request): JsonResponse
+    {
+        return new JsonResponse(data: [], status: 201);
+    }
+}
+```
+
+The `ShowController`:
+
+```php
+<?php
+
+declare(strict_types=1);
+
+namespace App\Http\Controllers\Leads\V1;
+
+use Illuminate\Http\JsonResponse;
+
+/**
+ * @group Leads
+ */
+final class ShowController
+{
+    /**
+     * Get a lead
+     *
+     * Returns a single lead by its ULID.
+     *
+     * @urlParam lead string required The lead ULID. Example: 01JMKP8R2NQZ9F0XVZYS7TDCHK
+     *
+     * @response 200 scenario="Success" {"data": {"id": "01JMKP8R2NQZ9F0XVZYS7TDCHK", "type": "leads"}}
+     * @response 404 scenario="Not found" {"type": "https://httpstatuses.com/404", "title": "Not Found", "status": 404, "detail": "The requested resource was not found."}
+     * @response 401 scenario="Unauthenticated" {"type": "https://httpstatuses.com/401", "title": "Unauthenticated", "status": 401, "detail": "You are not authenticated."}
+     */
+    public function __invoke(string $lead): JsonResponse
+    {
+        return new JsonResponse(data: [], status: 200);
+    }
+}
+```
+
+The annotations are straightforward. `@group` clusters related endpoints together in the generated docs. `@bodyParam`, `@queryParam`, and `@urlParam` describe the parameters. `@response` provides example responses per status code with a named scenario. These are light enough to maintain and rich enough to generate documentation you can actually share with a client.
+
+Once the annotations are in place, generate the docs:
+
+```bash
+php artisan scribe:generate
+```
+
+Scribe will extract your routes, read the annotations, attempt to call the endpoints with generated example data, and produce both an OpenAPI 3.1 spec at `public/docs/openapi.yaml` and a browsable HTML reference at `/docs`. The spec is the output you version-control and share. The HTML is the output you send to whoever is integrating with Pulse-Link.
+
+One thing worth noting: as we build out the real Form Request classes and JSON:API resources in the coming articles, Scribe will pick up validation rules from the Form Requests automatically and use the resource structure to infer response shapes. The annotations we just wrote will become richer without much extra effort - Scribe does the heavy lifting once the implementation exists.
+
+For now, run the generator and confirm it produces clean output:
+
+```bash
+php artisan scribe:generate
+# Documented 3 routes
+
+open public/docs/index.html
+```
+
+That is the contract. Generated from the code, always in sync, and ready to share.
+
+## Named Routes in Practice
+
+One last thing worth covering before we move on. The named route structure we set up - `v1:leads:index`, `v1:leads:store`, `v1:leads:show` - is useful beyond just readability.
+
+When we write tests in Article 8, we will generate URLs via route names rather than hardcoded strings:
+
+```php
+$response = $this->getJson(route('v1:leads:index'));
+$response = $this->postJson(route('v1:leads:store'), $payload);
+$response = $this->getJson(route('v1:leads:show', $lead));
+```
+
+If the URL structure ever changes - which it might when we introduce V2 - the tests do not need to be updated. They reference the route by name and the URL resolves automatically. Small habit, significant maintenance win over time.
+
+## What We Have Now
+
+At this point Pulse-Link has a routing foundation that is ready to grow. The versioning structure is in place, Scribe is generating a live OpenAPI spec from the code, and the stub controllers mean the application boots cleanly. As we build out the real implementation across the coming articles, the documentation will grow with it automatically.
+
+In the next article we are going to implement the first real feature - lead ingestion. That means building the `StoreLeadRequest` with a `payload()` method, the `IngestLead` action, and the `LeadResource` JSON:API response. By the end of it, the stub controllers will be gone and Pulse-Link will be accepting its first leads.
+
+---
+
+*Next: Ingesting Leads - building the Form Request DTO, Action class, and JSON:API resource for the lead ingestion endpoint.*
