@@ -1,0 +1,667 @@
+---
+title: "Building Modern Laravel APIs: Authentication with JWT"
+description: "Add JWT auth to a Laravel API with register, login, refresh, and logout flows using Form Request DTOs, Action classes, and auth:api middleware."
+category: Laravel
+series: "modern-laravel-apis"
+shouldCrossPost: true
+pubDate: 2026-04-11
+minRead: 12
+author:
+  name: Steve McDougall
+  avatar:
+    src: https://avatars.githubusercontent.com/u/6368379?v=4
+    alt: Steve McDougall
+tags: ["laravel", "api-design", "api-architecture", "rest-api"]
+---
+
+Authentication is one of those things you cannot afford to get wrong. Get it right and it is invisible - it just works, every request is secure, and nobody thinks about it. Get it wrong and you are dealing with security incidents, token leaks, and the kind of technical debt that compounds fast.
+
+In this article we are going to implement JWT authentication properly for Pulse-Link. We already configured the JWT guard in Article 1 and protected our lead routes with `auth:api` middleware - but right now there is no way to actually get a token. No registration, no login, no refresh. That changes today.
+
+By the end of this article we will have a complete authentication flow: users can register, log in, refresh their tokens, and log out. And it will all follow the same patterns we have established - invokable controllers, Form Request DTOs, Action classes, and Problem+JSON errors.
+
+## How JWT Works in This Context
+
+Before we write any code, it is worth being clear about what JWT gives us and why it is the right choice for a pure API application like Pulse-Link.
+
+JSON Web Tokens are self-contained. The token itself contains the user's identity encoded as a signed payload. When a request comes in with a JWT in the `Authorization` header, the server verifies the signature and decodes the payload - no database lookup required. That stateless nature is exactly what we want in a high-performance ingestion engine.
+
+Compare that to Laravel Sanctum, which stores tokens in the database and does a lookup on every request. For a web application with session-based auth, Sanctum is the right tool. For a pure API that needs to scale horizontally and avoid per-request database overhead, JWT is the better fit.
+
+The `php-open-source-saver/jwt-auth` package we installed in Article 1 handles all of the cryptographic heavy lifting. Our job is to build the HTTP layer on top of it cleanly.
+
+## Preparing the User Model
+
+The JWT package requires the `User` model to implement the `JWTSubject` contract. Open `app/Models/User.php` and update it:
+
+```php
+<?php
+
+declare(strict_types=1);
+
+namespace App\Models;
+
+use Illuminate\Database\Eloquent\Concerns\HasUlids;
+use Illuminate\Database\Eloquent\Factories\HasFactory;
+use Illuminate\Database\Eloquent\Attributes\Fillable;
+use Illuminate\Foundation\Auth\User as Authenticatable;
+use Illuminate\Notifications\Notifiable;
+use PHPOpenSourceSaver\JWTAuth\Contracts\JWTSubject;
+
+#[Fillable('name', 'email', 'password')]
+class User extends Authenticatable implements JWTSubject
+{
+    use HasFactory;
+    use HasUlids;
+    use Notifiable;
+
+    public function getJWTIdentifier(): mixed
+    {
+        return $this->getKey();
+    }
+
+    public function getJWTCustomClaims(): array
+    {
+        return [];
+    }
+
+    protected function casts(): array
+    {
+        return [
+            'email_verified_at' => 'datetime',
+            'password' => 'hashed',
+        ];
+    }
+}
+```
+
+A few things to note here. We have added `HasUlids` - users get ULIDs too, consistent with every other model in the application. We have replaced the `$fillable` array with the `#[Fillable]` attribute. And we have implemented `getJWTIdentifier()` to return the model's primary key, which the package uses as the JWT subject claim.
+
+`getJWTCustomClaims()` returns an empty array for now - this is where you would add custom data to encode into the token if you needed it. We do not, so we leave it empty.
+
+## The Routes
+
+Authentication routes live outside the `auth:api` middleware group - you cannot require authentication to log in. Add an `auth.php` route file and register it in `routes/api/routes.php`.
+
+Create `routes/api/auth.php`:
+
+```php
+<?php
+
+declare(strict_types=1);
+
+use App\Http\Controllers\Auth\V1\LoginController;
+use App\Http\Controllers\Auth\V1\LogoutController;
+use App\Http\Controllers\Auth\V1\RefreshController;
+use App\Http\Controllers\Auth\V1\RegisterController;
+use Illuminate\Support\Facades\Route;
+
+Route::post('/register', RegisterController::class)->name('register');
+Route::post('/login', LoginController::class)->name('login');
+
+Route::middleware(['auth:api'])->group(function (): void {
+    Route::post('/logout', LogoutController::class)->name('logout');
+    Route::post('/refresh', RefreshController::class)->name('refresh');
+});
+```
+
+Update `routes/api/routes.php` to include the auth routes:
+
+```php
+<?php
+
+declare(strict_types=1);
+
+use Illuminate\Support\Facades\Route;
+
+Route::prefix('v1')->as('v1:')->group(function (): void {
+    Route::prefix('auth')->as('auth:')->group(base_path('routes/api/auth.php'));
+
+    Route::prefix('leads')->as('leads:')->middleware(['auth:api'])->group(base_path('routes/api/leads.php'));
+});
+```
+
+Notice the auth routes are outside the `auth:api` middleware group at the top level. Register and login need to be publicly accessible. Logout and refresh need a valid token - that is why they have their own `middleware(['auth:api'])` group inside the auth route file.
+
+## The Payload DTOs
+
+Two payloads needed: one for registration, one for login.
+
+Create `app/Http/Payloads/Auth/RegisterPayload.php`:
+
+```php
+<?php
+
+declare(strict_types=1);
+
+namespace App\Http\Payloads\Auth;
+
+final readonly class RegisterPayload
+{
+    public function __construct(
+        public string $name,
+        public string $email,
+        public string $password,
+    ) {}
+}
+```
+
+Create `app/Http/Payloads/Auth/LoginPayload.php`:
+
+```php
+<?php
+
+declare(strict_types=1);
+
+namespace App\Http\Payloads\Auth;
+
+final readonly class LoginPayload
+{
+    public function __construct(
+        public string $email,
+        public string $password,
+    ) {}
+}
+```
+
+These are deliberately minimal. No `toArray()` method - the auth Actions work with the payload properties directly rather than passing them to a model's `create()`. Authentication is not a persistence operation in the same way lead ingestion is, so the DTO shape reflects that.
+
+## The Form Requests
+
+Create `app/Http/Requests/Auth/V1/RegisterRequest.php`:
+
+```php
+<?php
+
+declare(strict_types=1);
+
+namespace App\Http\Requests\Auth\V1;
+
+use App\Http\Payloads\Auth\RegisterPayload;
+use Illuminate\Foundation\Http\FormRequest;
+
+final class RegisterRequest extends FormRequest
+{
+    public function rules(): array
+    {
+        return [
+            'name' => ['required', 'string', 'max:255'],
+            'email' => ['required', 'string', 'email', 'max:255', 'unique:users,email'],
+            'password' => ['required', 'string', 'min:12', 'confirmed'],
+        ];
+    }
+
+    public function payload(): RegisterPayload
+    {
+        return new RegisterPayload(
+            name: $this->string('name')->toString(),
+            email: $this->string('email')->toString(),
+            password: $this->string('password')->toString(),
+        );
+    }
+}
+```
+
+Create `app/Http/Requests/Auth/V1/LoginRequest.php`:
+
+```php
+<?php
+
+declare(strict_types=1);
+
+namespace App\Http\Requests\Auth\V1;
+
+use App\Http\Payloads\Auth\LoginPayload;
+use Illuminate\Foundation\Http\FormRequest;
+
+final class LoginRequest extends FormRequest
+{
+    public function rules(): array
+    {
+        return [
+            'email' => ['required', 'string', 'email'],
+            'password' => ['required', 'string'],
+        ];
+    }
+
+    public function payload(): LoginPayload
+    {
+        return new LoginPayload(
+            email: $this->string('email')->toString(),
+            password: $this->string('password')->toString(),
+        );
+    }
+}
+```
+
+The `unique:users,email` rule on registration is worth calling out. This gives us a clean validation error before we even try to create the user, rather than letting the database throw a duplicate key exception. The `confirmed` rule requires a `password_confirmation` field in the request body - standard practice for registration flows.
+
+The login request is intentionally loose. We validate that the fields are present and correctly shaped, but we do not check the credentials here. That is the Action's job.
+
+## The Actions
+
+Four actions, one for each auth operation.
+
+Create `app/Actions/Auth/RegisterUser.php`:
+
+```php
+<?php
+
+declare(strict_types=1);
+
+namespace App\Actions\Auth;
+
+use App\Http\Payloads\Auth\RegisterPayload;
+use App\Models\User;
+use Illuminate\Support\Facades\Hash;
+
+final readonly class RegisterUser
+{
+    public function handle(RegisterPayload $payload): User
+    {
+        return User::query()->create([
+            'name' => $payload->name,
+            'email' => $payload->email,
+            'password' => Hash::make($payload->password),
+        ]);
+    }
+}
+```
+
+Create `app/Actions/Auth/LoginUser.php`:
+
+```php
+<?php
+
+declare(strict_types=1);
+
+namespace App\Actions\Auth;
+
+use App\Http\Payloads\Auth\LoginPayload;
+use Illuminate\Support\Facades\Auth;
+
+final readonly class LoginUser
+{
+    public function handle(LoginPayload $payload): string|false
+    {
+        return Auth::guard('api')->attempt([
+            'email' => $payload->email,
+            'password' => $payload->password,
+        ]);
+    }
+}
+```
+
+Create `app/Actions/Auth/RefreshToken.php`:
+
+```php
+<?php
+
+declare(strict_types=1);
+
+namespace App\Actions\Auth;
+
+use Illuminate\Support\Facades\Auth;
+
+final readonly class RefreshToken
+{
+    public function handle(): string
+    {
+        return Auth::guard('api')->refresh();
+    }
+}
+```
+
+Create `app/Actions/Auth/LogoutUser.php`:
+
+```php
+<?php
+
+declare(strict_types=1);
+
+namespace App\Actions\Auth;
+
+use Illuminate\Support\Facades\Auth;
+
+final readonly class LogoutUser
+{
+    public function handle(): void
+    {
+        Auth::guard('api')->logout();
+    }
+}
+```
+
+The `LoginUser` action returns `string|false` - a token string on success, or `false` when the credentials do not match. The controller uses that return value to decide whether to return a 200 with a token or a 401 Problem+JSON response. This is one of the few cases where a falsy return from an action is meaningful rather than exceptional.
+
+`Hash::make()` in `RegisterUser` is explicit rather than relying on the model's `password` cast to handle hashing. The `casts()` method on the `User` model does cast `password` to `hashed`, which means if you assign a plain-text password directly it gets hashed automatically. But I prefer being explicit about password hashing in the action itself - it makes the intent clear to anyone reading the code without having to trace through the model's cast configuration.
+
+## The Token Response
+
+Rather than returning raw token strings in an ad-hoc array from each controller, let's create a consistent token response structure. This is not a full JSON:API resource - token responses are not Eloquent model representations - so we use a simple readonly class.
+
+Create `app/Http/Responses/TokenResponse.php`:
+
+```php
+<?php
+
+declare(strict_types=1);
+
+namespace App\Http\Responses;
+
+use Illuminate\Contracts\Support\Responsable;
+use Illuminate\Http\JsonResponse;
+
+final readonly class TokenResponse implements Responsable
+{
+    public function __construct(
+        private string $token,
+        private int $status = 200,
+    ) {}
+
+    public function toResponse($request): JsonResponse
+    {
+        return new JsonResponse(
+            data: [
+                'token' => $this->token,
+                'type' => 'Bearer',
+            ],
+            status: $this->status,
+        );
+    }
+}
+```
+
+Implementing `Responsable` means we can return a `TokenResponse` directly from a controller and Laravel handles the rest. The controllers stay clean - no manual `new JsonResponse()` calls spreading across multiple files.
+
+## The Controllers
+
+Now let's wire it all together.
+
+Create `app/Http/Controllers/Auth/V1/RegisterController.php`:
+
+```php
+<?php
+
+declare(strict_types=1);
+
+namespace App\Http\Controllers\Auth\V1;
+
+use App\Actions\Auth\LoginUser;
+use App\Actions\Auth\RegisterUser;
+use App\Http\Requests\Auth\V1\RegisterRequest;
+use App\Http\Responses\TokenResponse;
+
+/**
+ * @group Authentication
+ */
+final readonly class RegisterController
+{
+    public function __construct(
+        private RegisterUser $registerUser,
+        private LoginUser $loginUser,
+    ) {}
+
+    /**
+     * Register
+     *
+     * Register a new user and receive an access token.
+     *
+     * @bodyParam name string required The user's full name. Example: Jane Smith
+     * @bodyParam email string required The user's email address. Example: jane.smith@acme.io
+     * @bodyParam password string required The user's password (min 12 characters). Example: super-secret-password
+     * @bodyParam password_confirmation string required Password confirmation. Example: super-secret-password
+     *
+     * @response 201 scenario="Registered" {"token": "eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9...", "type": "Bearer"}
+     * @response 422 scenario="Validation error" {"type": "https://httpstatuses.com/422", "title": "Unprocessable Entity", "status": 422, "detail": "The given data was invalid.", "errors": {"email": ["The email has already been taken."]}}
+     */
+    public function __invoke(RegisterRequest $request): TokenResponse
+    {
+        $user = $this->registerUser->handle(
+            payload: $request->payload(),
+        );
+
+        $token = $this->loginUser->handle(
+            payload: $request->payload(),
+        );
+
+        return new TokenResponse(token: $token, status: 201);
+    }
+}
+```
+
+Create `app/Http/Controllers/Auth/V1/LoginController.php`:
+
+```php
+<?php
+
+declare(strict_types=1);
+
+namespace App\Http\Controllers\Auth\V1;
+
+use App\Actions\Auth\LoginUser;
+use App\Http\Requests\Auth\V1\LoginRequest;
+use App\Http\Responses\TokenResponse;
+use Illuminate\Http\JsonResponse;
+
+/**
+ * @group Authentication
+ */
+final readonly class LoginController
+{
+    public function __construct(
+        private LoginUser $loginUser,
+    ) {}
+
+    /**
+     * Login
+     *
+     * Authenticate with email and password and receive an access token.
+     *
+     * @bodyParam email string required The user's email address. Example: jane.smith@acme.io
+     * @bodyParam password string required The user's password. Example: super-secret-password
+     *
+     * @response 200 scenario="Authenticated" {"token": "eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9...", "type": "Bearer"}
+     * @response 401 scenario="Invalid credentials" {"type": "https://httpstatuses.com/401", "title": "Unauthenticated", "status": 401, "detail": "The provided credentials are incorrect."}
+     */
+    public function __invoke(LoginRequest $request): TokenResponse|JsonResponse
+    {
+        $token = $this->loginUser->handle(
+            payload: $request->payload(),
+        );
+
+        if ($token === false) {
+            return new JsonResponse(
+                data: [
+                    'type' => 'https://httpstatuses.com/401',
+                    'title' => 'Unauthenticated',
+                    'status' => 401,
+                    'detail' => 'The provided credentials are incorrect.',
+                ],
+                status: 401,
+                headers: ['Content-Type' => 'application/problem+json'],
+            );
+        }
+
+        return new TokenResponse(token: $token);
+    }
+}
+```
+
+Create `app/Http/Controllers/Auth/V1/RefreshController.php`:
+
+```php
+<?php
+
+declare(strict_types=1);
+
+namespace App\Http\Controllers\Auth\V1;
+
+use App\Actions\Auth\RefreshToken;
+use App\Http\Responses\TokenResponse;
+
+/**
+ * @group Authentication
+ */
+final readonly class RefreshController
+{
+    public function __construct(
+        private RefreshToken $refreshToken,
+    ) {}
+
+    /**
+     * Refresh token
+     *
+     * Exchange a valid token for a fresh one.
+     *
+     * @response 200 scenario="Refreshed" {"token": "eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9...", "type": "Bearer"}
+     * @response 401 scenario="Unauthenticated" {"type": "https://httpstatuses.com/401", "title": "Unauthenticated", "status": 401, "detail": "You are not authenticated."}
+     */
+    public function __invoke(): TokenResponse
+    {
+        return new TokenResponse(
+            token: $this->refreshToken->handle(),
+        );
+    }
+}
+```
+
+Create `app/Http/Controllers/Auth/V1/LogoutController.php`:
+
+```php
+<?php
+
+declare(strict_types=1);
+
+namespace App\Http\Controllers\Auth\V1;
+
+use App\Actions\Auth\LogoutUser;
+use Illuminate\Http\JsonResponse;
+
+/**
+ * @group Authentication
+ */
+final readonly class LogoutController
+{
+    public function __construct(
+        private LogoutUser $logoutUser,
+    ) {}
+
+    /**
+     * Logout
+     *
+     * Invalidate the current token.
+     *
+     * @response 204 scenario="Logged out" {}
+     * @response 401 scenario="Unauthenticated" {"type": "https://httpstatuses.com/401", "title": "Unauthenticated", "status": 401, "detail": "You are not authenticated."}
+     */
+    public function __invoke(): JsonResponse
+    {
+        $this->logoutUser->handle();
+
+        return new JsonResponse(status: 204);
+    }
+}
+```
+
+The `RegisterController` is the most interesting one. After creating the user it immediately logs them in using the same payload - there is no point making a user complete a login step right after they just registered. They get a token back with a 201 status, ready to start making requests.
+
+The `LoginController` has a union return type `TokenResponse|JsonResponse`. This is one of the few places in the application where a controller branches based on business logic. I would normally push that kind of branching into an action, but here the branch point is purely about which HTTP response to return - the action has already done its job and returned a result. The controller is just translating that result into the right response shape.
+
+## Testing the Flow
+
+Let's put the whole thing together. Register a new user:
+
+```bash
+curl -X POST http://localhost:8000/v1/auth/register \
+  -H "Content-Type: application/json" \
+  -d '{
+    "name": "Jane Smith",
+    "email": "jane.smith@acme.io",
+    "password": "super-secret-password",
+    "password_confirmation": "super-secret-password"
+  }'
+```
+
+You should get a 201 with a token:
+
+```json
+{
+    "token": "eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9...",
+    "type": "Bearer"
+}
+```
+
+Log in with those credentials:
+
+```bash
+curl -X POST http://localhost:8000/v1/auth/login \
+  -H "Content-Type: application/json" \
+  -d '{
+    "email": "jane.smith@acme.io",
+    "password": "super-secret-password"
+  }'
+```
+
+Try logging in with wrong credentials to confirm the 401 Problem+JSON response:
+
+```bash
+curl -X POST http://localhost:8000/v1/auth/login \
+  -H "Content-Type: application/json" \
+  -d '{
+    "email": "jane.smith@acme.io",
+    "password": "wrong-password"
+  }'
+```
+
+```json
+{
+    "type": "https://httpstatuses.com/401",
+    "title": "Unauthenticated",
+    "status": 401,
+    "detail": "The provided credentials are incorrect."
+}
+```
+
+Refresh a token:
+
+```bash
+curl -X POST http://localhost:8000/v1/auth/refresh \
+  -H "Authorization: Bearer {your-token}"
+```
+
+And log out:
+
+```bash
+curl -X POST http://localhost:8000/v1/auth/logout \
+  -H "Authorization: Bearer {your-token}"
+```
+
+A 204 with an empty body. Clean.
+
+Now go back and use that token against the leads endpoint to confirm end-to-end authentication is working:
+
+```bash
+curl -X GET http://localhost:8000/v1/leads \
+  -H "Authorization: Bearer {your-token}"
+```
+
+You should get a 200 with an empty leads collection rather than a 401. The full auth flow is working.
+
+Run Scribe to pick up the new auth endpoints:
+
+```bash
+php artisan scribe:generate
+```
+
+## What We Have Now
+
+Pulse-Link now has a complete, stateless authentication system. The flow is: register or log in to receive a JWT, include it in the `Authorization: Bearer` header on every subsequent request, refresh it before it expires, and invalidate it on logout.
+
+Every piece follows the same architecture as the lead ingestion work - invokable controllers, Form Request DTOs, Action classes, clean response types. The auth layer does not feel like a special case bolted onto the side of the application. It feels like the rest of it.
+
+In the next article we are going to go deep on the Action pattern - building the processing and AI enrichment pipeline that takes a lead from `pending` to `enriched`. This is where Pulse-Link's core value gets built.
+
+---
+
+*Next: The Action Pattern - building the lead processing and AI enrichment pipeline using Laravel's AI SDK and composable Action classes.*
