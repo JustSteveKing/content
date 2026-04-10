@@ -1,0 +1,498 @@
+---
+title: "Building Modern Laravel APIs: Foundations and Project Structure"
+description: "Start the Modern Laravel APIs series by structuring Pulse-Link for production with clear layers, ULIDs, action classes, DTO requests, and versioning."
+category: Laravel
+series: "modern-laravel-apis"
+pubDate: 2026-04-10
+minRead: 12
+author:
+  name: Steve McDougall
+  avatar:
+    src: https://avatars.githubusercontent.com/u/6368379?v=4
+    alt: Steve McDougall
+tags: ["laravel", "api-design", "api-architecture", "rest-api"]
+---
+
+I have built a lot of Laravel APIs over the years. Some of them were good. Some of them were not. The ones that were not good all had something in common - they started without a clear set of opinions about how the application should be structured, and by the time those opinions became necessary, the codebase was already fighting back.
+
+This series is about doing it right from the start. We are going to build Pulse-Link - a smart lead ingestion engine that receives raw lead data, enriches it using AI, and organises it so a sales team knows exactly who to contact first. But Pulse-Link is the vehicle, not the destination. The patterns, the decisions, and the architectural opinions we establish in this first article are the things you will take to your own projects.
+
+By the end of this series you will have a complete, production-ready Laravel API. Let's start by building the foundation it sits on.
+
+## What We Are Building
+
+Pulse-Link is a high-performance ingestion engine. It is not a CRM - it does not try to manage the full lifecycle of a customer relationship. Its job is narrower and more focused: receive lead data from multiple sources, enrich that data using AI to fill in gaps and add context, score each lead based on signals we care about, and surface the highest-priority leads to the sales team.
+
+That scope gives us a domain that is complex enough to justify every pattern we will introduce - authentication, versioning, async processing, AI integration - without being so sprawling that we lose the thread between articles.
+
+The tech stack throughout this series:
+
+- PHP 8.5
+- Laravel 13
+- PostgreSQL
+- Laravel AI SDK for enrichment
+- Laravel JSON:API Resources
+- PestPHP for testing
+- JWT authentication via `php-open-source-saver/jwt-auth`
+
+Let's get the project set up.
+
+## Creating the Project
+
+```bash
+composer create-project laravel/laravel pulse-link
+cd pulse-link
+```
+
+The first thing I do with any new Laravel API project is remove everything I do not need. We are building an API, not a web application, so the frontend scaffolding is just noise.
+
+```bash
+composer remove laravel/pail laravel/sail
+```
+
+Now install the packages we will use throughout the series:
+
+```bash
+composer require php-open-source-saver/jwt-auth
+```
+
+And our development dependencies:
+
+```bash
+composer require pestphp/pest pestphp/pest-plugin-laravel --dev
+./vendor/bin/pest --init
+```
+
+## Project Structure
+
+This is the part most tutorials skip or gloss over, and it is where a lot of codebases go wrong. The default Laravel structure is fine for small applications. For a production API that will grow over time, we want something more deliberate.
+
+Here is the directory structure we will use throughout this series:
+
+```
+app/
+  Actions/
+    Leads/
+      IngestLead.php
+      EnrichLead.php
+      ScoreLead.php
+  Http/
+    Controllers/
+      Leads/
+        V1/
+          IndexController.php
+          ShowController.php
+          StoreController.php
+    Middleware/
+      HttpSunset.php
+    Requests/
+      Leads/
+        V1/
+          StoreLeadRequest.php
+    Resources/
+      Leads/
+        V1/
+          LeadResource.php
+  Models/
+    Lead.php
+    Source.php
+
+routes/
+  api/
+    routes.php
+    leads.php
+```
+
+Each layer has a single responsibility. Controllers handle HTTP. Requests handle validation and produce DTOs. Actions handle business logic. Models handle data access. Nothing bleeds into anything else.
+
+The `V1` namespace on controllers and requests is intentional and we will talk about it in detail when we cover versioning. For now, accept that it is there for a good reason.
+
+## Core Opinions, Explained
+
+Before we write a single line of business logic, I want to explain the opinions that will run through every article in this series. These are not arbitrary preferences - each one solves a specific problem I have encountered in production.
+
+### ULIDs Over Auto-Increment IDs
+
+Auto-increment integer IDs leak information. If your lead endpoint returns an ID of `42`, I know you have 42 leads. If it returns `01JMKP8R2NQZ9F0XVZYS7TDCHK`, I know nothing about your data volume. ULIDs are also sortable by time, which makes them useful for pagination, and they are safe to generate in application code without a database round-trip.
+
+Laravel ships with first-class ULID support via the `HasUlids` trait - no extra packages needed. We will use it on every model.
+
+### Invokable Controllers
+
+A controller that handles multiple actions is a controller that has too many reasons to change. Single-action invokable controllers keep the responsibility clear - one controller, one HTTP action, one thing it is responsible for doing. The file name tells you exactly what it does: `StoreController.php` stores a resource. `IndexController.php` lists resources. No ambiguity.
+
+### Form Requests as DTOs
+
+Laravel's Form Request classes are typically used just for validation. We go further. Every Form Request has a `payload()` method that returns a typed DTO. This means controllers never touch raw request data - they receive a validated, typed object that represents exactly the data the action needs.
+
+This pairs well with the `#[Fillable]` attribute on models. Validation happens at the Form Request layer, the `payload()` method transforms that validated data into a typed DTO, and the model's `#[Fillable]` attribute declares precisely what can be written. Every layer has a clear job, and nothing leaks into anything else.
+
+### Action Classes
+
+Business logic lives in Action classes with a `handle()` method. One action does one thing. `IngestLead` ingests a lead. `EnrichLead` enriches it. `ScoreLead` scores it. This makes logic testable in isolation, reusable across different HTTP contexts, and easy to reason about. We will get deep into this pattern in Article 5.
+
+### Problem+JSON Error Responses
+
+RFC 9457 defines a standard format for HTTP error responses. Instead of returning whatever error shape we feel like on a given day, every error from Pulse-Link follows the same structure. Clients can rely on it. Tests can assert against it. It is the kind of consistency that makes an API genuinely pleasant to integrate with.
+
+### Versioned Endpoints with HTTP Sunset Headers
+
+We version from day one, not as an afterthought. All routes live under a version prefix. When we eventually introduce a V2, V1 routes get an HTTP `Sunset` header that tells clients when the old version will be retired. This is how real API lifecycle management works, and building it in from the start costs almost nothing.
+
+## Setting Up the Application
+
+Let's configure Pulse-Link properly. Start with `config/auth.php` to set up JWT as our API guard:
+
+```php
+'defaults' => [
+    'guard' => 'api',
+    'passwords' => 'users',
+],
+
+'guards' => [
+    'api' => [
+        'driver' => 'jwt',
+        'provider' => 'users',
+    ],
+],
+```
+
+Publish the JWT configuration and generate a secret:
+
+```bash
+php artisan vendor:publish --provider="PHPOpenSourceSaver\JWTAuth\Providers\LaravelServiceProvider"
+php artisan jwt:secret
+```
+
+Now let's configure `AppServiceProvider` with the settings that make development and production behaviour more predictable:
+
+```php
+<?php
+
+declare(strict_types=1);
+
+namespace App\Providers;
+
+use Illuminate\Database\Eloquent\Model;
+use Illuminate\Http\Resources\Json\JsonResource;
+use Illuminate\Support\ServiceProvider;
+
+final class AppServiceProvider extends ServiceProvider
+{
+    public function boot(): void
+    {
+        Model::shouldBeStrict(! app()->isProduction());
+
+        JsonResource::withoutWrapping();
+    }
+}
+```
+
+`Model::shouldBeStrict()` in non-production environments catches N+1 queries and lazy loading issues during development before they make it to production. `JsonResource::withoutWrapping()` lets our JSON:API resources control their own wrapping rather than having Laravel add an outer `data` key that conflicts with the JSON:API spec.
+
+## The Lead Model
+
+Let's build the first model. The `Lead` represents the core entity in Pulse-Link - the raw and enriched data for a single prospect.
+
+First, the migration:
+
+```php
+<?php
+
+declare(strict_types=1);
+
+use Illuminate\Database\Migrations\Migration;
+use Illuminate\Database\Schema\Blueprint;
+use Illuminate\Support\Facades\Schema;
+
+return new class extends Migration
+{
+    public function up(): void
+    {
+        Schema::create('leads', function (Blueprint $table): void {
+            $table->ulid('id')->primary();
+            $table->string('email')->unique();
+            $table->string('first_name');
+            $table->string('last_name');
+            $table->string('company')->nullable();
+            $table->string('job_title')->nullable();
+            $table->string('phone')->nullable();
+            $table->string('source');
+            $table->jsonb('raw_payload');
+            $table->jsonb('enriched_data')->nullable();
+            $table->integer('score')->default(0);
+            $table->string('status')->default('pending');
+            $table->timestamps();
+        });
+    }
+
+    public function down(): void
+    {
+        Schema::dropIfExists('leads');
+    }
+};
+```
+
+A few things worth noting here. We use `ulid('id')` for the primary key - Laravel 13 has native ULID column support. `raw_payload` stores the original data exactly as it arrived, which is useful for debugging and reprocessing. `enriched_data` stores whatever the AI layer adds. `score` and `status` drive the prioritisation logic we will build later.
+
+Now the model:
+
+```php
+<?php
+
+declare(strict_types=1);
+
+namespace App\Models;
+
+use Illuminate\Database\Eloquent\Attributes\Fillable;
+use Illuminate\Database\Eloquent\Concerns\HasUlids;
+use Illuminate\Database\Eloquent\Factories\HasFactory;
+use Illuminate\Database\Eloquent\Model;
+
+#[Fillable(
+    'email',
+    'first_name',
+    'last_name',
+    'company',
+    'job_title',
+    'phone',
+    'source',
+    'raw_payload',
+    'enriched_data',
+    'score',
+    'status',
+)]
+final class Lead extends Model
+{
+    use HasFactory;
+    use HasUlids;
+
+    protected function casts(): array
+    {
+        return [
+            'raw_payload' => 'array',
+            'enriched_data' => 'array',
+            'score' => 'integer',
+        ];
+    }
+}
+```
+
+The `#[Fillable]` attribute is the modern PHP 8.x way to declare mass-assignable fields - clean, explicit, and right there on the class where you expect to find it. No `$fillable` array buried in the property list, no `Model::unguard()` shortcut that removes protection you actually want. Every field that can be written to is declared here, and nothing else gets through.
+
+## Routing Structure
+
+Let's set up the routing foundation. First, create the routes directory structure:
+
+```bash
+mkdir -p routes/api
+```
+
+The main entry point at `routes/api/routes.php`:
+
+```php
+<?php
+
+declare(strict_types=1);
+
+use Illuminate\Support\Facades\Route;
+
+Route::prefix('v1')->as('v1:')->group(function (): void {
+    Route::prefix('leads')->as('leads:')->middleware(['auth:api'])->group(base_path('routes/api/leads.php'));
+});
+```
+
+And `routes/api/leads.php` - we will start with a minimal set of routes and expand them across the series:
+
+```php
+<?php
+
+declare(strict_types=1);
+
+use App\Http\Controllers\Leads\V1\IndexController;
+use App\Http\Controllers\Leads\V1\ShowController;
+use App\Http\Controllers\Leads\V1\StoreController;
+use Illuminate\Support\Facades\Route;
+
+Route::get('/', IndexController::class)->name('leads.index');
+Route::post('/', StoreController::class)->name('leads.store');
+Route::get('/{lead}', ShowController::class)->name('leads.show');
+```
+
+Register the route file in `bootstrap/app.php`:
+
+```php
+->withRouting(
+    api: __DIR__ . '/../routes/api/routes.php',
+    apiPrefix: '',
+    commands: __DIR__ . '/../routes/console.php',
+    health: '/up',
+)
+```
+
+## The HTTP Sunset Middleware
+
+We are building versioning in from day one. When V1 eventually gets superseded by V2, we want to signal that deprecation to clients via the HTTP `Sunset` header. Let's build the middleware now so it is ready when we need it.
+
+```php
+<?php
+
+declare(strict_types=1);
+
+namespace App\Http\Middleware;
+
+use Closure;
+use Illuminate\Http\Request;
+use Symfony\Component\HttpFoundation\Response;
+
+final class HttpSunset
+{
+    public function handle(Request $request, Closure $next, string $date): Response
+    {
+        $response = $next($request);
+        $response->headers->set('Sunset', $date);
+        $response->headers->set('Deprecation', 'true');
+
+        return $response;
+    }
+}
+```
+
+Register it as a named middleware in `bootstrap/app.php`:
+
+```php
+->withMiddleware(function (Middleware $middleware): void {
+    $middleware->alias([
+        'sunset' => \App\Http\Middleware\HttpSunset::class,
+    ]);
+})
+```
+
+When V1 routes need to be deprecated, we add it like this:
+
+```php
+Route::middleware(['auth:api', 'sunset:2026-12-31'])->group(function (): void {
+    // V1 routes
+});
+```
+
+## Problem+JSON Error Handling
+
+Consistent error responses are one of the things that separates a good API from a frustrating one. Let's configure the exception handler to return Problem+JSON for every error.
+
+In `bootstrap/app.php`, add the necessary imports at the top:
+
+```php
+use Illuminate\Auth\AuthenticationException;
+use Illuminate\Database\Eloquent\ModelNotFoundException;
+use Illuminate\Http\JsonResponse;
+use Illuminate\Http\Request;
+use Illuminate\Validation\ValidationException;
+```
+
+Then inside the `->withExceptions()` callback:
+
+```php
+->withExceptions(function (Exceptions $exceptions): void {
+    $exceptions->render(function (ValidationException $e, Request $request): JsonResponse {
+        return new JsonResponse(
+            data: [
+                'type' => 'https://httpstatuses.com/422',
+                'title' => 'Unprocessable Entity',
+                'status' => 422,
+                'detail' => 'The given data was invalid.',
+                'errors' => $e->errors(),
+            ],
+            status: 422,
+            headers: ['Content-Type' => 'application/problem+json'],
+        );
+    });
+
+    $exceptions->render(function (AuthenticationException $e, Request $request): JsonResponse {
+        return new JsonResponse(
+            data : [
+                'type' => 'https://httpstatuses.com/401',
+                'title' => 'Unauthenticated',
+                'status' => 401,
+                'detail' => 'You are not authenticated.',
+            ],
+            status: 401,
+            headers: ['Content-Type' => 'application/problem+json'],
+        );
+    });
+
+    $exceptions->render(function (ModelNotFoundException $e, Request $request): JsonResponse {
+        return new JsonResponse(
+            data: [
+                'type' => 'https://httpstatuses.com/404',
+                'title' => 'Not Found',
+                'status' => 404,
+                'detail' => 'The requested resource was not found.',
+            ],
+            status: 404,
+            headers: ['Content-Type' => 'application/problem+json'],
+        );
+    });
+})
+```
+
+Note the `Content-Type: application/problem+json` header on every error response. This is RFC 9457 compliant and tells clients they are receiving a structured problem response rather than a generic JSON blob.
+
+## Running the Application
+
+Let's make sure everything is wired up correctly. Run the migrations:
+
+```bash
+php artisan migrate
+```
+
+Start the development server:
+
+```bash
+php artisan serve
+```
+
+Hit the health endpoint to confirm the application is running:
+
+```bash
+curl http://localhost:8000/up
+```
+
+You should get a 200 response. If you try to hit a protected route without a token:
+
+```bash
+curl http://localhost:8000/v1/leads
+```
+
+You should get a properly formatted Problem+JSON 401 response:
+
+```json
+{
+    "type": "https://httpstatuses.com/401",
+    "title": "Unauthenticated",
+    "status": 401,
+    "detail": "You are not authenticated."
+}
+```
+
+That is the foundation working correctly.
+
+## What We Have Built
+
+At this point Pulse-Link has a clear structure, sensible defaults, and a set of architectural opinions that will make every subsequent article easier to follow. We have:
+
+- A project structure that separates concerns cleanly
+- JWT configured as the API authentication guard
+- ULIDs on every model
+- A versioned routing structure ready for V1 and beyond
+- HTTP Sunset middleware for graceful API deprecation
+- Problem+JSON error responses for every error type
+- Strict model behaviour that catches N+1 issues in development
+
+None of this is complex individually. What makes it valuable is that it is all decided and in place before the business logic arrives. The foundation does not fight you when you start building on it.
+
+In the next article we are going to go deeper on routing, API versioning, and writing an OpenAPI contract for the lead ingestion endpoint before we write a single line of implementation. The contract becomes the spec we build against for the rest of the series.
+
+---
+
+*Next: Routing, Versioning, and API Contracts - building a versioned routing structure and writing an OpenAPI spec for Pulse-Link before the implementation begins.*
