@@ -1,0 +1,79 @@
+---
+title: "Managing Expectations in the AI Era"
+description: "How to have honest conversations with stakeholders about AI productivity — what actually changes, what doesn't, and how to set realistic expectations."
+category: Project Management
+series: "building-software-with-ai"
+pubDate: 2026-04-10
+shouldCrossPost: true
+minRead: 12
+author:
+  name: Steve McDougall
+  avatar:
+    src: https://avatars.githubusercontent.com/u/6368379?v=4
+    alt: Steve McDougall
+tags: ["project-management", "ai", "modern-software"]
+---
+
+Here is a conversation I suspect a lot of engineering leaders are having right now, in one form or another.
+
+A stakeholder - a product director, a founder, a VP of sales - has read something about how AI makes developers ten times more productive. They have seen demos of entire applications being scaffolded in minutes. They have heard that GitHub Copilot cuts coding time by thirty percent. And now they are sitting across from you asking why, if all of that is true, the roadmap looks basically the same as it did last year.
+
+It is a fair question. And the honest answer is complicated enough that most engineering leaders either oversimplify it in ways that create bigger problems later, or they get defensive in ways that damage the relationship. Neither response serves the team.
+
+This article is about how to have that conversation well. Not how to manage stakeholders in the pejorative sense - not how to deflect or spin or buy yourself time - but how to build a genuinely shared understanding of what AI-assisted development changes, what it does not change, and what realistic expectations look like for a team that is operating thoughtfully in this environment.
+
+Let's start with what is actually true about AI productivity gains, because you cannot have an honest conversation without being honest yourself.
+
+AI tools do make certain categories of engineering work significantly faster. Implementation of well-understood patterns, generation of boilerplate, test scaffolding, documentation, refactoring with clear targets - these things are genuinely faster with good AI tooling than without it. The thirty percent figure from the GitHub Copilot study is probably in the right ballpark for teams using the tools well on the kinds of tasks those tools are suited to.
+
+What the headline numbers do not capture is where the time actually goes in a mature engineering team working on a complex product. Implementation - the writing of code - is rarely the primary bottleneck. Understanding the problem is a bottleneck. Getting alignment on the approach is a bottleneck. Reviewing output for correctness, security, and architectural fit is a bottleneck. Integrating new code with existing systems is a bottleneck. Debugging the subtle problems that AI tools introduce is a bottleneck. Maintaining the system over time as requirements evolve is a bottleneck.
+
+If implementation was fifty percent of the work and AI tools make implementation thirty percent faster, the overall gain is fifteen percent. That is meaningful and worth having. It is not the order-of-magnitude productivity revolution that the demos imply, and closing the gap between those two things is a big part of the expectations conversation.
+
+The demo problem is worth addressing directly because it is the source of a lot of the misalignment. The demos that circulate - an entire web application built in forty minutes, a complex feature implemented from a single prompt - are almost always demonstrations of AI capability on isolated, well-defined, greenfield problems with no existing codebase, no integration constraints, no security requirements, no performance considerations, and no need for the output to be maintained by a team over time.
+
+Real engineering work is none of those things. It is happening in an existing codebase with years of accumulated decisions, dependencies, and constraints. It has to integrate with systems built by other teams. It has to meet security and compliance requirements. It has to be understood and maintained by the engineers who will own it after the person who built it has moved on. The gap between demo conditions and production conditions is where most of the AI productivity premium disappears, and it is a gap that is genuinely hard to convey to someone who has not done engineering work.
+
+The framing I have found most useful for this conversation is to distinguish between implementation speed and delivery speed. AI tools have genuinely improved implementation speed for a meaningful subset of engineering work. Delivery speed - the time from "we decide to build this" to "this is working in production for users" - is determined by a much longer chain of activities, most of which AI tools have not fundamentally changed.
+
+If you can help stakeholders understand that distinction, you have given them a more accurate model of where the productivity gains are and are not, and you have set up a more productive conversation about where investment in AI tooling is likely to pay off versus where the constraints lie elsewhere.
+
+Now let's talk about what changes about expectation management when you are running Shape Up alongside AI-assisted development, because the combination creates specific dynamics worth addressing.
+
+Shape Up already changes the expectation conversation in useful ways. The appetite model gives you a cleaner way to discuss scope and time with stakeholders than sprint velocity does, because it makes the tradeoff explicit upfront. We have six weeks of appetite for this problem. Here is what fits in six weeks. If you want more, the appetite needs to be larger and we need to make a different bet. That clarity is genuinely helpful and it creates a more honest basis for the conversation than "our velocity is X story points per sprint so we can fit Y points of work."
+
+AI-assisted development adds another dimension to that conversation. Because implementation speed has increased for certain kinds of work, stakeholders may reasonably ask whether the appetite for some problems should be smaller than it used to be. That is sometimes true and worth engaging with honestly. A pitch that would have had a six-week appetite two years ago might be achievable in four weeks today for the implementation-heavy parts. It might still need six weeks for the thinking, shaping, reviewing, and integration work. Being specific about which parts of the appetite have changed and which have not is more useful than either claiming that nothing has changed or accepting compressed timelines without examining whether they are realistic.
+
+Managing the expectation that AI tools make every problem faster is one part of this. Managing the expectation that results will be continuously visible is another.
+
+One of the features of sprint methodology that stakeholders have come to rely on is the two-week demo cycle. Every two weeks, something is visible. The team demonstrates progress, stakeholders see movement, and there is a regular heartbeat of visibility that creates a sense of things happening even when the underlying work is complex and slow. Shape Up's six-week cycles do not have that built-in visibility cadence, and the absence of it can create anxiety in organisations that are used to it.
+
+The response to this is not to add artificial demos back into the cycle, which would recreate the overhead without the benefit. It is to give stakeholders a clear picture of what the work is at the start of the cycle and to set explicit expectations about when visibility into the output will be available. "We are betting six weeks on this problem. You will not see a demo in week two because we are still building. You will see something meaningful in week five, at which point there will be time to respond before the cycle closes." That is not less communication - it is better communication, because it is honest about the shape of the work rather than manufacturing artificial milestones.
+
+There is a harder conversation that sits underneath all of this, and it is the one that most engineering leaders avoid because it is uncomfortable. That conversation is about the difference between your team moving faster because of AI tools and the business having more features because of AI tools. Those are not the same thing.
+
+If your team is using AI tools to move faster but you are maintaining the same quality bar, the same review standards, the same architectural discipline, and the same thoughtfulness about what to build - then you are building the same things with less waste, which is genuinely valuable. It means less burnout, more capacity for hard problems, more time for the thinking that generates the most leverage.
+
+That is not the same as having a larger roadmap. If stakeholders are expecting that AI tools will double the number of features shipped per quarter, they are expecting something that requires either cutting the quality and review standards that make AI-assisted development safe, or working the team significantly harder than before. Neither of those is a good outcome, and engineering leaders who let that expectation stand unaddressed will find themselves in a difficult position when the roadmap does not expand at the rate that was implicitly promised.
+
+The conversation worth having instead is about what the team does with the capacity that better tooling creates. Some of it goes into faster, higher-quality implementation. Some of it goes into the thinking and shaping work that produces better decisions about what to build. Some of it goes into the review and architectural work that maintains system quality as AI tools increase the volume of code being produced. Some of it should probably go into investing in the team's own development - learning, experimentation, the work that builds the engineering capability that makes the tooling valuable in the first place.
+
+That is a more nuanced story than "we are ten times more productive now." It is also a more accurate one, and in my experience stakeholders who are engaged with the work as a genuine partner rather than a consumer respond better to nuance than to oversimplification, even when the nuanced version is less exciting.
+
+The practical habits that make expectation management sustainable over time are not complicated, but they require consistency.
+
+Communicate about what is being built and why at the start of each cycle, not just at the end. Give stakeholders the pitch - or a readable version of it - when the bet is placed. That transparency builds trust and it creates a shared basis for the conversation about what changed if the output does not match the expectation.
+
+Be specific about where AI tooling is changing your team's capability and where it is not. "We are moving faster on implementation-heavy work and investing the difference in deeper review and better shaping" is a specific and honest statement. It is also a statement that builds confidence that you are thinking carefully about how the tools are being used, rather than just claiming productivity gains you cannot substantiate.
+
+Push back on compressed timelines that are based on assumptions about AI productivity rather than on what you actually know about the work. The appetite should be set based on the real constraints of the specific problem, not on a general belief that AI tools have made everything faster. Sometimes they have. Sometimes the work is in the parts of the problem where they have not. You need to know which before you commit to a timeline.
+
+And hold the line on quality. The biggest risk in the AI-assisted development era is not that AI tools will make teams less capable. It is that the increased output speed creates pressure to reduce the review, testing, and architectural discipline that keeps that output trustworthy. The teams that manage this well are the ones whose leaders are explicit about what the quality bar is and why maintaining it is not optional even when the pace of production has increased.
+
+Managing expectations in the AI era is not fundamentally different from managing expectations in any other era of significant change in how engineering work gets done. It requires honesty about what has changed, clarity about what has not, and the willingness to have the harder conversation rather than the easier one.
+
+The easier conversation is "AI makes us faster, expect more." The harder conversation is "AI changes the shape of the work in specific ways, here is what that means for what we can deliver and how." The harder conversation is also the one that builds the kind of trust that makes everything else in this series actually work.
+
+---
+
+*This is the final article in the Building Software in the AI Era series. The full series covers why sprints are breaking down, Shape Up as a better operating model, writing pitches, spec-driven development with LLMs, reviewing AI-generated work, redefining engineering roles, running a betting table, and managing the expectations that come with all of it.*
