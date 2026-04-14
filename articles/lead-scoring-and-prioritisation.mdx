@@ -1,0 +1,482 @@
+---
+title: "Building Modern Laravel APIs: Lead Scoring and Prioritisation"
+description: "Building a configurable lead scoring engine in Laravel 13 - config-driven weights, query objects for prioritised retrieval, rescoring commands, and a top leads endpoint."
+category: Laravel
+series: "modern-laravel-apis"
+shouldCrossPost: true
+pubDate: 2026-04-14
+minRead: 12
+author:
+  name: Steve McDougall
+  avatar:
+    src: https://avatars.githubusercontent.com/u/6368379?v=4
+    alt: Steve McDougall
+tags: ["laravel", "api-design", "api-architecture", "rest-api"]
+---
+
+A lead with a score of zero is not useful to anyone. The whole point of Pulse-Link is that a sales team can open the application and immediately know who to call first. That means scoring has to be meaningful, the prioritisation logic has to be visible and adjustable, and the API needs to surface leads in a way that reflects their value.
+
+In Article 5 we built a basic `ScoreLead` action with hardcoded scoring rules. In this article we are going to make that scoring engine production-grade - configurable rules, proper score normalisation, a dedicated query layer for prioritised lead retrieval, and the endpoint changes that let clients consume prioritised results effectively.
+
+## Why Scoring Belongs in Application Code
+
+Before we get into the implementation, it is worth explaining why the scoring logic lives in PHP rather than in the database or in the AI layer.
+
+The AI enrichment gives us signals - seniority level, company size, decision-maker status. Those are inputs. The scoring rules are business logic that decides how much each signal is worth. Business logic changes. Your sales team will tell you that director-level contacts at mid-market companies are actually more valuable than C-level contacts at small companies because the deal size is larger. Or that a specific industry vertical should score higher because your product fits it better. Those adjustments need to be fast, testable, and visible in code.
+
+If scoring lives in a raw SQL expression or in a prompt to an AI model, it is harder to test, harder to change, and harder to explain to a non-technical stakeholder. In application code with explicit rules, it is all three of those things.
+
+## The Scoring Configuration
+
+Rather than hardcoding weights throughout the `ScoreLead` action, let's move the configuration to a dedicated config file. This makes adjustments a one-line change without touching any PHP logic.
+
+Create `config/scoring.php`:
+
+```php
+<?php
+
+declare(strict_types=1);
+
+return [
+
+    /*
+    |--------------------------------------------------------------------------
+    | Decision Maker Weight
+    |--------------------------------------------------------------------------
+    | Points awarded when a lead is identified as a likely decision maker.
+    */
+    'decision_maker_weight' => env('SCORING_DECISION_MAKER_WEIGHT', 30),
+
+    /*
+    |--------------------------------------------------------------------------
+    | Seniority Weights
+    |--------------------------------------------------------------------------
+    | Points awarded per seniority level identified during enrichment.
+    */
+    'seniority_weights' => [
+        'C-Level' => 25,
+        'Director' => 20,
+        'Senior' => 10,
+        'Mid' => 5,
+        'Junior' => 0,
+    ],
+
+    /*
+    |--------------------------------------------------------------------------
+    | Company Size Weights
+    |--------------------------------------------------------------------------
+    | Points awarded per company size band identified during enrichment.
+    */
+    'company_size_weights' => [
+        '1000+' => 20,
+        '201-1000' => 15,
+        '51-200' => 10,
+        '11-50' => 5,
+        '1-10' => 0,
+    ],
+
+    /*
+    |--------------------------------------------------------------------------
+    | Enrichment Confidence Weight
+    |--------------------------------------------------------------------------
+    | Maximum points awarded based on the AI enrichment confidence score.
+    | A confidence of 1.0 awards the full weight; 0.0 awards nothing.
+    */
+    'confidence_weight' => env('SCORING_CONFIDENCE_WEIGHT', 15),
+
+    /*
+    |--------------------------------------------------------------------------
+    | Completeness Penalties
+    |--------------------------------------------------------------------------
+    | Points deducted for missing fields that reduce lead quality.
+    */
+    'missing_company_penalty' => env('SCORING_MISSING_COMPANY_PENALTY', 5),
+    'missing_job_title_penalty' => env('SCORING_MISSING_JOB_TITLE_PENALTY', 5),
+
+];
+```
+
+The environment variable overrides for the key weights mean you can tune scoring per deployment without a code change or a redeploy. The per-level seniority and company size arrays stay in config so they are easy to audit and modify.
+
+## The Updated ScoreLead Action
+
+Now rewrite `app/Actions/Leads/ScoreLead.php` to read from config rather than hardcode values:
+
+```php
+<?php
+
+declare(strict_types=1);
+
+namespace App\Actions\Leads;
+
+use App\Enums\LeadStatus;
+use App\Models\Lead;
+
+final readonly class ScoreLead
+{
+    public function handle(Lead $lead): Lead
+    {
+        $score = $this->calculate($lead);
+
+        $lead->update(['score' => $score]);
+
+        return $lead->fresh();
+    }
+
+    private function calculate(Lead $lead): int
+    {
+        $score = 0;
+        $enriched = $lead->enriched_data ?? [];
+
+        $score += $this->decisionMakerScore($enriched);
+        $score += $this->seniorityScore($enriched);
+        $score += $this->companySizeScore($enriched);
+        $score += $this->confidenceScore($enriched);
+        $score -= $this->completenessPenalty($lead);
+
+        return max(0, min(100, $score));
+    }
+
+    private function decisionMakerScore(array $enriched): int
+    {
+        if (($enriched['is_decision_maker'] ?? false) === true) {
+            return config()->integer('scoring.decision_maker_weight', 30);
+        }
+
+        return 0;
+    }
+
+    private function seniorityScore(array $enriched): int
+    {
+        $level = $enriched['seniority_level'] ?? null;
+        $weights = config()->array('scoring.seniority_weights', []);
+
+        return (int) ($weights[$level] ?? 0);
+    }
+
+    private function companySizeScore(array $enriched): int
+    {
+        $size = $enriched['company_size'] ?? null;
+        $weights = config()->array('scoring.company_size_weights', []);
+
+        return (int) ($weights[$size] ?? 0);
+    }
+
+    private function confidenceScore(array $enriched): int
+    {
+        $confidence = (float) ($enriched['enrichment_confidence'] ?? 0.0);
+        $weight = config()->integer('scoring.confidence_weight', 15);
+
+        return (int) round($confidence * $weight);
+    }
+
+    private function completenessPenalty(Lead $lead): int
+    {
+        $penalty = 0;
+
+        if (empty($lead->company)) {
+            $penalty += config()->integer('scoring.missing_company_penalty', 5);
+        }
+
+        if (empty($lead->job_title)) {
+            $penalty += config()->integer('scoring.missing_job_title_penalty', 5);
+        }
+
+        return $penalty;
+    }
+}
+```
+
+Each scoring dimension is now a private method with a single responsibility. Adding a new dimension - say, a geographic score or an industry-vertical bonus - is a matter of adding a config entry and a private method. The `calculate()` method reads like a specification of what the score is made up of.
+
+The typed config helpers - `config()->integer()`, `config()->array()` - are cleaner than casting the return value of `config()` manually. They also make the intent explicit: this value is expected to be an integer, and if it is missing the default applies. The seniority and company size weights stay as plain array lookups since we need to key into them by the enriched value.
+
+## Rescoring Leads
+
+What happens when the scoring rules change? Every existing lead in the database has a stale score. We need a way to rescore them.
+
+Create a command for this:
+
+```bash
+php artisan make:command RescoreLeads
+```
+
+Update `app/Console/Commands/RescoreLeads.php`:
+
+```php
+<?php
+
+declare(strict_types=1);
+
+namespace App\Console\Commands;
+
+use App\Actions\Leads\ScoreLead;
+use App\Enums\LeadStatus;
+use App\Models\Lead;
+use Illuminate\Console\Command;
+
+final class RescoreLeads extends Command
+{
+    protected $signature = 'leads:rescore
+                            {--status=enriched : Only rescore leads with this status}
+                            {--chunk=100 : Number of leads to process per chunk}';
+
+    protected $description = 'Recalculate scores for all enriched leads.';
+
+    public function handle(ScoreLead $scoreLead): int
+    {
+        $status = LeadStatus::from($this->option('status'));
+        $chunk = (int) $this->option('chunk');
+
+        $query = Lead::query()->where('status', $status);
+        $total = $query->count();
+
+        if ($total === 0) {
+            $this->info('No leads to rescore.');
+            return self::SUCCESS;
+        }
+
+        $this->info("Rescoring {$total} leads...");
+
+        $bar = $this->output->createProgressBar($total);
+        $bar->start();
+
+        $query->chunkById($chunk, function ($leads) use ($scoreLead, $bar): void {
+            foreach ($leads as $lead) {
+                $scoreLead->handle($lead);
+                $bar->advance();
+            }
+        });
+
+        $bar->finish();
+        $this->newLine();
+        $this->info('Done.');
+
+        return self::SUCCESS;
+    }
+}
+```
+
+`chunkById()` rather than `chunk()` is important here. When processing large datasets with chunking, `chunk()` can skip records when records are updated mid-iteration because pagination is offset-based. `chunkById()` uses the primary key as a cursor, which makes it safe for operations that modify the records being iterated.
+
+The command accepts a `--status` option so you can rescore all enriched leads or target a specific status. The progress bar gives feedback during long-running rescores.
+
+## The Prioritised Lead Query
+
+The `IndexController` currently orders by `score` descending. That is the right starting point, but a proper prioritisation endpoint needs more flexibility - filtering by status, minimum score threshold, and the ability to get only the top N leads for a dashboard view.
+
+Create `app/Queries/PrioritisedLeadQuery.php`:
+
+```php
+<?php
+
+declare(strict_types=1);
+
+namespace App\Queries;
+
+use App\Enums\LeadStatus;
+use App\Models\Lead;
+use Illuminate\Contracts\Pagination\LengthAwarePaginator;
+use Illuminate\Database\Eloquent\Builder;
+
+final readonly class PrioritisedLeadQuery
+{
+    public function __construct(
+        private ?LeadStatus $status = LeadStatus::Enriched,
+        private int $minimumScore = 0,
+        private int $perPage = 25,
+    ) {}
+
+    public function paginate(): LengthAwarePaginator
+    {
+        return $this->baseQuery()->paginate($this->perPage);
+    }
+
+    public function top(int $limit): \Illuminate\Database\Eloquent\Collection
+    {
+        return $this->baseQuery()->limit($limit)->get();
+    }
+
+    private function baseQuery(): Builder
+    {
+        return Lead::query()
+            ->when(
+                $this->status !== null,
+                fn (Builder $query) => $query->where('status', $this->status),
+            )
+            ->where('score', '>=', $this->minimumScore)
+            ->orderByDesc('score')
+            ->orderByDesc('created_at');
+    }
+}
+```
+
+This is a query object rather than a scope or a repository. Query objects are the right tool when the same set of conditions is needed in multiple places and the logic is complex enough to be worth naming. Here we are filtering by status and minimum score, ordering by score with a created_at tiebreaker, and providing two consumption modes - paginated for the index endpoint and a `top()` method for dashboard summaries.
+
+The secondary `orderByDesc('created_at')` tiebreaker matters. When multiple leads have the same score, newer leads should surface first - they are more likely to be timely.
+
+## Updating the IndexController
+
+Replace the inline query in `IndexController` with the query object:
+
+```php
+<?php
+
+declare(strict_types=1);
+
+namespace App\Http\Controllers\Leads\V1;
+
+use App\Enums\LeadStatus;
+use App\Http\Resources\Leads\V1\LeadResource;
+use App\Queries\PrioritisedLeadQuery;
+use Illuminate\Http\Request;
+use Illuminate\Http\Resources\Json\AnonymousResourceCollection;
+use Knuckles\Scribe\Attributes\Group;
+use Knuckles\Scribe\Attributes\QueryParam;
+use Knuckles\Scribe\Attributes\Response;
+
+#[Group('Leads')]
+final class IndexController
+{
+    #[QueryParam('page', 'integer', 'Page number.', required: false, example: 1)]
+    #[QueryParam('per_page', 'integer', 'Results per page (max 100).', required: false, example: 25)]
+    #[QueryParam('status', 'string', 'Filter by status (pending, enriching, enriched, failed).', required: false, example: 'enriched')]
+    #[QueryParam('min_score', 'integer', 'Only return leads with this score or above.', required: false, example: 50)]
+    #[Response(['data' => [], 'links' => ['first' => '...', 'last' => '...', 'prev' => null, 'next' => null], 'meta' => ['current_page' => 1, 'per_page' => 25, 'total' => 0, 'last_page' => 1]], 200, 'Success')]
+    #[Response(['type' => 'https://httpstatuses.com/401', 'title' => 'Unauthenticated', 'status' => 401, 'detail' => 'You are not authenticated.'], 401, 'Unauthenticated')]
+    public function __invoke(Request $request): AnonymousResourceCollection
+    {
+        $status = $request->string('status')->isNotEmpty()
+            ? LeadStatus::tryFrom($request->string('status')->toString())
+            : LeadStatus::Enriched;
+
+        $query = new PrioritisedLeadQuery(
+            status: $status,
+            minimumScore: $request->integer('min_score', 0),
+            perPage: min($request->integer('per_page', 25), 100),
+        );
+
+        return LeadResource::collection($query->paginate());
+    }
+}
+```
+
+`LeadStatus::tryFrom()` rather than `LeadStatus::from()` is deliberate. `from()` throws a `ValueError` if the value is not a valid enum case. `tryFrom()` returns `null` instead, which is then handled gracefully - if an invalid status string is passed, it falls back to the default `Enriched` status rather than throwing an exception. A client sending an unknown status value gets a sensible response rather than a 500.
+
+The `min()` cap on `per_page` prevents a client requesting 10,000 records in a single call. Simple but important.
+
+## A Top Leads Endpoint
+
+For dashboards and mobile clients that want just the highest-priority leads without pagination overhead, let's add a dedicated endpoint.
+
+Add to `routes/api/leads.php`:
+
+```php
+Route::get('/top', TopController::class)->name('top');
+```
+
+Create `app/Http/Controllers/Leads/V1/TopController.php`:
+
+```php
+<?php
+
+declare(strict_types=1);
+
+namespace App\Http\Controllers\Leads\V1;
+
+use App\Http\Resources\Leads\V1\LeadResource;
+use App\Queries\PrioritisedLeadQuery;
+use Illuminate\Http\Request;
+use Illuminate\Http\Resources\Json\AnonymousResourceCollection;
+use Knuckles\Scribe\Attributes\Endpoint;
+use Knuckles\Scribe\Attributes\Group;
+use Knuckles\Scribe\Attributes\QueryParam;
+use Knuckles\Scribe\Attributes\Response;
+
+#[Group('Leads')]
+final class TopController
+{
+    #[Endpoint('Top leads', 'Returns the highest-scoring enriched leads without pagination. Useful for dashboard widgets and mobile summary views.')]
+    #[QueryParam('limit', 'integer', 'Number of leads to return (max 50, default 10).', required: false, example: 10)]
+    #[QueryParam('min_score', 'integer', 'Only return leads with this score or above.', required: false, example: 60)]
+    #[Response(['data' => [['id' => '01JMKP8R2NQZ9F0XVZYS7TDCHK', 'type' => 'leads', 'attributes' => ['score' => 85, 'status' => 'enriched']]]], 200, 'Success')]
+    #[Response(['type' => 'https://httpstatuses.com/401', 'title' => 'Unauthenticated', 'status' => 401, 'detail' => 'You are not authenticated.'], 401, 'Unauthenticated')]
+    public function __invoke(Request $request): AnonymousResourceCollection
+    {
+        $limit = min($request->integer('limit', 10), 50);
+
+        $query = new PrioritisedLeadQuery(
+            minimumScore: $request->integer('min_score', 0),
+            perPage: $limit,
+        );
+
+        return LeadResource::collection($query->top($limit));
+    }
+}
+```
+
+The route name follows the same pattern as the rest of the leads routes - it will resolve as `v1:leads:top`. The `limit` cap at 50 is intentional; this endpoint is for summary views, not bulk exports.
+
+## Updating the LeadResource
+
+Now that leads have meaningful enrichment data, the `LeadResource` should expose it. Update `app/Http/Resources/Leads/V1/LeadResource.php`:
+
+```php
+<?php
+
+declare(strict_types=1);
+
+namespace App\Http\Resources\Leads\V1;
+
+use App\Models\Lead;
+use Illuminate\Http\Request;
+use Illuminate\Http\Resources\JsonApi\JsonApiResource;
+
+/**
+ * @property-read Lead $resource
+ */
+final class LeadResource extends JsonApiResource
+{
+    public function toAttributes(Request $request): array
+    {
+        return [
+            'email' => $this->resource->email,
+            'first_name' => $this->resource->first_name,
+            'last_name' => $this->resource->last_name,
+            'company' => $this->resource->company,
+            'job_title' => $this->resource->job_title,
+            'phone' => $this->resource->phone,
+            'source' => $this->resource->source,
+            'score' => $this->resource->score,
+            'status' => $this->resource->status,
+            'enriched_data' => $this->resource->enriched_data,
+            'created_at' => $this->resource->created_at,
+            'updated_at' => $this->resource->updated_at,
+        ];
+    }
+}
+```
+
+`enriched_data` is now part of the response. A client consuming this endpoint can display the AI-inferred industry, seniority, and pain points alongside the score - giving the sales team the context they need to personalise their outreach rather than just a number to rank by.
+
+## Regenerating the Docs
+
+With the new endpoint and updated response shape, regenerate Scribe:
+
+```bash
+php artisan scribe:generate
+```
+
+The `top` endpoint and the `min_score` filter on the index endpoint will now appear in the documentation. You will notice we have switched from docblock tags to PHP 8 attributes for the Scribe annotations. The `#[Group]`, `#[QueryParam]`, `#[BodyParam]`, `#[UrlParam]`, and `#[Response]` attributes from the `Knuckles\Scribe\Attributes` namespace are equivalent to the old `@group`, `@queryParam`, and `@response` tags, but they are proper PHP - your IDE knows their parameter names, you get autocomplete, and there is no string parsing involved. The `#[Group]` attribute sits at the class level so it applies to every method in the controller without repeating it per endpoint.
+
+## What We Have Now
+
+Pulse-Link now has a scoring engine that is genuinely useful. The rules are visible, configurable, and independently testable. The prioritisation query is reusable across the index and top endpoints. Rescoring is a single Artisan command away when the rules change.
+
+More importantly, the architecture demonstrates something worth internalising: separating concerns at the right level of abstraction produces code that is easier to change. The scoring rules live in config. The calculation logic lives in a single action. The query logic lives in a query object. None of those things know about each other beyond the interface they share.
+
+In the next article we are going to tackle the part of the API that is most visible to clients - response structure, error handling, and making sure every edge case returns something predictable and useful.
+
+---
+
+*Next: Responses and Error Handling - building consistent response structures, handling every error case with Problem+JSON, and making Pulse-Link's API surface genuinely predictable.*
