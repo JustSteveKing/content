@@ -1,0 +1,433 @@
+---
+title: "Building Modern Laravel APIs: The Action Pattern"
+description: "Building a lead enrichment and scoring pipeline in Laravel 13 using the AI SDK, structured agents, composable Action classes, and PHP enums for type-safe status management."
+category: Laravel
+series: "modern-laravel-apis"
+shouldCrossPost: true
+pubDate: 2026-04-14
+minRead: 12
+author:
+  name: Steve McDougall
+  avatar:
+    src: https://avatars.githubusercontent.com/u/6368379?v=4
+    alt: Steve McDougall
+tags: ["laravel", "api-design", "api-architecture", "rest-api"]
+---
+
+We have a lead ingestion endpoint. Leads arrive, get validated, and get persisted with a `pending` status and a score of zero. That is the raw intake. Now we need to do something with them.
+
+In this article we are going to build the processing pipeline that transforms a raw lead into something genuinely useful for a sales team. That means AI-powered enrichment via the Laravel AI SDK, a scoring engine that assigns a priority value, and a clean pipeline that wires it all together using composable Action classes.
+
+This is also the article where the Action pattern pays off most visibly. We are not building one thing - we are building three distinct operations and then composing them. The architecture makes that composition clean.
+
+## The Processing Pipeline
+
+Before writing any code, let's be clear about what the pipeline does. When a lead arrives it has a `pending` status. We need to:
+
+Take the raw payload and use AI to infer or fill in missing context - company size, industry, seniority level, anything that was not explicitly provided but can be reasonably inferred. Store that as `enriched_data` on the lead. Then calculate a score between 0 and 100 based on the enriched data and the scoring rules we care about. Finally update the lead status to `enriched` and persist both the enriched data and the score.
+
+Three jobs. Three actions. One pipeline action that composes them.
+
+## The Laravel AI SDK
+
+The AI SDK is already part of Laravel 13. Install it and publish the config:
+
+```bash
+composer require laravel/ai
+php artisan vendor:publish --provider="Laravel\Ai\AiServiceProvider"
+php artisan migrate
+```
+
+The migration creates the `agent_conversations` and `agent_conversation_messages` tables that power the SDK's conversation storage. Configure your provider credentials in `.env`:
+
+```bash
+ANTHROPIC_API_KEY=your-key-here
+```
+
+The SDK supports OpenAI, Anthropic, Gemini, and several others. Because we are using the SDK's abstraction layer, swapping providers is a config change, not a code change. That is exactly the kind of flexibility a production application needs.
+
+## The Enrichment Agent
+
+The Laravel AI SDK introduces the concept of an Agent - a dedicated PHP class that encapsulates the instructions and output schema for interacting with a language model. Agents implement contracts rather than extend a base class, which keeps them clean and composable.
+
+Generate one:
+
+```bash
+php artisan make:agent LeadEnrichmentAgent --structured
+```
+
+This creates a class in `app/Ai/Agents/` that implements `Agent` and `HasStructuredOutput` and uses the `Promptable` trait. Update it at `app/Ai/Agents/LeadEnrichmentAgent.php`:
+
+```php
+<?php
+
+declare(strict_types=1);
+
+namespace App\Ai\Agents;
+
+use Illuminate\Contracts\JsonSchema\JsonSchema;
+use Laravel\Ai\Contracts\Agent;
+use Laravel\Ai\Contracts\HasStructuredOutput;
+use Laravel\Ai\Promptable;
+use Stringable;
+
+final class LeadEnrichmentAgent implements Agent, HasStructuredOutput
+{
+    use Promptable;
+
+    public function instructions(): Stringable|string
+    {
+        return <<<PROMPT
+        You are a B2B sales intelligence assistant. Given the information about a lead,
+        infer and return structured enrichment data that would help a sales team prioritise
+        and personalise their outreach.
+
+        Use only the information provided. Do not invent specific facts. Where something
+        cannot be reasonably inferred, return null for that field.
+        PROMPT;
+    }
+
+    public function schema(JsonSchema $schema): array
+    {
+        return [
+            'industry' => $schema->string()->nullable()
+                ->description('The lead\'s industry sector, e.g. "SaaS", "FinTech", "Healthcare"'),
+            'company_size' => $schema->string()->nullable()
+                ->description('Estimated company size, e.g. "1-10", "11-50", "51-200", "201-1000", "1000+"'),
+            'seniority_level' => $schema->string()->nullable()
+                ->description('The lead\'s seniority, e.g. "Junior", "Mid", "Senior", "Director", "C-Level"'),
+            'is_decision_maker' => $schema->boolean()->nullable()
+                ->description('Whether this lead is likely a decision maker based on their job title'),
+            'inferred_pain_points' => $schema->array($schema->string())
+                ->description('A list of likely pain points based on the lead\'s role and company context'),
+            'enrichment_confidence' => $schema->number()
+                ->description('A confidence score from 0.0 to 1.0 indicating how much context was available for enrichment'),
+        ];
+    }
+}
+```
+
+The `schema()` method receives a `JsonSchema $schema` instance and returns an array of field definitions. Each field uses the fluent schema builder to describe its type, nullability, and what it represents. The SDK enforces this shape on the model's response, so we always get back a typed, predictable structure rather than freeform text we have to parse and validate ourselves.
+
+The `instructions()` method defines the system prompt. It tells the model exactly what its job is and explicitly instructs it not to invent specific facts - a critical constraint for a production application where hallucinated data in a CRM causes real problems.
+
+## The Enrichment Action
+
+Now the Action that uses the agent.
+
+Create `app/Actions/Leads/EnrichLead.php`:
+
+```php
+<?php
+
+declare(strict_types=1);
+
+namespace App\Actions\Leads;
+
+use App\Ai\Agents\LeadEnrichmentAgent;
+use App\Enums\LeadStatus;
+use App\Models\Lead;
+
+final readonly class EnrichLead
+{
+    public function __construct(
+        private LeadEnrichmentAgent $agent,
+    ) {}
+
+    public function handle(Lead $lead): Lead
+    {
+        $enrichmentData = (array) $this->agent->prompt(
+            $this->buildPrompt($lead),
+        );
+
+        $lead->update([
+            'enriched_data' => $enrichmentData,
+            'status' => LeadStatus::Enriching,
+        ]);
+
+        return $lead->fresh();
+    }
+
+    private function buildPrompt(Lead $lead): string
+    {
+        $context = array_filter([
+            "Email: {$lead->email}",
+            "Name: {$lead->first_name} {$lead->last_name}",
+            $lead->company ? "Company: {$lead->company}" : null,
+            $lead->job_title ? "Job title: {$lead->job_title}" : null,
+            $lead->phone ? "Phone: {$lead->phone}" : null,
+            "Lead source: {$lead->source}",
+        ]);
+
+        return "Enrich this lead:\n\n" . implode("\n", $context);
+    }
+}
+```
+
+A few things worth calling out. The agent is injected via the constructor - the container resolves it automatically, which means we can swap the underlying AI provider by changing configuration, not code.
+
+Because `LeadEnrichmentAgent` implements `HasStructuredOutput`, calling `->prompt()` returns the structured response directly as an object. We cast it to an array for storage in the `enriched_data` JSON column.
+
+The `buildPrompt()` method uses `array_filter()` to remove null values before building the context string. We only send the model data we actually have. Sending empty fields wastes tokens and can confuse the enrichment output.
+
+We set status to `LeadStatus::Enriching` rather than `LeadStatus::Enriched` at this stage - the lead is mid-pipeline. The orchestrating `ProcessLead` action sets it to `Enriched` once scoring is also complete.
+
+`$lead->fresh()` at the end returns a fresh model instance from the database with the updated values. Returning the lead rather than void keeps the action composable - the next action in the pipeline receives the updated model.
+
+## The Scoring Action
+
+Scoring translates the enriched data into a single integer between 0 and 100 that tells the sales team how much to prioritise this lead. The scoring rules are business logic, not AI - they should be explicit, deterministic, and easy to adjust.
+
+Create `app/Actions/Leads/ScoreLead.php`:
+
+```php
+<?php
+
+declare(strict_types=1);
+
+namespace App\Actions\Leads;
+
+use App\Models\Lead;
+
+final readonly class ScoreLead
+{
+    public function handle(Lead $lead): Lead
+    {
+        $score = $this->calculate($lead);
+
+        $lead->update(['score' => $score]);
+
+        return $lead->fresh();
+    }
+
+    private function calculate(Lead $lead): int
+    {
+        $score = 0;
+        $enriched = $lead->enriched_data ?? [];
+
+        // Decision makers are high value
+        if (($enriched['is_decision_maker'] ?? false) === true) {
+            $score += 30;
+        }
+
+        // Seniority signals
+        $score += match ($enriched['seniority_level'] ?? null) {
+            'C-Level' => 25,
+            'Director' => 20,
+            'Senior' => 10,
+            'Mid' => 5,
+            default => 0,
+        };
+
+        // Company size signals - larger companies are more valuable
+        $score += match ($enriched['company_size'] ?? null) {
+            '1000+' => 20,
+            '201-1000' => 15,
+            '51-200' => 10,
+            '11-50' => 5,
+            default => 0,
+        };
+
+        // Reward high enrichment confidence
+        $confidence = (float) ($enriched['enrichment_confidence'] ?? 0.0);
+        $score += (int) round($confidence * 15);
+
+        // Penalise missing key fields
+        if (empty($lead->company)) {
+            $score -= 5;
+        }
+
+        if (empty($lead->job_title)) {
+            $score -= 5;
+        }
+
+        return max(0, min(100, $score));
+    }
+}
+```
+
+The scoring rules are explicit match expressions rather than conditionals buried in if/else chains. That makes them easy to read and easy to adjust when the business decides that company size matters more than seniority, or that a new tier needs adding.
+
+The final `max(0, min(100, $score))` clamps the result to the valid range regardless of how the rules interact. Defensive but correct.
+
+The enrichment confidence score from the AI agent feeds directly into the scoring calculation. A lead enriched from a rich dataset of context signals - job title, company, industry - gets a small bonus. A lead where the model had little to work with gets less. This creates a natural feedback loop that rewards more complete inbound data.
+
+## The Pipeline Action
+
+Now we compose. `ProcessLead` is the orchestrating action that runs the full pipeline end-to-end.
+
+Create `app/Actions/Leads/ProcessLead.php`:
+
+```php
+<?php
+
+declare(strict_types=1);
+
+namespace App\Actions\Leads;
+
+use App\Models\Lead;
+use Throwable;
+
+final readonly class ProcessLead
+{
+    public function __construct(
+        private EnrichLead $enrichLead,
+        private ScoreLead $scoreLead,
+    ) {}
+
+    public function handle(Lead $lead): Lead
+    {
+        try {
+            $lead = $this->enrichLead->handle($lead);
+            $lead = $this->scoreLead->handle($lead);
+
+            $lead->update(['status' => 'enriched']);
+
+            return $lead->fresh();
+        } catch (Throwable $e) {
+            $lead->update(['status' => 'failed']);
+
+            throw $e;
+        }
+    }
+}
+```
+
+The pipeline is explicit and linear. Enrich, then score, then mark as enriched. If anything throws, mark the lead as `failed` and re-throw so the caller can handle it at the appropriate level.
+
+Re-throwing rather than swallowing the exception is important. Swallowing exceptions in pipelines is one of the more reliable ways to create debugging nightmares - leads silently fail and nobody knows why. We catch to set the status, then re-throw so the problem surfaces properly.
+
+The dependency injection chain here is worth appreciating. `ProcessLead` declares its dependencies. Laravel's container resolves `EnrichLead`, which in turn declares its dependency on `LeadEnrichmentAgent`, which the container also resolves. Nothing is manually instantiated. The whole pipeline wires together through the container.
+
+## Lead Status as an Enum
+
+As we add more statuses it becomes clear that representing them as raw strings is fragile. Let's introduce a proper enum.
+
+Create `app/Enums/LeadStatus.php`:
+
+```php
+<?php
+
+declare(strict_types=1);
+
+namespace App\Enums;
+
+enum LeadStatus: string
+{
+    case Pending = 'pending';
+    case Enriching = 'enriching';
+    case Enriched = 'enriched';
+    case Failed = 'failed';
+}
+```
+
+Update the `Lead` model to cast the status column to this enum:
+
+```php
+protected function casts(): array
+{
+    return [
+        'raw_payload' => 'array',
+        'enriched_data' => 'array',
+        'score' => 'integer',
+        'status' => LeadStatus::class,
+    ];
+}
+```
+
+Update the `IngestLead` action to use the enum:
+
+```php
+return Lead::create([
+    ...$payload->toArray(),
+    'raw_payload' => $payload->toArray(),
+    'status' => LeadStatus::Pending,
+    'score' => 0,
+]);
+```
+
+And update `ProcessLead` and `EnrichLead` to use the enum constants rather than raw strings:
+
+```php
+// In EnrichLead
+$lead->update([
+    'enriched_data' => $enrichmentData,
+    'status' => LeadStatus::Enriching,
+]);
+
+// In ProcessLead
+$lead->update(['status' => LeadStatus::Enriched]);
+// and on failure:
+$lead->update(['status' => LeadStatus::Failed]);
+```
+
+Now if a status value is mistyped or a new case needs adding, the type system catches it rather than silent string comparison failures.
+
+## Triggering the Pipeline
+
+The `ProcessLead` action needs to be called somewhere. For now, we can trigger it directly from the `IngestLead` action for demonstration - but in Article 9 we will move it to a queued job so the HTTP response is not blocked by the AI enrichment call.
+
+Update `app/Actions/Leads/IngestLead.php`:
+
+```php
+<?php
+
+declare(strict_types=1);
+
+namespace App\Actions\Leads;
+
+use App\Enums\LeadStatus;
+use App\Http\Payloads\Leads\StoreLeadPayload;
+use App\Models\Lead;
+
+final readonly class IngestLead
+{
+    public function __construct(
+        private ProcessLead $processLead,
+    ) {}
+
+    public function handle(StoreLeadPayload $payload): Lead
+    {
+        $lead = Lead::create([
+            ...$payload->toArray(),
+            'raw_payload' => $payload->toArray(),
+            'status' => LeadStatus::Pending,
+            'score' => 0,
+        ]);
+
+        return $this->processLead->handle($lead);
+    }
+}
+```
+
+This is the synchronous version. The controller calls `IngestLead`, which creates the lead and immediately kicks off enrichment. In a real production environment this would block the HTTP response while the AI call completes - acceptable for now, properly addressed with queues in Article 9.
+
+## Configuring the AI Provider
+
+Add your provider key to `.env`:
+
+```bash
+ANTHROPIC_API_KEY=your-key-here
+```
+
+The default provider is configured in `config/ai.php`. For Pulse-Link, Anthropic's Claude is a sensible default given the quality of structured output for enrichment tasks:
+
+```php
+'default' => env('AI_PROVIDER', 'anthropic'),
+```
+
+Because we are using the SDK's agent abstraction, switching to OpenAI is a one-line change to the default provider config. The `LeadEnrichmentAgent` does not know or care which model is running underneath it.
+
+## What We Have Now
+
+The Action pattern is doing real work. Three single-responsibility actions - `EnrichLead`, `ScoreLead`, and `ProcessLead` - compose into a pipeline that takes a raw lead from `pending` to `enriched` with an AI-generated context payload and a deterministic score.
+
+Each action is independently testable. Swap the agent for a fake in tests, test the scoring logic in isolation, test the pipeline orchestration without touching the AI layer. We will do exactly that in Article 8.
+
+The pipeline is also extensible. Adding a deduplication step, a geographic enrichment step, or a company data lookup is a matter of creating a new action and adding it to `ProcessLead`. The existing actions do not change.
+
+In the next article we are going to build the lead scoring and prioritisation layer in more depth - turning the enriched data into a ranked list that the sales team can actually work from.
+
+---
+
+*Next: Lead Scoring and Prioritisation - building the ranking engine that surfaces the highest-value leads first using enriched data and configurable scoring rules.*
