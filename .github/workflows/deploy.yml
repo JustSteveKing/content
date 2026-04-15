@@ -1,0 +1,13 @@
+name: Trigger Website Rebuild
+
+on:
+  push:
+    branches:
+      - main
+
+jobs:
+  ping-cloudflare:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Hit Deploy Hook
+        run: curl -X POST ${{ secrets.CF_DEPLOY_HOOK }}
