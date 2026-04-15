@@ -7,10 +7,10 @@ link: "https://github.com/JustSteveKing/ollama-php"
 tech: ["PHP"]
 featured: false
 downloads: 82
-monthlyDownloads: 4
+monthlyDownloads: 3
 stars: 27
 version: "dev-main"
-updatedAt: "2026-04-01"
+updatedAt: "2026-04-15"
 ---
 
 

@@ -7,10 +7,10 @@ link: "https://github.com/JustSteveKing/laravel-flows"
 tech: ["PHP"]
 featured: false
 downloads: 18
-monthlyDownloads: 3
+monthlyDownloads: 1
 stars: 105
 version: "dev-main"
-updatedAt: "2026-04-01"
+updatedAt: "2026-04-15"
 ---
 
 
