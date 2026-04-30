@@ -1,0 +1,654 @@
+---
+title: "Introducing Signal: documentation that lives in your code"
+description: "Signal is a PHP library that generates living documentation from native attributes. Annotate your classes, run one command, get accurate docs."
+category: PHP
+devTo: "https://dev.to/juststevemcd/introducing-signal-documentation-that-lives-in-your-code-gfg"
+pubDate: 2026-04-30
+minRead: 12
+author:
+  name: Steve McDougall
+  avatar:
+    src: https://avatars.githubusercontent.com/u/6368379?v=4
+    alt: Steve McDougall
+tags: ["php", "documentation", "attributes", "developer experience"]
+---
+
+I have a confession. I have shipped more than a few projects where the documentation was a lie.
+
+Not deliberately. Nobody sits down and thinks "I'll write docs that contradict my code." It happens gradually. You refactor a method, update the logic, rename a route, and the comment block at the top of the class quietly becomes fiction. The docs say one thing. The code does another. Whoever opens that file next, usually someone who isn't you, has to figure out which one to trust.
+
+I got tired of that problem. So I built Signal.
+
+Signal is a PHP library that turns PHP attributes into living documentation. You annotate your classes and methods directly in the source, and a single CLI command generates Markdown and JSON docs that always reflect what the code actually does. No separate documentation site to keep in sync. No wiki pages that rot. No README sections that nobody updates after the initial commit.
+
+## Why attributes?
+
+PHP 8 gave us native attributes and, honestly, they remain underused. Most people know `#[Route]` from Symfony or `#[Column]` from Doctrine, but the mechanism itself is just a structured, machine-readable annotation system built into the language. That is exactly what documentation needs to be: structured and machine-readable, not a comment that any editor will happily let drift out of sync with reality.
+
+The key difference with Signal is that attributes are not comments. PHP will parse them, your IDE understands them, and Signal can reflect on them at any point. If you delete a method, the attribute goes with it. If you rename a class, your tooling will tell you. The docs cannot lie because the docs are the code.
+
+## Installation and setup
+
+Getting started is one line:
+
+```bash
+composer require juststeveking/signal
+```
+
+Then create a `signal.json` config at your project root. This tells Signal where to look and where to write:
+
+```json
+{
+    "input": "src/",
+    "output": {
+        "format": ["markdown", "json"],
+        "path": "docs/"
+    },
+    "exclude": [
+        "src/Attributes/"
+    ]
+}
+```
+
+The `exclude` array is useful for telling Signal to skip directories it does not need to reflect on. You almost certainly do not want Signal documenting its own attributes if you are using the library inside a package, and you may have internal bootstrap classes that should stay out of the generated output.
+
+Once you have annotated your classes, run:
+
+```bash
+php vendor/bin/signal generate
+```
+
+Signal scans the `input` directory, reflects on every annotated class, and writes `docs/signal.md` and `docs/signal.json`. Both are safe to commit. Both can go into CI as required artefacts. If a developer removes an annotation, the next generate run will remove it from the docs automatically.
+
+If you keep your config somewhere other than the project root, you can point to it explicitly:
+
+```bash
+php vendor/bin/signal generate --config=config/signal.json
+```
+
+## The attribute system
+
+Signal ships with 24 attributes split across three groups: class type attributes that identify what a class is, class metadata attributes that describe relationships and status, and method attributes that document individual methods. Let me walk through each group properly.
+
+## Class type attributes
+
+These attributes go on the class declaration itself. They tell Signal what kind of class it is looking at, which determines how the generated output groups and presents the information.
+
+Each class type attribute accepts a `description` string and a `tags` array. The description becomes the first thing a reader sees in the generated docs for that class. The tags appear as metadata and can be used to filter or group output in custom tooling downstream.
+
+### `#[Module]`
+
+Marks a top-level application module that groups related functionality together.
+
+```php
+use JustSteveKing\Signal\Attributes\Module;
+
+#[Module(
+    description: 'Handles everything related to billing, invoicing, and payment processing',
+    tags: ['billing'],
+)]
+final class BillingModule {}
+```
+
+### `#[Service]`
+
+Marks an application or domain service containing business logic.
+
+```php
+use JustSteveKing\Signal\Attributes\Service;
+
+#[Service(
+    description: 'Processes subscription renewals and handles billing retries',
+    tags: ['subscriptions', 'billing'],
+)]
+final class SubscriptionRenewalService {}
+```
+
+### `#[Repository]`
+
+Marks a data access layer class that wraps persistence.
+
+```php
+use JustSteveKing\Signal\Attributes\Repository;
+
+#[Repository(
+    description: 'Reads and writes Order records to the database',
+    tags: ['orders', 'persistence'],
+)]
+final class OrderRepository {}
+```
+
+### `#[Action]`
+
+Marks a single-purpose action class. If you follow a use-case or interactor pattern, this is the attribute you will use most.
+
+```php
+use JustSteveKing\Signal\Attributes\Action;
+
+#[Action(
+    description: 'Places a new customer order and reserves the required inventory',
+    tags: ['orders'],
+)]
+final class PlaceOrderAction {}
+```
+
+### `#[Controller]`
+
+Marks an HTTP controller that handles incoming requests.
+
+```php
+use JustSteveKing\Signal\Attributes\Controller;
+
+#[Controller(
+    description: 'Manages order CRUD endpoints',
+    tags: ['orders', 'api'],
+)]
+final class OrderController {}
+```
+
+### `#[Event]`
+
+Marks a domain event representing something that happened in the system.
+
+```php
+use JustSteveKing\Signal\Attributes\Event;
+
+#[Event(
+    description: 'Fired when a customer successfully places an order',
+    tags: ['orders', 'events'],
+)]
+final class OrderPlacedEvent {}
+```
+
+### `#[Listener]`
+
+Marks an event listener that reacts to one or more domain events. You will typically combine this with `#[ListensTo]` from the metadata group.
+
+```php
+use JustSteveKing\Signal\Attributes\Listener;
+
+#[Listener(
+    description: 'Handles post-order notification emails',
+    tags: ['orders', 'email'],
+)]
+final class OrderNotificationListener {}
+```
+
+### `#[Middleware]`
+
+Marks HTTP middleware. It accepts an optional `priority` integer that controls the order in which middleware appears in the generated output, which is useful when execution order matters.
+
+```php
+use JustSteveKing\Signal\Attributes\Middleware;
+
+#[Middleware(
+    description: 'Validates the Bearer token on every authenticated request',
+    tags: ['auth'],
+    priority: 10,
+)]
+final class AuthMiddleware {}
+```
+
+### `#[Job]`
+
+Marks a queueable background job. It accepts an optional `queue` string so the target queue is visible in the generated docs without anyone having to open the job class.
+
+```php
+use JustSteveKing\Signal\Attributes\Job;
+
+#[Job(
+    description: 'Sends the customer invoice PDF by email after an order is placed',
+    tags: ['billing', 'email'],
+    queue: 'invoices',
+)]
+final class SendInvoiceJob {}
+```
+
+### `#[Command]`
+
+Marks a console command.
+
+```php
+use JustSteveKing\Signal\Attributes\Command;
+
+#[Command(
+    description: 'Recalculates all open subscription invoices for the current billing cycle',
+    tags: ['billing', 'cli'],
+)]
+final class RecalculateInvoicesCommand {}
+```
+
+### `#[Query]`
+
+Marks a read-only query class on the query side of a CQRS pattern.
+
+```php
+use JustSteveKing\Signal\Attributes\Query;
+
+#[Query(
+    description: 'Fetches a paginated list of orders for the currently authenticated user',
+    tags: ['orders', 'cqrs'],
+)]
+final class GetUserOrdersQuery {}
+```
+
+### `#[Aggregate]`
+
+Marks a DDD aggregate root that owns a consistency boundary.
+
+```php
+use JustSteveKing\Signal\Attributes\Aggregate;
+
+#[Aggregate(
+    description: 'Order aggregate root managing the full order lifecycle from placement to fulfilment',
+    tags: ['orders', 'ddd'],
+)]
+final class OrderAggregate {}
+```
+
+### `#[ValueObject]`
+
+Marks a DDD value object. Immutable and identity-less.
+
+```php
+use JustSteveKing\Signal\Attributes\ValueObject;
+
+#[ValueObject(
+    description: 'Represents a monetary amount with currency, safe for arithmetic operations',
+    tags: ['money', 'ddd'],
+)]
+final class Money {}
+```
+
+## Class metadata attributes
+
+These attributes sit alongside the class type attribute and add relational and status context. They describe what a class depends on, what events it handles, whether it is deprecated, and whether it is internal.
+
+### `#[DependsOn]`
+
+Declares an explicit dependency on another class. It is repeatable, so you can stack it to declare every dependency a class has.
+
+```php
+use JustSteveKing\Signal\Attributes\Service;
+use JustSteveKing\Signal\Attributes\DependsOn;
+
+#[Service(description: 'Orchestrates the end-to-end checkout process')]
+#[DependsOn(class: PaymentGateway::class, description: 'Charges the customer')]
+#[DependsOn(class: InventoryService::class, description: 'Reserves stock before payment is taken')]
+#[DependsOn(class: OrderRepository::class)]
+final class CheckoutService {}
+```
+
+The generated docs will include a dependency table for this class. At a glance you can see what a service needs to function, without reading through the constructor or hunting down injected types. That is particularly useful when you are onboarding someone new or trying to understand the blast radius of a change before you make it.
+
+### `#[ListensTo]`
+
+Declares which domain events a listener class handles. Also repeatable.
+
+```php
+use JustSteveKing\Signal\Attributes\Listener;
+use JustSteveKing\Signal\Attributes\ListensTo;
+
+#[Listener(description: 'Handles all post-order notification events')]
+#[ListensTo(event: 'OrderPlaced', description: 'Sends order confirmation email', tags: ['email'])]
+#[ListensTo(event: 'OrderCancelled', description: 'Sends cancellation notice', tags: ['email'])]
+#[ListensTo(event: 'OrderRefunded', description: 'Sends refund confirmation', tags: ['email'])]
+final class OrderNotificationListener {}
+```
+
+Event-driven systems can be hard to trace because the connection between emitter and listener is often implicit and scattered across service providers or config files. Signal surfaces it directly on the class.
+
+### `#[Deprecated]`
+
+Marks a class or method as deprecated with an optional version and reason. This is one of those attributes that pays off specifically in larger teams and older codebases.
+
+On a class:
+
+```php
+use JustSteveKing\Signal\Attributes\Service;
+use JustSteveKing\Signal\Attributes\Deprecated;
+
+#[Service(description: 'Legacy payment handler from the pre-Stripe era')]
+#[Deprecated(reason: 'Replaced by StripePaymentService', since: '2.0.0')]
+final class LegacyPaymentService {}
+```
+
+On a method:
+
+```php
+#[Deprecated(reason: 'Use processRefundV2() instead', since: '1.8.0')]
+public function processRefund(int $orderId): bool
+{
+    // ...
+}
+```
+
+The generated docs flag deprecated classes and methods clearly, so a reader knows immediately whether they should be using something or looking for its replacement.
+
+### `#[Internal]`
+
+Marks a class or method as internal, meaning it is not part of the public API and should not be relied upon by external consumers.
+
+```php
+use JustSteveKing\Signal\Attributes\Internal;
+
+#[Internal(reason: 'Framework bootstrap only, do not use directly')]
+final class KernelBootstrapper {}
+```
+
+This is especially useful if you are building a package. Signal will note internal classes in the output so that anyone reading the docs understands the stability contract, or absence of one, for a given class.
+
+## Method attributes
+
+This is where Signal earns its keep on a daily basis. The method-level attributes document the HTTP layer, access control, validation, caching, events, exceptions, and side effects. None of these are inferred from your code. You declare them explicitly, which forces you to think about them.
+
+### `#[Route]`
+
+Binds a method to an HTTP verb and path.
+
+```php
+use JustSteveKing\Signal\Attributes\Route;
+
+#[Route(method: 'GET', path: '/v1/orders', description: 'Paginated list of orders for the authenticated user')]
+public function index(Request $request): JsonResponse {}
+
+#[Route(method: 'POST', path: '/v1/orders', description: 'Place a new order')]
+public function store(Request $request): JsonResponse {}
+
+#[Route(method: 'DELETE', path: '/v1/orders/{id}', description: 'Cancel an existing order')]
+public function destroy(string $id): JsonResponse {}
+```
+
+### `#[Authorize]`
+
+Declares the authorization ability required to call a method. Repeatable for methods that require multiple abilities to be satisfied.
+
+```php
+use JustSteveKing\Signal\Attributes\Authorize;
+
+#[Authorize(ability: 'orders.view', description: 'User must own the order or be an admin')]
+public function show(Order $order): JsonResponse {}
+
+#[Authorize(ability: 'orders.update')]
+#[Authorize(ability: 'orders.approve')]
+public function approve(Order $order): JsonResponse {}
+```
+
+### `#[Validates]`
+
+Documents the validation rules applied to request fields. Repeatable, and accepts an optional `description` per field.
+
+```php
+use JustSteveKing\Signal\Attributes\Validates;
+
+#[Validates(field: 'email', rules: 'required|email', description: 'Customer email address')]
+#[Validates(field: 'items', rules: 'required|array|min:1')]
+#[Validates(field: 'items.*.product_id', rules: 'required|integer|exists:products,id')]
+#[Validates(field: 'items.*.quantity', rules: 'required|integer|min:1')]
+#[Validates(field: 'coupon_code', rules: 'nullable|string|max:20')]
+public function store(Request $request): JsonResponse {}
+```
+
+This is not meant to replace your Form Request class. The rules you declare here should mirror what the Form Request enforces. The point is to surface them in the generated docs so that someone reading the API reference does not have to open the Form Request file to understand what a POST body should look like.
+
+### `#[Cached]`
+
+Documents that a method's result is cached, with an optional TTL in seconds and cache key pattern.
+
+```php
+use JustSteveKing\Signal\Attributes\Cached;
+
+#[Cached(ttl: 300, key: 'orders.user.{userId}', description: 'Cached per user for 5 minutes')]
+public function forUser(int $userId): Collection {}
+
+#[Cached(ttl: 3600, key: 'products.catalogue')]
+public function all(): Collection {}
+```
+
+When a teammate asks why a query is not returning live data, having the caching behaviour visible in the generated docs is a much faster path to the answer than grepping through the codebase for a cache key.
+
+### `#[Emits]`
+
+Documents domain events dispatched by a method. Repeatable and accepts an optional `tags` array.
+
+```php
+use JustSteveKing\Signal\Attributes\Emits;
+
+#[Emits(event: 'OrderPlaced', description: 'Fired after the order is persisted', tags: ['orders'])]
+#[Emits(event: 'StockReserved', description: 'Fired once inventory is locked', tags: ['inventory'])]
+public function store(Request $request): JsonResponse {}
+```
+
+### `#[Throws]`
+
+Documents exceptions a method may throw. Repeatable.
+
+```php
+use JustSteveKing\Signal\Attributes\Throws;
+
+#[Throws(exception: PaymentFailedException::class, description: 'When the payment gateway rejects the charge')]
+#[Throws(exception: InsufficientStockException::class, description: 'When a product cannot be reserved')]
+#[Throws(exception: OrderLimitExceededException::class, description: 'When the user has too many open orders')]
+public function store(Request $request): JsonResponse {}
+```
+
+### `#[SideEffect]`
+
+Documents observable side effects beyond the return value. This is the attribute I find most clarifying to write, because it forces you to acknowledge everything your method does beyond returning a value.
+
+```php
+use JustSteveKing\Signal\Attributes\SideEffect;
+
+#[SideEffect(description: 'Sends an order confirmation email to the customer', tags: ['email'])]
+#[SideEffect(description: 'Decrements inventory for each line item', tags: ['inventory'])]
+#[SideEffect(description: 'Publishes an OrderPlaced message to the event bus', tags: ['events'])]
+public function store(Request $request): JsonResponse {}
+```
+
+If you find yourself stacking five or six `#[SideEffect]` attributes on a single method, that is a signal worth listening to. A method with that many side effects is probably doing too much.
+
+## Putting it all together
+
+Here is a complete, realistic controller with the full set of Signal annotations showing how the attributes compose in practice:
+
+```php
+<?php
+
+declare(strict_types=1);
+
+namespace App\Http\Controllers\Api\V1;
+
+use JustSteveKing\Signal\Attributes\Controller;
+use JustSteveKing\Signal\Attributes\DependsOn;
+use JustSteveKing\Signal\Attributes\Route;
+use JustSteveKing\Signal\Attributes\Authorize;
+use JustSteveKing\Signal\Attributes\Validates;
+use JustSteveKing\Signal\Attributes\Emits;
+use JustSteveKing\Signal\Attributes\Throws;
+use JustSteveKing\Signal\Attributes\SideEffect;
+use JustSteveKing\Signal\Attributes\Cached;
+
+#[Controller(
+    description: 'RESTful controller for managing customer orders',
+    tags: ['orders', 'api', 'v1'],
+)]
+#[DependsOn(class: OrderService::class, description: 'Handles order business logic')]
+#[DependsOn(class: OrderRepository::class)]
+final class OrderController
+{
+    #[Route(method: 'GET', path: '/v1/orders', description: 'Paginated list of orders for the authenticated user')]
+    #[Authorize(ability: 'orders.viewAny')]
+    #[Cached(ttl: 60, key: 'orders.index.user.{userId}.page.{page}')]
+    public function index(Request $request): JsonResponse
+    {
+        // ...
+    }
+
+    #[Route(method: 'GET', path: '/v1/orders/{id}', description: 'Fetch a single order by ID')]
+    #[Authorize(ability: 'orders.view', description: 'User must own the order or be an admin')]
+    #[Throws(exception: OrderNotFoundException::class, description: 'When the order does not exist')]
+    public function show(string $id): JsonResponse
+    {
+        // ...
+    }
+
+    #[Route(method: 'POST', path: '/v1/orders', description: 'Place a new order')]
+    #[Authorize(ability: 'orders.create')]
+    #[Validates(field: 'items', rules: 'required|array|min:1', description: 'Line items for the order')]
+    #[Validates(field: 'items.*.product_id', rules: 'required|integer|exists:products,id')]
+    #[Validates(field: 'items.*.quantity', rules: 'required|integer|min:1')]
+    #[Validates(field: 'payment_method', rules: 'required|in:card,bank_transfer')]
+    #[Emits(event: 'OrderPlaced', description: 'Dispatched after the order is persisted')]
+    #[SideEffect(description: 'Sends order confirmation email to the customer', tags: ['email'])]
+    #[SideEffect(description: 'Reserves inventory for each line item', tags: ['inventory'])]
+    #[Throws(exception: PaymentFailedException::class, description: 'When the gateway rejects the charge')]
+    #[Throws(exception: InsufficientStockException::class, description: 'When a product cannot be reserved')]
+    public function store(Request $request): JsonResponse
+    {
+        // ...
+    }
+
+    #[Route(method: 'DELETE', path: '/v1/orders/{id}', description: 'Cancel an existing order')]
+    #[Authorize(ability: 'orders.cancel', description: 'Order owner or admin only')]
+    #[Emits(event: 'OrderCancelled')]
+    #[SideEffect(description: 'Releases reserved inventory back to stock', tags: ['inventory'])]
+    #[Throws(exception: OrderNotFoundException::class)]
+    #[Throws(exception: OrderAlreadyShippedException::class, description: 'When the order has already left the warehouse')]
+    public function destroy(string $id): JsonResponse
+    {
+        // ...
+    }
+}
+```
+
+Running `php vendor/bin/signal generate` against that file produces a Markdown section with full route, authorization, validation, event, side effect, and exception tables, grouped under the Controllers heading with a table of contents entry. Everything is structured and predictable.
+
+## What the generated Markdown looks like
+
+For the `store()` method above, Signal produces something close to this:
+
+```markdown
+#### `store()`
+
+**Route:** `POST /v1/orders` - Place a new order
+
+**Requires Authorization:**
+
+| Ability | Description |
+|---------|-------------|
+| `orders.create` | - |
+
+**Validates:**
+
+| Field | Rules | Description |
+|-------|-------|-------------|
+| `items` | `required\|array\|min:1` | Line items for the order |
+| `items.*.product_id` | `required\|integer\|exists:products,id` | - |
+| `items.*.quantity` | `required\|integer\|min:1` | - |
+| `payment_method` | `required\|in:card,bank_transfer` | - |
+
+**Emits:**
+
+| Event | Description |
+|-------|-------------|
+| `OrderPlaced` | Dispatched after the order is persisted |
+
+**Side Effects:**
+
+| Description | Tags |
+|-------------|------|
+| Sends order confirmation email to the customer | `email` |
+| Reserves inventory for each line item | `inventory` |
+
+**Throws:**
+
+| Exception | Description |
+|-----------|-------------|
+| `PaymentFailedException` | When the gateway rejects the charge |
+| `InsufficientStockException` | When a product cannot be reserved |
+```
+
+Clean tables. No noise. Everything a developer needs to understand a method without opening the implementation.
+
+## The JSON output
+
+The JSON format deserves attention on its own because it is more than a documentation format. It is machine-readable, which means you can use it as input for custom tooling.
+
+You could pipe it into an internal developer portal. You could use it as context when generating tests or reviewing code with an LLM. You could write a validation step in CI that ensures every public controller method has at least a `#[Route]` and a `#[Authorize]` attribute before a pull request can merge.
+
+Here is a trimmed example of what the JSON looks like for the controller above:
+
+```json
+{
+    "generated_at": "2025-04-30T09:00:00+00:00",
+    "classes": [
+        {
+            "name": "OrderController",
+            "namespace": "App\\Http\\Controllers\\Api\\V1",
+            "fully_qualified_name": "App\\Http\\Controllers\\Api\\V1\\OrderController",
+            "file": "src/Http/Controllers/Api/V1/OrderController.php",
+            "type": "controller",
+            "description": "RESTful controller for managing customer orders",
+            "tags": ["orders", "api", "v1"],
+            "dependencies": [
+                { "class": "OrderService", "description": "Handles order business logic" },
+                { "class": "OrderRepository", "description": "" }
+            ],
+            "methods": [
+                {
+                    "name": "store",
+                    "route": {
+                        "method": "post",
+                        "path": "/v1/orders",
+                        "description": "Place a new order"
+                    },
+                    "authorize": [
+                        { "ability": "orders.create", "description": "" }
+                    ],
+                    "validates": [
+                        { "field": "items", "rules": "required|array|min:1", "description": "Line items for the order" },
+                        { "field": "items.*.product_id", "rules": "required|integer|exists:products,id", "description": "" }
+                    ],
+                    "emits": [
+                        { "event": "OrderPlaced", "description": "Dispatched after the order is persisted", "tags": [] }
+                    ],
+                    "side_effects": [
+                        { "description": "Sends order confirmation email to the customer", "tags": ["email"] }
+                    ],
+                    "throws": [
+                        { "exception": "PaymentFailedException", "description": "When the gateway rejects the charge" }
+                    ]
+                }
+            ]
+        }
+    ]
+}
+```
+
+The structure is consistent and predictable. Every class has the same shape. Every method has the same shape. That predictability is what makes it useful as a data source rather than just a document to read.
+
+## Fitting Signal into your workflow
+
+The simplest integration is to run `php vendor/bin/signal generate` locally before committing. But you can go further.
+
+Add it to your CI pipeline and commit the output. If the generated output changes, the diff shows up in the pull request alongside the code change that caused it. Reviewers can see what the documentation impact of a change is without running anything locally.
+
+You can also use it as a gate. Write a step that runs Signal and then checks whether the output contains a `#[Route]` and at least one `#[Authorize]` for every controller method. If something is missing, the build fails. Documentation becomes enforced rather than encouraged.
+
+For teams that maintain an internal developer portal, the JSON output is a natural feed. Parse it, store it, render it however you need. The generation step can run on every merge to main and push updated docs automatically. You get a portal that stays current without anyone having to remember to update it.
+
+## What this changes about how you write code
+
+The real value of Signal is not the docs themselves. It is the habit it creates.
+
+When you know that an attribute will appear in the generated output, you start thinking more carefully about what you are building. Declaring `#[Throws]` forces you to consider what exceptions a method should actually surface. Declaring `#[SideEffect]` forces you to think about what your code does beyond the return value. Declaring `#[DependsOn]` makes implicit coupling explicit. Declaring `#[Emits]` means you have to name the events you are dispatching, which tends to make you think harder about whether they are well-named in the first place.
+
+Documentation is usually an afterthought. With Signal, it is part of the act of writing the class. That shift is small. The compounding effect across a codebase and a team is significant.
+
+If you have ever inherited a codebase where the docs were useless and the only source of truth was reading the implementation line by line, you already know why that matters.
+
+## Get started
+
+Signal is open source and available at [github.com/JustSteveKing/signal](https://github.com/JustSteveKing/signal). Install it, annotate a controller or service, run the generator, and see what comes out. Issues and contributions are welcome.
+
+*If you build something interesting with the JSON output, whether that is a custom portal, a CI gate, or something I haven't thought of, I would genuinely like to hear about it.*
